@@ -11,6 +11,7 @@ import dev.flightline.network.AdjustFlapsPayload;
 import dev.flightline.network.ToggleSpoilersPayload;
 import dev.flightline.network.ShutdownEnginesPayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -64,6 +65,8 @@ public class FlightLine implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(FlightController::tick);
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
                 FlightController.remove(handler.player.getUUID(), handler.player));
+        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
+                FlightController.resetAfterRespawn(oldPlayer, newPlayer));
 
         LOGGER.info("Flight Line initialized for Minecraft 26.3");
     }

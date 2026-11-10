@@ -108,7 +108,8 @@ final class FlightHud {
 
         int controlX = 6, controlY = sh - 96, controlW = sw - 12;
         panel(g, controlX, controlY, controlW, 34);
-        String[][] controls = {{"J", "START", "L", "CUTOFF", "A/D", "TURN", "E", "INV", "W/S", "THR"},
+        String engineAction = phase == FlightPhase.CRASHED ? "RESET" : "START";
+        String[][] controls = {{"J", engineAction, "L", "CUTOFF", "A/D", "TURN", "E", "INV", "W/S", "THR"},
                 {"U", "GEAR", "K", "PUSH", "M", "BRAKE", "X/Z", "FLAP", "O", "SPLR"}};
         int cellW = (controlW - 12) / 5;
         for (int row = 0; row < controls.length; row++) {
@@ -168,7 +169,7 @@ final class FlightHud {
         return switch (state) { case 1 -> "S"; case 2 -> "R"; case 3 -> "F"; case 4 -> "!"; default -> "O"; };
     }
     private static String primaryWarning() {
-        if (phase == FlightPhase.CRASHED) return "AIRFRAME CRASH";
+        if (phase == FlightPhase.CRASHED) return "AIRFRAME CRASH · J TO RESET";
         if ((warnings & FlightWarning.TCAS_RESOLUTION) != 0) {
             return (warnings & FlightWarning.TCAS_DESCEND) != 0 ? "TCAS: DESCEND" : "TCAS: CLIMB";
         }

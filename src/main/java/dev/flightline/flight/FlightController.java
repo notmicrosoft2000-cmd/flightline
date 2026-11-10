@@ -120,6 +120,10 @@ public final class FlightController {
     /** Starts both engines in sequence, with each starter running for three seconds. */
     public static void startEngines(ServerPlayer player) {
         Session session = SESSIONS.get(player.getUUID());
+        if (session != null && session.crashed) {
+            resetCrashedAircraft(player, session);
+            return;
+        }
         if (session == null || player.getFoodData().getFoodLevel() <= 0
                 || session.engine1State != ENGINE_OFF || session.engine2State != ENGINE_OFF) {
             return;
@@ -131,6 +135,64 @@ public final class FlightController {
         session.pushback = false;
         session.engine1State = ENGINE_STARTING;
         session.engineStartTicks = 0;
+        sendState(player, session, true);
+    }
+
+    /** A respawn always receives a fresh, ground-ready aircraft session. */
+    public static void resetAfterRespawn(ServerPlayer oldPlayer, ServerPlayer newPlayer) {
+        remove(oldPlayer.getUUID(), oldPlayer);
+        newPlayer.setNoGravity(false);
+        newPlayer.setDeltaMovement(Vec3.ZERO);
+        newPlayer.resetFallDistance();
+
+        Session session = new Session(false);
+        session.headingDegrees = newPlayer.getYRot();
+        session.phase = FlightPhase.TAXI;
+        SESSIONS.put(newPlayer.getUUID(), session);
+        sendState(newPlayer, session, true);
+    }
+
+    private static void resetCrashedAircraft(ServerPlayer player, Session session) {
+        session.controls = 0;
+        session.takeoffGraceTicks = 0;
+        session.takeoffWarningTicks = 0;
+        session.engineStartTicks = 0;
+        session.gearHeatTicks = 0;
+        session.windShearTicks = 0;
+        session.engineHotTicks = 0;
+        session.engineFireTicks = 0;
+        session.flapDetent = 0;
+        session.flapPosition = 0.0;
+        session.radioAltitudeFeet = 0;
+        session.verticalSpeedFpm = 0;
+        session.warningFlags = 0;
+        session.groundSpeed = 0.0;
+        session.throttle = 0.0;
+        session.engineSpool = 0.0;
+        session.bankDegrees = 0.0;
+        session.pitchDegrees = 0.0;
+        session.headingDegrees = player.getYRot();
+        session.groundTurnRate = 0.0;
+        session.airspeed = 0.0f;
+        session.airVelocity = Vec3.ZERO;
+        session.airborne = false;
+        session.gearDown = true;
+        session.gearFailed = false;
+        session.engine1State = ENGINE_OFF;
+        session.engine2State = ENGINE_OFF;
+        session.brakesActive = false;
+        session.pushback = false;
+        session.spoilers = false;
+        session.landingRoll = false;
+        session.crashed = false;
+        session.crashTicksRemaining = 0;
+        session.impactHandled = false;
+        session.engineTemperature = 20.0;
+        session.phase = FlightPhase.TAXI;
+        player.setNoGravity(false);
+        player.setDeltaMovement(Vec3.ZERO);
+        player.resetFallDistance();
+        applyHeading(player, session);
         sendState(player, session, true);
     }
 
