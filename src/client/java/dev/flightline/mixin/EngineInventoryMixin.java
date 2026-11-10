@@ -14,6 +14,9 @@ public abstract class EngineInventoryMixin {
     private boolean flightline$requireEnginesOffForInventory(KeyMapping mapping) {
         Minecraft client = (Minecraft) (Object) this;
         if (mapping == client.options.keyInventory && FlightLineClient.areEnginesActive()) {
+            // Discard the queued click while locked; leaving it pending causes E to
+            // open inventory later when the engines are shut down.
+            mapping.consumeClick();
             return false;
         }
         return mapping.consumeClick();

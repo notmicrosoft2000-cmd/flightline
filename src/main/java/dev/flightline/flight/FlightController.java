@@ -64,14 +64,25 @@ public final class FlightController {
         session.impactHandled = true;
 
         double sinkSpeed = Math.max(0.0, -session.airVelocity.y);
+        double horizontalSpeed = session.airVelocity.horizontalDistance();
         double safeSink = 0.10 * FlightTuning.WORLD_SPEED_SCALE;
-        if (session.gearDown && sinkSpeed <= safeSink) return true;
+        double safeLandingSpeed = FlightTuning.MAX_AIRSPEED * 0.82;
+        if (session.gearDown && sinkSpeed <= safeSink && horizontalSpeed <= safeLandingSpeed) return true;
 
         session.gearFailed = true;
-        if (session.gearDown && sinkSpeed <= 0.18 * FlightTuning.WORLD_SPEED_SCALE) {
+        if (session.gearDown && sinkSpeed <= 0.18 * FlightTuning.WORLD_SPEED_SCALE
+                && horizontalSpeed <= FlightTuning.MAX_AIRSPEED * 0.92) {
             player.hurt(player.damageSources().generic(), 2.0f);
             return true;
         }
+        crashAircraft(player, session, Math.max(sinkSpeed * 4.5, horizontalSpeed - safeLandingSpeed));
+        return true;
+    }
+
+    private static void crashAircraft(ServerPlayer player, Session session, double impactSpeed) {
+        if (session.crashed) return;
+        Vec3 impactVelocity = session.airborne ? session.airVelocity
+                : headingVector(session.headingDegrees).scale(session.groundSpeed);
         session.crashed = true;
         session.airborne = false;
         session.landingRoll = false;
@@ -80,16 +91,17 @@ public final class FlightController {
         session.throttle = 0.0;
         session.pushback = false;
         session.spoilers = true;
-        session.airVelocity = Vec3.ZERO;
+        session.crashTicksRemaining = 6;
+        session.airVelocity = new Vec3(-impactVelocity.x * 0.18,
+                Math.max(0.06, -impactVelocity.y * 0.12), -impactVelocity.z * 0.18);
         player.setNoGravity(false);
         player.resetFallDistance();
         setPhase(player, session, FlightPhase.CRASHED);
 
-        double impactRatio = sinkSpeed / Math.max(safeSink, 1.0e-4);
+        double impactRatio = impactSpeed / Math.max(0.45 * FlightTuning.WORLD_SPEED_SCALE, 1.0e-4);
         float impactDamage = (float) Math.max(2.0, Math.min(14.0, 2.0 + impactRatio * impactRatio));
         if (!session.gearDown) impactDamage += 2.0f;
         player.hurt(player.damageSources().generic(), impactDamage);
-        return true;
     }
 
     public static void toggleGear(ServerPlayer player) {
@@ -194,7 +206,13 @@ public final class FlightController {
     private static void simulate(ServerPlayer player, Session session, MinecraftServer server) {
         if (session.crashed) {
             player.setNoGravity(false);
-            player.setDeltaMovement(Vec3.ZERO);
+            if (session.crashTicksRemaining > 0) {
+                session.crashTicksRemaining--;
+                player.setDeltaMovement(session.airVelocity);
+                session.airVelocity = session.airVelocity.scale(0.62).add(0.0, -0.025, 0.0);
+            } else {
+                player.setDeltaMovement(Vec3.ZERO);
+            }
             updateInstruments(player, session, server);
             return;
         }
@@ -207,6 +225,19 @@ public final class FlightController {
         updateFuel(player, session);
         session.brakesActive = !session.airborne && (session.controls & FlightControls.BRAKE) != 0;
         boolean onGround = player.onGround();
+
+        if (session.airborne && !onGround
+                && (player.horizontalCollision || player.verticalCollision)) {
+            crashAircraft(player, session, session.airVelocity.length());
+            updateInstruments(player, session, server);
+            return;
+        }
+        if (!session.airborne && player.horizontalCollision
+                && session.groundSpeed > 0.70 * FlightTuning.WORLD_SPEED_SCALE) {
+            crashAircraft(player, session, session.groundSpeed);
+            updateInstruments(player, session, server);
+            return;
+        }
 
         // Camera pitch is only an aircraft control in flight. On the runway it must not
         // pre-load the aircraft into a stall before it has even lifted off.
@@ -327,9 +358,9 @@ public final class FlightController {
         boolean right = (controls & FlightControls.RIGHT) != 0;
         if (left != right) {
             double authority = Math.max(0.12, 1.0 - session.groundSpeed / FlightTuning.MAX_AIRSPEED);
-            targetRate = (left ? -1.0 : 1.0) * 0.10 * authority;
+            targetRate = (left ? -1.0 : 1.0) * 0.30 * authority;
         }
-        session.groundTurnRate = approach(session.groundTurnRate, targetRate, 0.003);
+        session.groundTurnRate = approach(session.groundTurnRate, targetRate, 0.02);
         session.headingDegrees = wrapDegrees(session.headingDegrees + session.groundTurnRate);
         applyHeading(player, session);
     }
@@ -680,6 +711,7 @@ public final class FlightController {
         private boolean spoilers;
         private boolean landingRoll;
         private boolean crashed;
+        private int crashTicksRemaining;
         private boolean impactHandled;
         private double engineTemperature = 20.0;
         private FlightPhase phase = FlightPhase.TAXI;

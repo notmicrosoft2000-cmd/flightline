@@ -16,12 +16,17 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.resources.Identifier;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.sounds.SoundEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class FlightLine implements ModInitializer {
     public static final String MOD_ID = "flightline";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+    public static final SoundEvent ENGINE_LOOP = Registry.register(BuiltInRegistries.SOUND_EVENT,
+            id("engine_loop"), SoundEvent.createVariableRangeEvent(id("engine_loop")));
 
     public static Identifier id(String path) {
         return Identifier.fromNamespaceAndPath(MOD_ID, path);

@@ -39,6 +39,7 @@ public class FlightLineClient implements ClientModInitializer {
     private static volatile boolean enginesActive;
     private int lastSentControls = -1;
     private boolean bindingsMigrated;
+    private FlightEngineSound engineSound;
 
     private static KeyMapping key(String translation, int keyCode) {
         return KeyMappingHelper.registerKeyMapping(new KeyMapping(translation,
@@ -78,6 +79,7 @@ public class FlightLineClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             migrateLegacyBindings();
             updateViewBobbing(client);
+            updateEngineSound(client);
             if (client.player == null || client.level == null || !flightEnabled) return;
             while (TOGGLE_GEAR.consumeClick()) ClientPlayNetworking.send(new ToggleGearPayload());
             while (START_ENGINES.consumeClick()) ClientPlayNetworking.send(new StartEnginesPayload());
@@ -105,6 +107,10 @@ public class FlightLineClient implements ClientModInitializer {
             airborne = false;
             enginesActive = false;
             lastSentControls = -1;
+            if (engineSound != null) {
+                engineSound.stopLoop();
+                engineSound = null;
+            }
             FlightHud.clear();
             if (client.player != null) client.player.setNoGravity(false);
         });
@@ -117,6 +123,21 @@ public class FlightLineClient implements ClientModInitializer {
         } else if (savedViewBobbing != null) {
             client.options.bobView().set(savedViewBobbing);
             savedViewBobbing = null;
+        }
+    }
+
+    private void updateEngineSound(Minecraft client) {
+        boolean shouldPlay = flightEnabled && enginesActive && client.player != null && client.level != null;
+        if (!shouldPlay) {
+            if (engineSound != null) {
+                engineSound.stopLoop();
+                engineSound = null;
+            }
+            return;
+        }
+        if (engineSound == null || engineSound.isStopped()) {
+            engineSound = new FlightEngineSound();
+            client.getSoundManager().queueTickingSound(engineSound);
         }
     }
 
