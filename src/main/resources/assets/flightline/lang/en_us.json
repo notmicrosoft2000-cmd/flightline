@@ -1,0 +1,11 @@
+{
+  "key.category.flightline.controls": "Flight Line",
+  "key.flightline.toggle_gear": "Toggle Landing Gear (U)",
+  "key.flightline.start_engines": "Start Both Engines (J)",
+  "key.flightline.shutdown_engines": "Shut Down Engines (L)",
+  "key.flightline.toggle_pushback": "Toggle Pushback (K)",
+  "key.flightline.brakes": "Wheel Brakes (M)",
+  "key.flightline.flaps_up": "Increase Flaps (X)",
+  "key.flightline.flaps_down": "Decrease Flaps (Z)",
+  "key.flightline.spoilers": "Toggle Spoilers (O)"
+}

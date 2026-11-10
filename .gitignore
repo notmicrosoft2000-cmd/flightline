@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Fabric
+run/
+remappedSrc/
+
+# Misc
+.DS_Store

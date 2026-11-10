@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "dev.flightline.mixin",
+  "client": [
+    "ClientInputAccessor",
+    "KeyboardInputMixin",
+    "FlightCameraMixin",
+    "EngineInventoryMixin",
+    "FlightPoseMixin",
+    "FlightHeadLockMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
