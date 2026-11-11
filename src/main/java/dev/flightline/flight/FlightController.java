@@ -240,6 +240,7 @@ public final class FlightController {
     }
 
     public static void tick(MinecraftServer server) {
+        MobFlightController.tick(server);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Session session = SESSIONS.get(player.getUUID());
             if (session == null) {
@@ -256,6 +257,17 @@ public final class FlightController {
             simulate(player, session, server);
             sendState(player, session, true);
         }
+    }
+
+    public static void handleMobCollision(ServerPlayer player, net.minecraft.world.entity.Mob mob,
+                                          Vec3 mobVelocity) {
+        Session playerSession = SESSIONS.get(player.getUUID());
+        if (playerSession == null || playerSession.crashed) return;
+        if (!playerSession.airborne && playerSession.groundSpeed < 0.70 * FlightTuning.WORLD_SPEED_SCALE) return;
+        Vec3 playerVelocity = playerSession.airborne ? playerSession.airVelocity
+                : headingVector(playerSession.headingDegrees).scale(playerSession.groundSpeed);
+        double relativeSpeed = playerVelocity.subtract(mobVelocity).length();
+        if (relativeSpeed > 0.35) crashAircraft(player, playerSession, relativeSpeed);
     }
 
     public static void remove(UUID playerId, ServerPlayer player) {
@@ -299,6 +311,24 @@ public final class FlightController {
             crashAircraft(player, session, session.groundSpeed);
             updateInstruments(player, session, server);
             return;
+        }
+        if (session.airborne) {
+            for (ServerPlayer other : server.getPlayerList().getPlayers()) {
+                if (other == player || other.level() != player.level()) continue;
+                Session otherSession = SESSIONS.get(other.getUUID());
+                if (otherSession == null || otherSession.crashed
+                        || player.distanceToSqr(other) > 1.25 * 1.25) continue;
+                Vec3 ownVelocity = session.airborne ? session.airVelocity
+                        : headingVector(session.headingDegrees).scale(session.groundSpeed);
+                Vec3 otherVelocity = otherSession.airborne ? otherSession.airVelocity
+                        : headingVector(otherSession.headingDegrees).scale(otherSession.groundSpeed);
+                double impactSpeed = ownVelocity.subtract(otherVelocity).length();
+                if (impactSpeed < 0.35) continue;
+                crashAircraft(player, session, impactSpeed);
+                crashAircraft(other, otherSession, impactSpeed);
+                updateInstruments(player, session, server);
+                return;
+            }
         }
 
         // Camera pitch is only an aircraft control in flight. On the runway it must not
@@ -649,7 +679,11 @@ public final class FlightController {
         }
         if (session.airborne) {
             double closestResolution = Double.MAX_VALUE;
+            double closestTraffic = Double.MAX_VALUE;
             int resolutionCommand = 0;
+            session.trafficRangeBlocks = 0;
+            session.trafficBearingDegrees = 0.0;
+            session.trafficAltitudeFeet = 0;
             for (ServerPlayer traffic : server.getPlayerList().getPlayers()) {
                 if (traffic == player || traffic.level() != player.level()) continue;
                 Session intruder = SESSIONS.get(traffic.getUUID());
@@ -663,8 +697,19 @@ public final class FlightController {
                 Vec3 closestSeparation = separation.add(relativeVelocity.scale(timeToClosest));
                 double horizontal = closestSeparation.horizontalDistance();
                 double vertical = Math.abs(closestSeparation.y);
-                if (horizontal < 48.0 * FlightTuning.WORLD_SPEED_SCALE
-                        && vertical < 16.0 * FlightTuning.WORLD_SPEED_SCALE) warnings |= FlightWarning.TCAS_TRAFFIC;
+                if (horizontal < 64.0 * FlightTuning.WORLD_SPEED_SCALE
+                        && vertical < 16.0 * FlightTuning.WORLD_SPEED_SCALE) {
+                    warnings |= FlightWarning.TCAS_TRAFFIC;
+                    double distance = horizontal + vertical * 2.0;
+                    if (distance < closestTraffic) {
+                        closestTraffic = distance;
+                        session.trafficRangeBlocks = (int) Math.round(horizontal);
+                        session.trafficBearingDegrees = (float) wrapDegrees(
+                                Math.toDegrees(Math.atan2(-closestSeparation.x, closestSeparation.z))
+                                        - session.headingDegrees);
+                        session.trafficAltitudeFeet = (int) Math.round(closestSeparation.y * 3.28084);
+                    }
+                }
                 double combinedDistance = horizontal + vertical * 2.0;
                 if (timeToClosest < 300.0 && horizontal < 16.0 * FlightTuning.WORLD_SPEED_SCALE
                         && vertical < 8.0 * FlightTuning.WORLD_SPEED_SCALE
@@ -673,7 +718,41 @@ public final class FlightController {
                     resolutionCommand = separation.y > 0.5 ? FlightWarning.TCAS_DESCEND : FlightWarning.TCAS_CLIMB;
                 }
             }
+            for (MobFlightController.Traffic traffic : MobFlightController.aircraftIn(player.level())) {
+                Vec3 separation = traffic.mob().position().subtract(player.position());
+                Vec3 relativeVelocity = traffic.velocity().subtract(session.airVelocity);
+                double relativeSpeedSquared = relativeVelocity.lengthSqr();
+                double timeToClosest = relativeSpeedSquared < 1.0e-6 ? 0.0
+                        : -separation.dot(relativeVelocity) / relativeSpeedSquared;
+                if (timeToClosest < 0.0 || timeToClosest > 400.0) continue;
+                Vec3 closestSeparation = separation.add(relativeVelocity.scale(timeToClosest));
+                double horizontal = closestSeparation.horizontalDistance();
+                double vertical = Math.abs(closestSeparation.y);
+                double combinedDistance = horizontal + vertical * 2.0;
+                if (horizontal < 64.0 * FlightTuning.WORLD_SPEED_SCALE
+                        && vertical < 16.0 * FlightTuning.WORLD_SPEED_SCALE) {
+                    warnings |= FlightWarning.TCAS_TRAFFIC;
+                    if (combinedDistance < closestTraffic) {
+                        closestTraffic = combinedDistance;
+                        session.trafficRangeBlocks = (int) Math.round(horizontal);
+                        session.trafficBearingDegrees = (float) wrapDegrees(
+                                Math.toDegrees(Math.atan2(-closestSeparation.x, closestSeparation.z))
+                                        - session.headingDegrees);
+                        session.trafficAltitudeFeet = (int) Math.round(closestSeparation.y * 3.28084);
+                    }
+                }
+                if (timeToClosest < 300.0 && horizontal < 16.0 * FlightTuning.WORLD_SPEED_SCALE
+                        && vertical < 8.0 * FlightTuning.WORLD_SPEED_SCALE
+                        && combinedDistance < closestResolution) {
+                    closestResolution = combinedDistance;
+                    resolutionCommand = separation.y > 0.5 ? FlightWarning.TCAS_DESCEND : FlightWarning.TCAS_CLIMB;
+                }
+            }
             if (resolutionCommand != 0) warnings |= FlightWarning.TCAS_RESOLUTION | resolutionCommand;
+        } else {
+            session.trafficRangeBlocks = 0;
+            session.trafficBearingDegrees = 0.0;
+            session.trafficAltitudeFeet = 0;
         }
         session.warningFlags = warnings;
         session.radioAltitudeFeet = radioAltitude;
@@ -721,7 +800,7 @@ public final class FlightController {
         ServerPlayNetworking.send(player, state);
 
         FlightInstrumentPayload instruments = session == null
-                ? new FlightInstrumentPayload(0, 0, 0.0f, 0.0f, 0.0f, 0, 0, 0)
+                ? new FlightInstrumentPayload(0, 0, 0.0f, 0.0f, 0.0f, 0, 0, 0, 0.0f, 0, 0)
                 : new FlightInstrumentPayload(session.radioAltitudeFeet, session.verticalSpeedFpm,
                 (float) session.bankDegrees, (float) session.pitchDegrees, (float) session.headingDegrees,
                 session.gearFailed ? 2 : (session.gearDown ? 0 : 1),
@@ -731,7 +810,8 @@ public final class FlightController {
                         | (Math.round((float) session.engineSpool * 100.0f) << 12)
                         | ((Math.min(127, session.windSpeedKnots) & 0x7F) << 19)
                         | ((session.windDirectionSector & 0x3F) << 26),
-                session.warningFlags | (session.gearFailed ? FlightWarning.GEAR_FAILED : 0));
+                session.warningFlags | (session.gearFailed ? FlightWarning.GEAR_FAILED : 0),
+                (float) session.trafficBearingDegrees, session.trafficRangeBlocks, session.trafficAltitudeFeet);
         ServerPlayNetworking.send(player, instruments);
     }
 
@@ -754,6 +834,8 @@ public final class FlightController {
         private int radioAltitudeFeet;
         private int verticalSpeedFpm;
         private int warningFlags;
+        private int trafficRangeBlocks;
+        private int trafficAltitudeFeet;
         private double groundSpeed;
         private double throttle;
         private double engineSpool;
@@ -761,6 +843,7 @@ public final class FlightController {
         private double pitchDegrees;
         private double headingDegrees;
         private double groundTurnRate;
+        private double trafficBearingDegrees;
         private float airspeed;
         private Vec3 airVelocity = Vec3.ZERO;
         private boolean airborne;

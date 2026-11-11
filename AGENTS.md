@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository is a Fabric mod for Minecraft 26.3, built with Gradle and Fabric Loom. It changes player flight behavior; it does not add a plane entity. Common, server-authoritative flight logic and networking belong under `src/main/java/dev/flightline/`; client-only input, HUD, and audio code belong under `src/client/java/dev/flightline/client/`. Fabric metadata is in `src/main/resources/`; assets belong under `src/main/resources/assets/flightline/`.
+This repository is a Fabric mod for Minecraft 26.3, built with Gradle and Fabric Loom. It makes players and AI-driven mobs behave like aircraft without adding plane entities. Common, server-authoritative flight logic and networking belong under `src/main/java/dev/flightline/`; client-only input, HUD, and audio code belong under `src/client/java/dev/flightline/client/`. Fabric metadata is in `src/main/resources/`; assets belong under `src/main/resources/assets/flightline/`.
 
 ## Build, Test, and Development Commands
 
