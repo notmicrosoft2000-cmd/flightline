@@ -1,5 +1,6 @@
 package dev.flightline.mixin;
 
+import dev.flightline.client.FlightCameraEffects;
 import dev.flightline.client.FlightLineClient;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
@@ -25,5 +26,13 @@ public abstract class FlightCameraMixin {
         flightline$rollRadians += Math.max(-0.025f, Math.min(0.025f, difference));
         state.orientation.rotateLocalZ(flightline$rollRadians);
         state.viewRotationMatrix.rotateLocalZ(flightline$rollRadians);
+
+        FlightCameraEffects.Shake shake = FlightCameraEffects.sample(System.nanoTime());
+        state.orientation.rotateLocalX(shake.pitchRadians());
+        state.orientation.rotateLocalY(shake.yawRadians());
+        state.orientation.rotateLocalZ(shake.rollRadians());
+        state.viewRotationMatrix.rotateLocalX(shake.pitchRadians());
+        state.viewRotationMatrix.rotateLocalY(shake.yawRadians());
+        state.viewRotationMatrix.rotateLocalZ(shake.rollRadians());
     }
 }

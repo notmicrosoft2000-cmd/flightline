@@ -227,6 +227,36 @@ class FlightPhysicsTest {
     }
 
     @Test
+    void testAutolandTracksRunwayCenterlineAndGlidePath() {
+        double targetHeight = 100.0 * Math.tan(Math.toRadians(3.0));
+        FlightController.AutolandTargets targets = FlightController.calculateAutolandTargets(
+                new Vec3(0.0, targetHeight, -100.0), Vec3.ZERO, 0.0f, 3.0f);
+
+        assertNotNull(targets);
+        assertEquals(0.0, targets.targetHeadingDegrees(), 1.0e-4);
+        assertEquals(Math.round(targetHeight * 3.28084), targets.targetAltitudeFeet());
+        assertEquals(130, targets.targetAirspeedKnots());
+        assertTrue(targets.targetVerticalSpeedFpm() < 0);
+    }
+
+    @Test
+    void testAutolandLocalizerCorrectionTurnsTowardRunwayCenterline() {
+        FlightController.AutolandTargets targets = FlightController.calculateAutolandTargets(
+                new Vec3(10.0, 0.0, -100.0), Vec3.ZERO, 0.0f, 3.0f);
+
+        assertNotNull(targets);
+        assertTrue(targets.targetHeadingDegrees() > 0.0);
+    }
+
+    @Test
+    void testAutolandRequiresApproachCaptureVolume() {
+        assertNull(FlightController.calculateAutolandTargets(
+                new Vec3(501.0, 0.0, -100.0), Vec3.ZERO, 0.0f, 3.0f));
+        assertNull(FlightController.calculateAutolandTargets(
+                new Vec3(0.0, 0.0, -5001.0), Vec3.ZERO, 0.0f, 3.0f));
+    }
+
+    @Test
     void testPullUpWarningOnlyForAirborneLowDescendingOrTerrainThreat() {
         assertFalse(FlightController.shouldPullUpWarning(false, 40, -1800, false));
         assertFalse(FlightController.shouldPullUpWarning(true, 400, -1800, false));

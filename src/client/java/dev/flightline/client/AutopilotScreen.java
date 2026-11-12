@@ -3,6 +3,7 @@ package dev.flightline.client;
 import dev.flightline.network.ConfigureAutopilotPayload;
 import dev.flightline.network.ConfigureIlsPayload;
 import dev.flightline.network.FlightInstrumentPayload;
+import dev.flightline.network.ToggleAutolandPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -144,6 +145,17 @@ public class AutopilotScreen extends Screen {
             addRenderableWidget(Button.builder(Component.literal(clearIlsText), b -> clearIls())
                     .bounds(place(left, 166, scaleX), place(top, 144, scaleY),
                             size(124, scaleX), size(24, scaleY)).build());
+            String autolandText = FlightHud.autopilotGuidance().autolandArmed()
+                    ? width < 300 ? "CANCEL LAND" : "DISARM AUTOLAND"
+                    : width < 300 ? "AUTO LAND" : "ARM AUTOLAND";
+            Button autolandButton = Button.builder(Component.literal(autolandText), b -> {
+                        ClientPlayNetworking.send(new ToggleAutolandPayload());
+                        ilsMessage = "";
+                    })
+                    .bounds(place(left, 30, scaleX), place(top, 176, scaleY),
+                            size(260, scaleX), size(24, scaleY)).build();
+            autolandButton.active = FlightLineClient.isFlightEnabled() && FlightHud.isIlsActive();
+            addRenderableWidget(autolandButton);
         }
 
         String applyText = width < 280 ? "DONE" : "APPLY & CLOSE";
@@ -331,6 +343,11 @@ public class AutopilotScreen extends Screen {
                             : "Stand at the runway threshold and face down the runway.";
             graphics.centeredText(font, fitText(font, ilsStatus, Math.max(1, panelWidth() - 24)),
                     width / 2, place(top, 112, scaleY), 0xFFB6C8D1);
+            graphics.centeredText(font, FlightHud.autopilotGuidance().autolandArmed()
+                            ? "AUTOLAND ARMED  |  GEAR / FLAPS / SPEED MANAGED"
+                            : "Autoland arms only while airborne inside ILS coverage.",
+                    width / 2, place(top, 158, scaleY),
+                    FlightHud.autopilotGuidance().autolandArmed() ? 0xFF62D89B : 0xFF83959B);
             graphics.centeredText(font, fitText(font,
                             "SET saves this position and heading as the runway reference.",
                             Math.max(1, panelWidth() - 24)),

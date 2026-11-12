@@ -93,6 +93,7 @@ public final class FlightController {
         session.ilsThreshold = Vec3.ZERO;
         session.ilsGlideSlopeDegrees = 3.0f;
         session.ilsGuidance = FlightInstrumentPayload.IlsGuidance.inactive();
+        disengageAutoland(session);
         sendState(player, session, true);
         return true;
     }
@@ -124,6 +125,13 @@ public final class FlightController {
         LandingAssessment landing = assessLanding(session.gearDown, sinkSpeed, horizontalSpeed);
         if (!landing.crashes()) {
             session.gearFailed = landing.gearFailed();
+            if (session.autoland) {
+                session.autoland = false;
+                session.autopilot = false;
+                session.throttle = 0.0;
+                session.spoilers = true;
+                session.autolandRolloutTicks = 100;
+            }
             float damage = Math.min(landing.damage(), Math.max(0.0f, player.getHealth() - 1.0f));
             if (damage > 0.0f) {
                 player.hurtServer(player.level(), player.damageSources().generic(), damage);
@@ -164,6 +172,7 @@ public final class FlightController {
         session.crashed = true;
         session.airborne = false;
         session.autopilot = false;
+        session.autoland = false;
         session.landingRoll = false;
         session.engine1State = ENGINE_OFF;
         session.engine2State = ENGINE_OFF;
@@ -265,6 +274,8 @@ public final class FlightController {
         session.airVelocity = Vec3.ZERO;
         session.airborne = false;
         session.autopilot = false;
+        session.autoland = false;
+        session.autolandRolloutTicks = 0;
         session.gearDown = true;
         session.gearFailed = false;
         session.engine1State = ENGINE_OFF;
@@ -341,6 +352,33 @@ public final class FlightController {
         sendState(player, session, true);
     }
 
+    public static boolean toggleAutoland(ServerPlayer player) {
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null || session.crashed || !session.airborne) return false;
+        if (session.autoland) {
+            disengageAutoland(session);
+            sendState(player, session, true);
+            return true;
+        }
+        if (session.gearFailed || runningEngines(session) == 0
+                || session.airspeed < FlightTuning.STALL_SPEED) return false;
+        if (session.ilsDimension == null
+                || !session.ilsDimension.equals(player.level().dimension())
+                || !calculateIlsGuidance(player, session).active()) {
+            return false;
+        }
+
+        session.autoland = true;
+        session.autopilot = true;
+        session.gearDown = true;
+        session.flapDetent = Math.max(session.flapDetent, 3);
+        session.spoilers = false;
+        session.autopilotAirspeedKnots = 130;
+        updateAutolandTargets(player, session);
+        sendState(player, session, true);
+        return true;
+    }
+
     public static void tick(MinecraftServer server) {
         MobFlightController.tick(server);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -399,7 +437,9 @@ public final class FlightController {
         updateFlaps(session);
         updateEngineTemperatures(session);
         updateFuel(player, session);
-        session.brakesActive = !session.airborne && (session.controls & FlightControls.BRAKE) != 0;
+        session.brakesActive = !session.airborne && ((session.controls & FlightControls.BRAKE) != 0
+                || session.autolandRolloutTicks > 0);
+        if (!session.airborne && session.autolandRolloutTicks > 0) session.autolandRolloutTicks--;
         boolean onGround = player.onGround();
 
         if (session.airborne && !onGround
@@ -483,6 +523,7 @@ public final class FlightController {
         if (session.airborne) {
             if (session.takeoffGraceTicks > 0) session.takeoffGraceTicks--;
             if (session.takeoffWarningTicks > 0) session.takeoffWarningTicks--;
+            if (session.autoland) updateAutolandTargets(player, session);
             updateBankAndTurn(player, session);
             if (session.crashed) {
                 player.setDeltaMovement(Vec3.ZERO);
@@ -620,11 +661,59 @@ public final class FlightController {
         applyHeading(player, session);
     }
 
+    private static void updateAutolandTargets(ServerPlayer player, Session session) {
+        if (session.ilsDimension == null || !session.ilsDimension.equals(player.level().dimension())) {
+            disengageAutoland(session);
+            return;
+        }
+        AutolandTargets targets = calculateAutolandTargets(player.position(), session.ilsThreshold,
+                session.ilsRunwayHeading, session.ilsGlideSlopeDegrees);
+        if (targets == null) {
+            disengageAutoland(session);
+            return;
+        }
+        session.autopilotAltitudeFeet = targets.targetAltitudeFeet();
+        session.autopilotHeading = targets.targetHeadingDegrees();
+        session.autopilotAirspeedKnots = targets.targetAirspeedKnots();
+        session.autopilotVerticalSpeedFpm = targets.targetVerticalSpeedFpm();
+    }
+
+    private static void disengageAutoland(Session session) {
+        session.autoland = false;
+        session.autopilot = false;
+    }
+
+    static @Nullable AutolandTargets calculateAutolandTargets(Vec3 position, Vec3 threshold,
+                                                               float runwayHeading, float glideSlopeDegrees) {
+        Vec3 fromThreshold = position.subtract(threshold);
+        double alongTrack = fromThreshold.dot(headingVector(runwayHeading + 180.0));
+        Vec3 lateralDirection = new Vec3(Math.cos(Math.toRadians(runwayHeading)), 0.0,
+                Math.sin(Math.toRadians(runwayHeading)));
+        double lateralOffset = fromThreshold.dot(lateralDirection);
+        if (alongTrack < -20.0 || alongTrack > 5000.0 || Math.abs(lateralOffset) > 500.0) return null;
+
+        double glideSlopeRadians = Math.toRadians(glideSlopeDegrees);
+        double targetAltitudeFeet = (threshold.y + alongTrack * Math.tan(glideSlopeRadians)) * 3.28084;
+        double localizerDegrees = Math.toDegrees(Math.atan2(lateralOffset, Math.max(1.0, alongTrack)));
+        double localizerCorrection = Math.max(-35.0, Math.min(35.0, localizerDegrees * 2.0));
+        int targetAirspeedKnots = 130;
+        int targetVerticalSpeedFpm = -(int) Math.max(500.0,
+                targetAirspeedKnots * Math.tan(glideSlopeRadians) * 5.3);
+        return new AutolandTargets(wrapDegrees(runwayHeading + localizerCorrection),
+                Math.max(0, (int) Math.round(targetAltitudeFeet)),
+                targetVerticalSpeedFpm, targetAirspeedKnots);
+    }
+
+    record AutolandTargets(double targetHeadingDegrees, int targetAltitudeFeet,
+                           int targetVerticalSpeedFpm, int targetAirspeedKnots) {
+    }
+
     public static void configureAutopilot(ServerPlayer player, boolean engaged, int targetHeading,
                                           int targetAltitudeFeet, int targetVerticalSpeedFpm, int targetAirspeedKnots) {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || session.crashed || !session.airborne) return;
         session.autopilot = engaged;
+        if (!engaged) session.autoland = false;
         session.autopilotHeading = Math.floorMod(targetHeading, 360);
         session.autopilotAltitudeFeet = Math.max(100, targetAltitudeFeet);
         session.autopilotVerticalSpeedFpm = targetVerticalSpeedFpm;
@@ -636,6 +725,7 @@ public final class FlightController {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || session.crashed || !session.airborne) return;
         session.autopilot = !session.autopilot;
+        session.autoland = false;
         if (session.autopilot) {
             session.autopilotHeading = session.headingDegrees;
             session.autopilotAltitudeFeet = Math.max(100, (int) Math.round(player.getY() * 3.28084));
@@ -1122,7 +1212,8 @@ public final class FlightController {
                 new FlightInstrumentPayload.CockpitGuidance(session.ilsGuidance,
                         new FlightInstrumentPayload.AutopilotGuidance((float) session.autopilotHeading,
                         session.autopilotAltitudeFeet, session.autopilotVerticalSpeedFpm,
-                        session.autopilotAirspeedKnots, (float) FlightTuning.AUTOTHROTTLE_DEADBAND_KNOTS)));
+                        session.autopilotAirspeedKnots, (float) FlightTuning.AUTOTHROTTLE_DEADBAND_KNOTS,
+                        session.autoland)));
         ServerPlayNetworking.send(player, instruments);
     }
 
@@ -1171,6 +1262,8 @@ public final class FlightController {
         private boolean pushbackReversing;
         private boolean spoilers;
         private boolean autopilot;
+        private boolean autoland;
+        private int autolandRolloutTicks;
         private double autopilotHeading;
         private int autopilotAltitudeFeet = 2000;
         private int autopilotVerticalSpeedFpm = 1000;

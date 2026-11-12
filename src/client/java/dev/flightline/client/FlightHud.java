@@ -144,7 +144,8 @@ final class FlightHud {
 
         // PFD Top Header / FMA
         g.text(mc.font, "PFD", pfdX + 4, pfdY + 3, 0xFF72E6F5, true);
-        g.text(mc.font, autopilot ? "AP" : "FD", pfdX + 30, pfdY + 3,
+        String flightMode = autopilotGuidance.autolandArmed() ? "AL" : autopilot ? "AP" : "FD";
+        g.text(mc.font, flightMode, pfdX + 30, pfdY + 3,
                 autopilot ? 0xFF62D89B : 0xFF70808A, true);
         g.text(mc.font, fitText(mc.font, phase.label(), pfdWidth - 58), pfdX + 54, pfdY + 3,
                 phaseColor(), true);
@@ -257,7 +258,8 @@ final class FlightHud {
         boolean spoilers = (systems & (1 << 8)) != 0;
         int food = player.getFoodData().getFoodLevel();
         g.text(mc.font, "EICAS", eicasX + 5, 10, 0xFF72E6F5, true);
-        g.text(mc.font, autopilot ? "A/P ON" : "A/P OFF", eicasX + 60, 10,
+        g.text(mc.font, autopilotGuidance.autolandArmed() ? "A/L ON" : autopilot ? "A/P ON" : "A/P OFF",
+                eicasX + 60, 10,
                 autopilot ? 0xFF62D89B : 0xFF83959B, true);
         g.text(mc.font, "E1 " + engineTag(engine1), eicasX + 4, 22, engineColor(engine1), true);
         g.text(mc.font, "E2 " + engineTag(engine2), eicasX + 59, 22, engineColor(engine2), true);

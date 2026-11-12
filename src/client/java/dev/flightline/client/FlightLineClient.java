@@ -3,6 +3,7 @@ package dev.flightline.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.flightline.FlightLine;
 import dev.flightline.flight.FlightControls;
+import dev.flightline.flight.FlightPhase;
 import dev.flightline.flight.FlightWarning;
 import dev.flightline.network.AdjustFlapsPayload;
 import dev.flightline.network.FlightInputPayload;
@@ -84,6 +85,7 @@ public class FlightLineClient implements ClientModInitializer {
             airborne = payload.enabled() && (payload.phase() == 4 || payload.phase() == 5);
             if (lastSentControls == -1) lastSentControls = 0;
             FlightHud.update(payload);
+            FlightCameraEffects.updateFlightState(FlightPhase.fromId(payload.phase()));
             Minecraft client = context.client();
             updateViewBobbing(client);
             var player = client.player;
@@ -103,6 +105,8 @@ public class FlightLineClient implements ClientModInitializer {
             int engine2 = (payload.systems() >> 3) & 7;
             enginesActive = engine1 == 1 || engine1 == 2 || engine2 == 1 || engine2 == 2;
             FlightHud.updateInstruments(payload);
+            FlightCameraEffects.updateInstruments(payload.bankDegrees(), payload.warnings(),
+                    payload.radioAltitudeFeet(), payload.verticalSpeedFpm(), (payload.systems() >> 19) & 0x7F);
             playCockpitAlerts(context.client(), payload.warnings(), payload.radioAltitudeFeet(), payload.verticalSpeedFpm());
         });
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
@@ -193,6 +197,8 @@ public class FlightLineClient implements ClientModInitializer {
             updateViewBobbing(client);
             bankDegrees = 0.0f;
             airborne = false;
+            FlightCameraEffects.updateFlightState(FlightPhase.OFF);
+            FlightCameraEffects.updateInstruments(0.0f, 0, 0, 0, 0);
             enginesActive = false;
             lastWarningCallout = 0;
             warningRepeatCooldown = 0;

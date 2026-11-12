@@ -71,7 +71,7 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
 
     public record AutopilotGuidance(float targetHeadingDegrees, int targetAltitudeFeet,
                                     int targetVerticalSpeedFpm, int targetAirspeedKnots,
-                                    float autoThrottleDeadbandKnots) {
+                                    float autoThrottleDeadbandKnots, boolean autolandArmed) {
         @SuppressWarnings("null")
         public static final StreamCodec<RegistryFriendlyByteBuf, AutopilotGuidance> CODEC = StreamCodec.composite(
                 ByteBufCodecs.FLOAT, guidance -> guidance.targetHeadingDegrees(),
@@ -79,11 +79,12 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
                 ByteBufCodecs.VAR_INT, guidance -> guidance.targetVerticalSpeedFpm(),
                 ByteBufCodecs.VAR_INT, guidance -> guidance.targetAirspeedKnots(),
                 ByteBufCodecs.FLOAT, guidance -> guidance.autoThrottleDeadbandKnots(),
+                ByteBufCodecs.BOOL, guidance -> guidance.autolandArmed(),
                 AutopilotGuidance::new
         );
 
         public static AutopilotGuidance defaults() {
-            return new AutopilotGuidance(0.0f, 2000, 1000, 160, 2.0f);
+            return new AutopilotGuidance(0.0f, 2000, 1000, 160, 2.0f, false);
         }
     }
 

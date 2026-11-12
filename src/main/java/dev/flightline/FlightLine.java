@@ -13,6 +13,7 @@ import dev.flightline.network.ShutdownEnginesPayload;
 import dev.flightline.network.ToggleAutopilotPayload;
 import dev.flightline.network.ConfigureAutopilotPayload;
 import dev.flightline.network.ConfigureIlsPayload;
+import dev.flightline.network.ToggleAutolandPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -82,6 +83,7 @@ public class FlightLine implements ModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(ToggleAutopilotPayload.TYPE, ToggleAutopilotPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ConfigureAutopilotPayload.TYPE, ConfigureAutopilotPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ConfigureIlsPayload.TYPE, ConfigureIlsPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(ToggleAutolandPayload.TYPE, ToggleAutolandPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ShutdownEnginesPayload.TYPE, ShutdownEnginesPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(FlightInputPayload.TYPE, FlightInputPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ToggleGearPayload.TYPE, ToggleGearPayload.CODEC);
@@ -118,6 +120,8 @@ public class FlightLine implements ModInitializer {
                 FlightController.clearIlsReference(context.player());
             }
         });
+        ServerPlayNetworking.registerGlobalReceiver(ToggleAutolandPayload.TYPE, (payload, context) ->
+                FlightController.toggleAutoland(context.player()));
 
         ServerTickEvents.END_SERVER_TICK.register(FlightController::tick);
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->

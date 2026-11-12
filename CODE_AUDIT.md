@@ -19,6 +19,8 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 - The HUD key reference is now a smaller, borderless vertical list at the bottom right; mappings are gray normally and white while pressed. PFD pitch/roll and ILS readouts have separated, width-limited rows. The MCP shows active heading, altitude, vertical-speed, airspeed, and autothrottle deadband targets.
 - `/enableflight` reports failure for dead, spectator, or riding players instead of returning a false success.
 - Mob enrollment excludes NoAI mobs, passengers, and vehicles; collision checks query nearby players instead of scanning the full player list for each mob.
+- The NAV/ILS panel supports ILS-based autoland. The server requires airborne active ILS coverage, serviceable gear, a running engine, and at least stall speed; it tracks localizer/glideslope targets, manages approach configuration, and enables rollout braking after touchdown. It cancels if guidance is lost and remains manually cancelable after approach conditions deteriorate.
+- Camera shake is rotational and smoothed, with intensity from gusts/windshear, takeoff, bank angle, low descent, and landing rollout.
 
 ## Remaining Risks / Verification
 
@@ -32,5 +34,7 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 8. **Throttle and pushback response need live checks.** Verify throttle/spool acceleration and deceleration remain controllable, pushback from a stop and while taxiing does not reverse abruptly, and brakes still take precedence.
 9. **Voice audio needs a live-client check.** Verify each recorded alert is audible, the terrain/pull-up phrase plays in sequence, and active warning/callout clips do not overlap.
 10. **HUD and flight-deck placement need live-client checks** at standard and small GUI resolutions, including ILS needles, pitch/roll readouts, radio-altimeter ticks/trend, ND counts, live key highlighting, MCP targets, and warning placement.
+11. **Autoland needs live-client/server verification.** Confirm the arming gates and ILS capture, localizer/glideslope tracking, automatic gear/flap/speed configuration, cancel and ILS-loss behavior, landing survivability, and rollout braking. Geometry tests do not model a complete world landing.
+12. **Camera shake needs visual comfort checks** during gusts, windshear, takeoff, steep banks, low descent, and rollout; verify reset on disconnect and that the smoothed effect feels consistent at different frame rates.
 
 Use `./gradlew runClient` when assets/display support are available; a successful compile alone does not validate mixin injection, key event order, HUD placement, or movement synchronization.
