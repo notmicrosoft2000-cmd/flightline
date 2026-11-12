@@ -1,0 +1,23 @@
+# Flight Line Handoff
+
+Flight Line is a Fabric mod for Minecraft 26.3, built with Gradle 9.8.2 and Java 25. Players use server-authoritative aircraft physics; AI-enabled mobs also fly without adding plane entities. Shared flight logic is under `src/main/java/dev/flightline/flight/`, client input/HUD/audio code is under `src/client/java/dev/flightline/client/`, and custom play payloads are under `src/main/java/dev/flightline/network/`.
+
+Run `./gradlew build` for compilation and automated tests. In-game verification still matters for key events, HUD placement, mixins, and server movement. Asset downloads have previously stalled in this environment.
+
+Current features include runway roll, aircraft pitch/bank and flight physics, engine spool, gear/flaps/spoilers, weather, autopilot, mob aircraft steering and air-to-air avoidance, TCAS, serialized cockpit voice alerts/callouts sourced from `Audio/`, and a compact PFD/ND/EICAS/radio-altimeter HUD. H opens a cockpit panel with MCP, NAV/ILS, and remappable key-reference pages, even before flight mode is enabled. The MCP reports active heading/altitude/vertical-speed/airspeed targets and the ±2-knot autothrottle deadband. Set an ILS in NAV/ILS while standing at a runway threshold and facing down the runway; adjust the 1–6 degree glide slope there, or use `/flightline ils set [glideSlope]`. `/flightline ils clear` and the GUI both remove it. Guidance is limited to the configured dimension and approach volume. The reference is session-only.
+
+Touchdowns allow a safe landing, a survivable hard landing that can fail the gear, or a fatal crash for gear-up and excessive sink-rate impacts. Aircraft crashes use a custom death message and produce smoke, flame, cloud, and impact particles with radial entity knockback; they no longer create terrain-damaging explosions. Mob enrollment excludes NoAI mobs, passengers, and mobs carrying passengers/vehicles; native AI remains enabled for target selection.
+
+Default controls: J engines, L shutdown, G gear, C/V flaps, X/Z spoilers, H cockpit panel, K pushback, M brakes, E inventory, WASD steering/throttle. The bottom-right HUD shows a compact, borderless vertical key list with live remappings and pressed-key highlighting. Bank input permits steep turns; holding beyond 65 degrees for a second crashes the aircraft. Pull-up warnings require an airborne low-altitude descent or a predicted terrain strike, and TCAS warnings require both aircraft to be airborne. Gear-up warnings require a low-altitude descent; selecting gear on the ground is rejected and triggers a one-shot warning. Voice clips are serialized to prevent overlapping playback; TCAS traffic audio is one-shot while other warnings retain cooldown repeats. Inventory controls no longer send flight inputs while a screen is open. `/disableflight` and `/enableflight` are operator-only movement overrides.
+
+Next manual checks:
+- Open and close inventory repeatedly with engines on/off; confirm no reopen and no flight input while a screen is open.
+- Inspect the PFD/ND/EICAS at standard and small GUI resolutions. Verify pitch/roll, ILS centering and deviations, and that panels/text remain within the screen.
+- Open H with flight mode on and off; test MCP, NAV/ILS set/clear and glide-slope adjustment, plus the key-reference page at standard and small resolutions.
+- Confirm a continuous TCAS traffic warning plays its aural alert once and can alert again after the traffic warning clears and returns.
+- Verify recorded GPWS/TCAS/callout voices, hard-landing survivability, crash death messages, and the composed terrain/terrain/pull-up phrase in-game.
+- Configure an ILS at a test runway, approach from the inbound side, and verify localizer/glideslope direction and coverage.
+- Test multiple airborne and ground mobs/players: counts, ground blips, TCAS resolution only for airborne traffic, and collision particles/knockback without block damage.
+- Test `/disableflight`, `/enableflight`, and ILS set/clear in a live server; confirm the enable command rejects riding/spectator states.
+
+Keep Minecraft, loader, API, and Java requirements aligned across Gradle files and `fabric.mod.json`. Avoid Yarn mappings for this target. Do not commit generated `build/`, `.gradle/`, or local run data.

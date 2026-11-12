@@ -10,6 +10,7 @@ public record FlightStatePayload(boolean enabled, int phase, float speed, float 
                                  float velocityX, float velocityY, float velocityZ)
         implements CustomPacketPayload {
     public static final Type<FlightStatePayload> TYPE = new Type<>(FlightLine.id("flight_state"));
+    @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, FlightStatePayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.BOOL, FlightStatePayload::enabled,
             ByteBufCodecs.VAR_INT, FlightStatePayload::phase,

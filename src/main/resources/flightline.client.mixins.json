@@ -5,7 +5,6 @@
     "ClientInputAccessor",
     "KeyboardInputMixin",
     "FlightCameraMixin",
-    "EngineInventoryMixin",
     "FlightPoseMixin",
     "FlightHeadLockMixin"
   ],

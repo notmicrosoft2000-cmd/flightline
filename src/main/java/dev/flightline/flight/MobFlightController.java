@@ -4,6 +4,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.Vec3;
 
@@ -16,7 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Gives AI-driven mobs autonomous, server-owned aircraft movement for traffic simulation. */
+/** Adds server-owned aircraft movement to eligible mobs while retaining their native AI. */
 public final class MobFlightController {
     private static final double TAXI_ACCELERATION = 0.009;
     private static final double TAKEOFF_SPEED = 0.58;
@@ -30,11 +31,15 @@ public final class MobFlightController {
         Set<UUID> loaded = new HashSet<>();
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
-                if (!(entity instanceof Mob mob) || !mob.isAlive() || mob.isPassenger() || mob.isVehicle()) continue;
+                if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
+                if (mob.isNoAi() || mob.isPassenger() || mob.isVehicle()) {
+                    MobAircraft existing = AIRCRAFT.remove(mob.getUUID());
+                    if (existing != null) restore(existing);
+                    continue;
+                }
                 loaded.add(mob.getUUID());
                 MobAircraft aircraft = AIRCRAFT.get(mob.getUUID());
                 if (aircraft == null) {
-                    if (mob.isNoAi()) continue;
                     aircraft = new MobAircraft(mob);
                     AIRCRAFT.put(mob.getUUID(), aircraft);
                 }
@@ -55,7 +60,6 @@ public final class MobFlightController {
 
     private static void simulate(MobAircraft aircraft, MinecraftServer server) {
         Mob mob = aircraft.mob;
-        mob.setNoAi(true);
         aircraft.ticks++;
 
         if (aircraft.crashed) {
@@ -100,11 +104,13 @@ public final class MobFlightController {
         double headingError = wrap(desiredHeading - aircraft.heading);
         double desiredBank = Math.max(-28.0, Math.min(28.0, headingError * 0.45));
         aircraft.bank = approach(aircraft.bank, desiredBank, 0.18);
-        aircraft.heading = wrap(aircraft.heading + Math.max(-2.8, Math.min(2.8,
-                Math.tan(Math.toRadians(aircraft.bank)) * 3.2)));
+        double turnRate = Math.tan(Math.toRadians(aircraft.bank)) * 3.2
+                * CRUISE_SPEED / Math.max(0.35, aircraft.speed);
+        aircraft.heading = wrap(aircraft.heading + Math.max(-2.8, Math.min(2.8, turnRate)));
 
         double altitudeError = aircraft.target.y - mob.getY();
         double desiredVerticalSpeed = Math.max(-0.13, Math.min(0.13, altitudeError * 0.006));
+        desiredVerticalSpeed = tcasAvoidance(mob, aircraft, desiredVerticalSpeed);
         aircraft.verticalSpeed = approach(aircraft.verticalSpeed, desiredVerticalSpeed, 0.006);
         aircraft.speed = approach(aircraft.speed, CRUISE_SPEED, 0.002);
         Vec3 forward = heading(aircraft.heading).scale(aircraft.speed);
@@ -115,11 +121,67 @@ public final class MobFlightController {
         mob.setXRot((float) -Math.toDegrees(Math.atan2(aircraft.verticalSpeed, Math.max(0.001, aircraft.speed))));
         mob.setDeltaMovement(aircraft.velocity);
 
-        avoidPlayerCollision(aircraft, server);
+        avoidPlayerCollision(aircraft);
+    }
+
+    private static double tcasAvoidance(Mob mob, MobAircraft aircraft, double desiredVerticalSpeed) {
+        // 1. Avoid nearby airborne players
+        for (ServerPlayer player : mob.level().getEntitiesOfClass(ServerPlayer.class,
+                mob.getBoundingBox().inflate(80.0), candidate -> candidate.isAlive() && !candidate.isSpectator()
+                        && FlightController.isAirborne(candidate))) {
+            Vec3 separation = mob.position().subtract(player.position());
+            Vec3 relativeVelocity = aircraft.velocity.subtract(player.getDeltaMovement());
+            double speedSquared = relativeVelocity.lengthSqr();
+            double time = speedSquared < 1.0e-6 ? 0.0 : -separation.dot(relativeVelocity) / speedSquared;
+            if (time < 0.0 || time > 300.0) continue;
+            Vec3 closest = separation.add(relativeVelocity.scale(time));
+            if (closest.horizontalDistance() >= 24.0 || Math.abs(closest.y) >= 12.0) continue;
+            // Coordinated escape with player: if mob is higher than player, mob climbs; otherwise descends
+            double escape = separation.y >= 0.0 ? 0.14 : -0.14;
+            if (relativeVelocity.horizontalDistance() > 0.35) {
+                aircraft.heading = wrap(aircraft.heading + 1.2);
+            }
+            return escape;
+        }
+
+        // 2. Avoid other airborne mobs (Mob-to-Mob TCAS)
+        for (MobAircraft other : AIRCRAFT.values()) {
+            if (other == aircraft || other.crashed || !other.airborne || other.mob.level() != mob.level() || !other.mob.isAlive()) {
+                continue;
+            }
+            Vec3 separation = mob.position().subtract(other.mob.position());
+            if (separation.lengthSqr() > 80.0 * 80.0) continue;
+            Vec3 relativeVelocity = aircraft.velocity.subtract(other.velocity);
+            double speedSquared = relativeVelocity.lengthSqr();
+            double time = speedSquared < 1.0e-6 ? 0.0 : -separation.dot(relativeVelocity) / speedSquared;
+            if (time < 0.0 || time > 300.0) continue;
+            Vec3 closest = separation.add(relativeVelocity.scale(time));
+            if (closest.horizontalDistance() >= 24.0 || Math.abs(closest.y) >= 12.0) continue;
+
+            // Deterministic complementary vertical resolution:
+            double escape;
+            if (Math.abs(separation.y) > 0.8) {
+                escape = separation.y > 0.0 ? 0.14 : -0.14;
+            } else {
+                // Same altitude tie-breaker: deterministic opposite commands
+                escape = mob.getUUID().compareTo(other.mob.getUUID()) > 0 ? 0.14 : -0.14;
+            }
+            if (relativeVelocity.horizontalDistance() > 0.35) {
+                aircraft.heading = wrap(aircraft.heading + 1.2);
+            }
+            return escape;
+        }
+
+        return desiredVerticalSpeed;
     }
 
     private static void chooseTarget(MobAircraft aircraft, MinecraftServer server) {
         Mob mob = aircraft.mob;
+        LivingEntity target = mob.getTarget();
+        if (target != null && target.isAlive()) {
+            aircraft.target = target.position().add(0.0, 4.0, 0.0);
+            return;
+        }
         ServerPlayer nearest = null;
         double nearestDistance = Double.MAX_VALUE;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -147,10 +209,10 @@ public final class MobFlightController {
                 Math.max(mob.level().getMinY() + 16.0, Math.min(maxY, aircraft.target.y)), aircraft.target.z);
     }
 
-    private static void avoidPlayerCollision(MobAircraft aircraft, MinecraftServer server) {
+    private static void avoidPlayerCollision(MobAircraft aircraft) {
         Mob mob = aircraft.mob;
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (player.level() != mob.level() || !player.isAlive() || player.isSpectator()) continue;
+        for (ServerPlayer player : mob.level().getEntitiesOfClass(ServerPlayer.class,
+                mob.getBoundingBox().inflate(1.5), candidate -> candidate.isAlive() && !candidate.isSpectator())) {
             Vec3 separation = player.position().subtract(mob.position());
             if (separation.lengthSqr() > 1.5 * 1.5) continue;
             FlightController.handleMobCollision(player, mob, aircraft.velocity);
@@ -177,23 +239,25 @@ public final class MobFlightController {
         aircraft.velocity = new Vec3(-aircraft.velocity.x * 0.28,
                 Math.max(0.08, -aircraft.velocity.y * 0.16), -aircraft.velocity.z * 0.28);
         aircraft.mob.setDeltaMovement(aircraft.velocity);
-        if (impactSpeed > 0.7) {
-            aircraft.mob.hurt(aircraft.mob.damageSources().generic(), (float) Math.min(20.0, impactSpeed * 8.0));
+        if (impactSpeed > 0.35) {
+            AircraftImpact.apply(aircraft.mob.level(), aircraft.mob, impactSpeed);
+            if (aircraft.mob.level() instanceof ServerLevel serverLevel) {
+                aircraft.mob.hurtServer(serverLevel, aircraft.mob.damageSources().generic(),
+                        (float) Math.min(20.0, impactSpeed * 8.0));
+            }
         }
     }
 
     private static void restore(MobAircraft aircraft) {
         Mob mob = aircraft.mob;
-        if (mob.isRemoved()) return;
-        mob.setNoAi(aircraft.originalNoAi);
         mob.setNoGravity(aircraft.originalNoGravity);
     }
 
     public static List<Traffic> aircraftIn(ServerLevel level) {
         List<Traffic> traffic = new ArrayList<>();
         for (MobAircraft aircraft : AIRCRAFT.values()) {
-            if (aircraft.airborne && !aircraft.crashed && aircraft.mob.level() == level && aircraft.mob.isAlive()) {
-                traffic.add(new Traffic(aircraft.mob, aircraft.velocity));
+            if (!aircraft.crashed && aircraft.mob.level() == level && aircraft.mob.isAlive()) {
+                traffic.add(new Traffic(aircraft.mob.position(), aircraft.velocity, aircraft.airborne));
             }
         }
         return traffic;
@@ -221,12 +285,11 @@ public final class MobFlightController {
         return Math.max(target, current - step);
     }
 
-    public record Traffic(Mob mob, Vec3 velocity) {
+    public record Traffic(Vec3 position, Vec3 velocity, boolean airborne) {
     }
 
     private static final class MobAircraft {
         private Mob mob;
-        private final boolean originalNoAi;
         private final boolean originalNoGravity;
         private int ticks;
         private int targetTicks;
@@ -242,7 +305,6 @@ public final class MobFlightController {
 
         private MobAircraft(Mob mob) {
             this.mob = mob;
-            this.originalNoAi = mob.isNoAi();
             this.originalNoGravity = mob.isNoGravity();
             this.heading = mob.getYRot();
             this.speed = mob.getDeltaMovement().horizontalDistance();

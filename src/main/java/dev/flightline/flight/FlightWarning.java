@@ -23,6 +23,11 @@ public final class FlightWarning {
     public static final int TOO_LOW_FLAPS = 1 << 19;
     public static final int TAKEOFF_CONFIG = 1 << 20;
     public static final int OVERSPEED = 1 << 21;
+    public static final int TCAS_CROSSING = 1 << 22;
+    public static final int TCAS_CLEAR = 1 << 23;
+    public static final int TERRAIN = 1 << 24;
+    public static final int TOO_LOW_TERRAIN = 1 << 25;
+    public static final int GEAR_SELECTED_ON_GROUND = 1 << 26;
 
     private FlightWarning() {
     }

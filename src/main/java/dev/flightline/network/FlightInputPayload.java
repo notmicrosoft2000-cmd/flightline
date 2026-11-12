@@ -8,6 +8,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public record FlightInputPayload(int controls) implements CustomPacketPayload {
     public static final Type<FlightInputPayload> TYPE = new Type<>(FlightLine.id("flight_input"));
+    @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, FlightInputPayload> CODEC =
             StreamCodec.composite(ByteBufCodecs.VAR_INT, FlightInputPayload::controls, FlightInputPayload::new);
 

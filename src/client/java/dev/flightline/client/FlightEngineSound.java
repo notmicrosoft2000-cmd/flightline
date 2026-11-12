@@ -19,14 +19,15 @@ final class FlightEngineSound extends AbstractTickableSoundInstance {
     @Override
     public void tick() {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || !FlightLineClient.areEnginesActive() || !FlightLineClient.isFlightEnabled()) {
+        var player = client.player;
+        if (player == null || !FlightLineClient.areEnginesActive() || !FlightLineClient.isFlightEnabled()) {
             stop();
             return;
         }
 
-        this.x = client.player.getX();
-        this.y = client.player.getY();
-        this.z = client.player.getZ();
+        this.x = player.getX();
+        this.y = player.getY();
+        this.z = player.getZ();
         float throttle = FlightHud.throttle();
         this.volume = 0.10f + throttle * 0.14f;
         this.pitch = 0.78f + throttle * 0.42f;

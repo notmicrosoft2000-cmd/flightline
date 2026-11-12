@@ -8,6 +8,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public record AdjustFlapsPayload(int delta) implements CustomPacketPayload {
     public static final Type<AdjustFlapsPayload> TYPE = new Type<>(FlightLine.id("adjust_flaps"));
+    @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, AdjustFlapsPayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.VAR_INT, AdjustFlapsPayload::delta, AdjustFlapsPayload::new);
 

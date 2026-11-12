@@ -22,6 +22,6 @@ public enum FlightPhase {
 
     public static FlightPhase fromId(int id) {
         FlightPhase[] phases = values();
-        return id >= 0 && id < phases.length ? phases[id] : OFF;
+        return id >= 0 && id < phases.length ? java.util.Objects.requireNonNull(phases[id]) : OFF;
     }
 }
