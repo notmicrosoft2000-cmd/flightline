@@ -8,6 +8,8 @@ Current features include runway roll, aircraft pitch/bank and flight physics, en
 
 Touchdowns allow a safe landing, a survivable hard landing that can fail the gear, or a fatal crash for gear-up and excessive sink-rate impacts. Aircraft crashes use a custom death message and produce smoke, flame, cloud, and impact particles with radial entity knockback; they no longer create terrain-damaging explosions. Mob enrollment excludes NoAI mobs, passengers, and mobs carrying passengers/vehicles; native AI remains enabled for target selection.
 
+Throttle lever and engine spool rates are tuned for faster response. Pushback brakes forward taxi motion to a stop before reversing, then ramps to a modest capped speed. The lower-left radio-altimeter panel shows a larger digital height, color-coded 0–500 ft tape with low-altitude ticks, and vertical-speed trend.
+
 Default controls: J engines, L shutdown, G gear, C/V flaps, X/Z spoilers, H cockpit panel, K pushback, M brakes, E inventory, WASD steering/throttle. The bottom-right HUD shows a compact, borderless vertical key list with live remappings and pressed-key highlighting. Bank input permits steep turns; holding beyond 65 degrees for a second crashes the aircraft. Pull-up warnings require an airborne low-altitude descent or a predicted terrain strike, and TCAS warnings require both aircraft to be airborne. Gear-up warnings require a low-altitude descent; selecting gear on the ground is rejected and triggers a one-shot warning. Voice clips are serialized to prevent overlapping playback; TCAS traffic audio is one-shot while other warnings retain cooldown repeats. Inventory controls no longer send flight inputs while a screen is open. `/disableflight` and `/enableflight` are operator-only movement overrides.
 
 Next manual checks:
@@ -16,6 +18,8 @@ Next manual checks:
 - Open H with flight mode on and off; test MCP, NAV/ILS set/clear and glide-slope adjustment, plus the key-reference page at standard and small resolutions.
 - Confirm a continuous TCAS traffic warning plays its aural alert once and can alert again after the traffic warning clears and returns.
 - Verify recorded GPWS/TCAS/callout voices, hard-landing survivability, crash death messages, and the composed terrain/terrain/pull-up phrase in-game.
+- Test faster throttle changes at idle and high speed, verify engine spool response and landing control, and test pushback from rest and while taxiing forward.
+- Inspect the enlarged radio-altimeter tape and vertical-speed trend at standard and narrow screen sizes.
 - Configure an ILS at a test runway, approach from the inbound side, and verify localizer/glideslope direction and coverage.
 - Test multiple airborne and ground mobs/players: counts, ground blips, TCAS resolution only for airborne traffic, and collision particles/knockback without block damage.
 - Test `/disableflight`, `/enableflight`, and ILS set/clear in a live server; confirm the enable command rejects riding/spectator states.

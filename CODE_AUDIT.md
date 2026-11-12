@@ -14,6 +14,8 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 - Pull-up warnings are restricted to airborne low-altitude descents or projected terrain conflicts; TCAS advisories require both aircraft to be airborne. Ground gear selection is rejected with a one-shot cockpit warning. Steep bank commands are available and sustained bank beyond 65 degrees causes a crash.
 - Gear-up and low-flap warnings now require a low-altitude descent, avoiding the persistent “TOO LOW GEAR” alert during level flight.
 - Touchdown logic now allows a safe landing, a survivable hard landing with gear damage, and a crash for gear-up or excessive-speed/sink-rate impacts. Aircraft crashes use a custom localized death message.
+- Throttle lever and engine spool response are faster. Pushback now explicitly completes forward deceleration before reversing, avoiding a direction-change threshold oscillation, and accelerates to a higher but capped tug speed.
+- The radio altimeter has a larger digital readout, color-coded low-altitude tape, altitude ticks, and vertical-speed trend.
 - The HUD key reference is now a smaller, borderless vertical list at the bottom right; mappings are gray normally and white while pressed. PFD pitch/roll and ILS readouts have separated, width-limited rows. The MCP shows active heading, altitude, vertical-speed, airspeed, and autothrottle deadband targets.
 - `/enableflight` reports failure for dead, spectator, or riding players instead of returning a false success.
 - Mob enrollment excludes NoAI mobs, passengers, and vehicles; collision checks query nearby players instead of scanning the full player list for each mob.
@@ -27,7 +29,8 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 5. **Inventory event ordering needs a live-client check.** Verify repeated E open/close with engines on and off, no double-open/reopen, and no movement controls while the inventory is visible.
 6. **Collision behavior needs a live server check.** Verify knockback, particles, mob/player collision behavior, and that blocks are not damaged.
 7. **Landing and crash behavior need a live check.** Verify safe and hard landings, gear-up/excessive-sink crashes, nonlethal hard-landing damage, and the localized death message.
-8. **Voice audio needs a live-client check.** Verify each recorded alert is audible, the terrain/pull-up phrase plays in sequence, and active warning/callout clips do not overlap.
-9. **HUD and flight-deck placement need live-client checks** at standard and small GUI resolutions, including ILS needles, pitch/roll readouts, ND counts, live key highlighting, MCP targets, and warning placement.
+8. **Throttle and pushback response need live checks.** Verify throttle/spool acceleration and deceleration remain controllable, pushback from a stop and while taxiing does not reverse abruptly, and brakes still take precedence.
+9. **Voice audio needs a live-client check.** Verify each recorded alert is audible, the terrain/pull-up phrase plays in sequence, and active warning/callout clips do not overlap.
+10. **HUD and flight-deck placement need live-client checks** at standard and small GUI resolutions, including ILS needles, pitch/roll readouts, radio-altimeter ticks/trend, ND counts, live key highlighting, MCP targets, and warning placement.
 
 Use `./gradlew runClient` when assets/display support are available; a successful compile alone does not validate mixin injection, key event order, HUD placement, or movement synchronization.

@@ -275,22 +275,40 @@ final class FlightHud {
                     i < flap ? 0xFFFFCE52 : 0xFF364650);
         }
 
-        // Radio altimeter / vertical speed display
-        int lowerY = screenHeight - 44;
-        boolean lowerPanelVisible = lowerY >= 0 && lowerY + 40 <= screenHeight
+        // Radio altimeter with a focused low-altitude tape and vertical-speed trend readout.
+        int lowerY = screenHeight - 60;
+        int radioPanelWidth = 132;
+        int radioPanelHeight = 54;
+        boolean lowerPanelVisible = lowerY >= 0 && lowerY + radioPanelHeight <= screenHeight
                 && (screenWidth >= 370 || lowerY >= ndY + 88 + 4);
         if (lowerPanelVisible) {
-            panel(g, 6, lowerY, 88, 40, 0xAA56B9D2);
-            g.text(mc.font, "RA", 11, lowerY + 4, 0xFF72E6F5, true);
-            int altitudeColor = radioAltitudeFeet < 300 ? 0xFFFF5148 : 0xFFFFFFFF;
+            panel(g, 6, lowerY, radioPanelWidth, radioPanelHeight, 0xAA56B9D2);
+            g.text(mc.font, "RADIO ALT", 11, lowerY + 3, 0xFF72E6F5, true);
             String altitudeText = required(String.format(Locale.ROOT, "%04d FT", radioAltitudeFeet));
-            g.text(mc.font, fitText(mc.font, altitudeText, 58), 31, lowerY + 4, altitudeColor, true);
-            gauge(g, 11, lowerY + 17, 78, 4, Math.min(1.0f, radioAltitudeFeet / 2500.0f), altitudeColor);
-            g.text(mc.font, verticalSpeedFpm < 0 ? "▼" : "▲", 11, lowerY + 25,
-                    verticalSpeedFpm < -1000 ? 0xFFFF5148 : 0xFF68E8A5, true);
-            String verticalSpeedText = required(String.format(Locale.ROOT, "%+d FPM", verticalSpeedFpm));
-            g.text(mc.font, fitText(mc.font, verticalSpeedText, 64), 25, lowerY + 25,
-                    verticalSpeedFpm < -1000 ? 0xFFFF5148 : 0xFFD5E0E8, true);
+            int altitudeColor = radioAltitudeColor(radioAltitudeFeet);
+            g.text(mc.font, fitText(mc.font, altitudeText, 58), 11, lowerY + 14, altitudeColor, true);
+
+            String trendText = required(String.format(Locale.ROOT, "%s %d FPM",
+                    verticalSpeedFpm < 0 ? "▼" : "▲", Math.abs(verticalSpeedFpm)));
+            int trendColor = verticalSpeedFpm < -1000 ? 0xFFFF5148
+                    : verticalSpeedFpm < 0 ? 0xFFFFCE52 : 0xFF68E8A5;
+            g.text(mc.font, fitText(mc.font, trendText, 60), 73, lowerY + 14, trendColor, true);
+
+            int tapeX = 11;
+            int tapeY = lowerY + 29;
+            int tapeWidth = 112;
+            gauge(g, tapeX, tapeY, tapeWidth, 7,
+                    Math.min(1.0f, radioAltitudeFeet / 500.0f), altitudeColor);
+            for (int tickFeet : new int[]{10, 20, 50, 100, 200, 300, 400, 500}) {
+                int tickX = tapeX + Math.round(tapeWidth * tickFeet / 500.0f);
+                g.fill(tickX, tapeY - 1, tickX + 1, tapeY + (tickFeet % 100 == 0 ? 9 : 6),
+                        tickFeet <= 100 ? 0xFFE7EEF2 : 0xFF82949B);
+            }
+            g.text(mc.font, "0", tapeX, lowerY + 41, 0xFF9BAAB1, true);
+            for (int tickFeet : new int[]{100, 200, 300, 400, 500}) {
+                int tickX = tapeX + Math.round(tapeWidth * tickFeet / 500.0f);
+                g.centeredText(mc.font, String.valueOf(tickFeet), tickX, lowerY + 41, 0xFF9BAAB1);
+            }
         }
 
         int controlsWidth = 132;
@@ -534,6 +552,11 @@ final class FlightHud {
 
     private static int gearColor() {
         return gearState == 2 ? 0xFFFF5148 : gearState == 1 ? 0xFFFFCE52 : 0xFF62D89B;
+    }
+
+    private static int radioAltitudeColor(int altitudeFeet) {
+        return altitudeFeet < 100 ? 0xFFFF5148
+                : altitudeFeet < 500 ? 0xFFFFCE52 : 0xFF62D89B;
     }
 
     private static int engineColor(int state) {

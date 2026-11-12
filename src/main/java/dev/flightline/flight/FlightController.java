@@ -331,11 +331,12 @@ public final class FlightController {
         if (session.pushback) {
             session.pushback = false;
             session.groundSpeed = 0.0;
+            session.pushbackReversing = false;
         } else {
-            // Disengage thrust and start pushback; the tug first slows the aircraft
-            // to a stop, then begins rolling it backward at walking speed.
             session.throttle = 0.0;
             session.pushback = true;
+            session.pushbackReversing = session.groundSpeed <= FlightTuning.PUSHBACK_STOPPING_DECELERATION;
+            if (session.pushbackReversing) session.groundSpeed = 0.0;
         }
         sendState(player, session, true);
     }
@@ -508,17 +509,15 @@ public final class FlightController {
             return;
         }
         if ((session.controls & FlightControls.FORWARD) != 0) {
-            session.throttle = Math.min(1.0, session.throttle + FlightTuning.THROTTLE_LEVER_RATE);
+            session.throttle = FlightTuning.adjustThrottle(session.throttle, true);
         } else if ((session.controls & FlightControls.REVERSE) != 0) {
-            session.throttle = Math.max(0.0, session.throttle - FlightTuning.THROTTLE_LEVER_RATE);
+            session.throttle = FlightTuning.adjustThrottle(session.throttle, false);
         }
     }
 
     private static void updateEngineSpool(Session session) {
         double targetSpool = runningEngines(session) == 0 ? 0.0 : 0.04 + session.throttle * 0.96;
-        double responseRate = targetSpool > session.engineSpool
-                ? FlightTuning.ENGINE_SPOOL_UP_RATE : FlightTuning.ENGINE_SPOOL_DOWN_RATE;
-        session.engineSpool = approach(session.engineSpool, targetSpool, responseRate);
+        session.engineSpool = FlightTuning.updateEngineSpool(session.engineSpool, targetSpool);
     }
 
     private static void updateFuel(ServerPlayer player, Session session) {
@@ -653,12 +652,10 @@ public final class FlightController {
             speed = Math.max(0.0, speed - FlightTuning.WHEEL_BRAKE_DECELERATION
                     - (session.spoilers ? 0.025 * FlightTuning.WORLD_SPEED_SCALE : 0.0));
         } else if (session.pushback) {
-            if (speed > 0.02) {
-                speed = Math.max(0.0, speed - 0.08 * FlightTuning.WORLD_SPEED_SCALE);
-            } else {
-                speed = Math.min(0.12 * FlightTuning.WORLD_SPEED_SCALE,
-                        speed + 0.006 * FlightTuning.WORLD_SPEED_SCALE);
-            }
+            FlightTuning.PushbackMotion motion = FlightTuning.advancePushback(speed,
+                    session.pushbackReversing);
+            speed = motion.speed();
+            session.pushbackReversing = motion.reversing();
         } else {
             double engineFactor = runningEngines(session) / 2.0;
             double thrust = session.engineSpool * FlightTuning.GROUND_THRUST * engineFactor;
@@ -673,7 +670,7 @@ public final class FlightController {
 
         Vec3 heading = headingVector(session.headingDegrees);
         Vec3 previous = player.getDeltaMovement();
-        double direction = session.pushback ? -1.0 : 1.0;
+        double direction = session.pushback && session.pushbackReversing ? -1.0 : 1.0;
         player.setDeltaMovement(heading.scale(session.groundSpeed * direction).add(0.0, previous.y, 0.0));
 
         double pitchUp = -player.getXRot();
@@ -1171,6 +1168,7 @@ public final class FlightController {
         private int engine2State = ENGINE_OFF;
         private boolean brakesActive;
         private boolean pushback;
+        private boolean pushbackReversing;
         private boolean spoilers;
         private boolean autopilot;
         private double autopilotHeading;

@@ -119,6 +119,66 @@ class FlightPhysicsTest {
     }
 
     @Test
+    void testThrottleLeverRespondsInAboutTwoAndAHalfSeconds() {
+        double throttle = 0.0;
+        int ticks = 0;
+        while (throttle < 1.0 && ticks < 100) {
+            throttle = FlightTuning.adjustThrottle(throttle, true);
+            ticks++;
+        }
+
+        assertEquals(50, ticks);
+        assertEquals(1.0, throttle, 1.0e-9);
+        assertEquals(0.0, FlightTuning.adjustThrottle(0.0, false), 1.0e-9);
+        assertEquals(1.0, FlightTuning.adjustThrottle(1.0, true), 1.0e-9);
+    }
+
+    @Test
+    void testEngineSpoolRespondsFasterInBothDirections() {
+        double spool = 0.0;
+        int ticks = 0;
+        while (spool < 1.0 && ticks < 200) {
+            spool = FlightTuning.updateEngineSpool(spool, 1.0);
+            ticks++;
+        }
+        assertTrue(ticks <= 84);
+        assertEquals(1.0, spool, 1.0e-9);
+
+        spool = FlightTuning.updateEngineSpool(1.0, 0.0);
+        assertEquals(1.0 - FlightTuning.ENGINE_SPOOL_DOWN_RATE, spool, 1.0e-9);
+        assertEquals(0.0, FlightTuning.updateEngineSpool(0.01, 0.0), 1.0e-9);
+    }
+
+    @Test
+    void testPushbackStopsBeforeReversingAndReachesCappedSpeed() {
+        FlightTuning.PushbackMotion motion = new FlightTuning.PushbackMotion(0.5, false);
+        int stopTicks = 0;
+        while (!motion.reversing() && stopTicks < 100) {
+            motion = FlightTuning.advancePushback(motion.speed(), motion.reversing());
+            stopTicks++;
+        }
+        assertTrue(motion.reversing());
+        assertEquals(0.0, motion.speed(), 1.0e-9);
+        assertTrue(stopTicks < 20);
+
+        int ticks = 0;
+        while (motion.speed() < FlightTuning.PUSHBACK_TARGET_SPEED && ticks < 100) {
+            motion = FlightTuning.advancePushback(motion.speed(), motion.reversing());
+            ticks++;
+        }
+        assertTrue(ticks <= 11);
+        assertEquals(FlightTuning.PUSHBACK_TARGET_SPEED, motion.speed(), 1.0e-9);
+    }
+
+    @Test
+    void testPushbackDoesNotOscillateAtDirectionChangeThreshold() {
+        FlightTuning.PushbackMotion motion = FlightTuning.advancePushback(0.01, true);
+        assertTrue(motion.reversing());
+        assertTrue(motion.speed() > 0.01);
+        assertTrue(motion.speed() <= FlightTuning.PUSHBACK_TARGET_SPEED);
+    }
+
+    @Test
     void testIlsGuidanceOnRunwayCenterline() {
         double targetHeight = 100.0 * Math.tan(Math.toRadians(3.0));
         FlightInstrumentPayload.IlsGuidance guidance = FlightController.calculateIlsGuidance(
