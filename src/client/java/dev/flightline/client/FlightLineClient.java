@@ -12,6 +12,7 @@ import dev.flightline.network.FlightStatePayload;
 import dev.flightline.network.StartEnginesPayload;
 import dev.flightline.network.ShutdownEnginesPayload;
 import dev.flightline.network.ToggleGearPayload;
+import dev.flightline.network.ToggleAutolandPayload;
 import dev.flightline.network.TogglePushbackPayload;
 import dev.flightline.network.ToggleSpoilersPayload;
 import net.fabricmc.api.ClientModInitializer;
@@ -44,6 +45,7 @@ public class FlightLineClient implements ClientModInitializer {
     private static final KeyMapping SPOILERS_EXTEND = key("key.flightline.spoilers_extend", 88);
     private static final KeyMapping SPOILERS_RETRACT = key("key.flightline.spoilers_retract", 90);
     private static final KeyMapping TOGGLE_AUTOPILOT = key("key.flightline.autopilot", 72);
+    private static final KeyMapping TOGGLE_AUTOLAND = key("key.flightline.autoland", 80);
     private static volatile boolean flightEnabled;
     private boolean savedViewBobbing;
     private boolean hasSavedViewBobbing;
@@ -106,7 +108,8 @@ public class FlightLineClient implements ClientModInitializer {
             enginesActive = engine1 == 1 || engine1 == 2 || engine2 == 1 || engine2 == 2;
             FlightHud.updateInstruments(payload);
             FlightCameraEffects.updateInstruments(payload.bankDegrees(), payload.warnings(),
-                    payload.radioAltitudeFeet(), payload.verticalSpeedFpm(), (payload.systems() >> 19) & 0x7F);
+                    payload.radioAltitudeFeet(), payload.verticalSpeedFpm(), (payload.systems() >> 19) & 0x7F,
+                    payload.cockpitGuidance().weatherGuidance().turbulencePercent());
             playCockpitAlerts(context.client(), payload.warnings(), payload.radioAltitudeFeet(), payload.verticalSpeedFpm());
         });
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
@@ -130,6 +133,11 @@ public class FlightLineClient implements ClientModInitializer {
                         FlightHud.currentVsFpm(),
                         FlightHud.currentSpeedKnots()
                 ));
+            }
+            boolean autolandClick = TOGGLE_AUTOLAND.consumeClick();
+            if (autolandClick && player != null && client.level != null && flightEnabled
+                    && client.gui.screen() == null) {
+                ClientPlayNetworking.send(new ToggleAutolandPayload());
             }
             if (player == null || client.level == null || !flightEnabled) return;
             if (client.gui.screen() != null) {
@@ -198,7 +206,7 @@ public class FlightLineClient implements ClientModInitializer {
             bankDegrees = 0.0f;
             airborne = false;
             FlightCameraEffects.updateFlightState(FlightPhase.OFF);
-            FlightCameraEffects.updateInstruments(0.0f, 0, 0, 0, 0);
+            FlightCameraEffects.updateInstruments(0.0f, 0, 0, 0, 0, 0);
             enginesActive = false;
             lastWarningCallout = 0;
             warningRepeatCooldown = 0;
@@ -348,6 +356,7 @@ public class FlightLineClient implements ClientModInitializer {
         while (SPOILERS_EXTEND.consumeClick()) { }
         while (SPOILERS_RETRACT.consumeClick()) { }
         while (TOGGLE_AUTOPILOT.consumeClick()) { }
+        while (TOGGLE_AUTOLAND.consumeClick()) { }
         gearWasDown = TOGGLE_GEAR.isDown();
         startEnginesWasDown = START_ENGINES.isDown();
         shutdownEnginesWasDown = SHUTDOWN_ENGINES.isDown();
@@ -448,6 +457,7 @@ public class FlightLineClient implements ClientModInitializer {
 
     static KeyMapping toggleGear() { return TOGGLE_GEAR; }
     static KeyMapping toggleAutopilot() { return TOGGLE_AUTOPILOT; }
+    static KeyMapping toggleAutoland() { return TOGGLE_AUTOLAND; }
     static KeyMapping startEngines() { return START_ENGINES; }
     static KeyMapping shutdownEngines() { return SHUTDOWN_ENGINES; }
     static KeyMapping flapsUp() { return FLAPS_UP; }

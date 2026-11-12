@@ -11,6 +11,7 @@ public final class FlightCameraEffects {
     private static int radioAltitudeFeet;
     private static int verticalSpeedFpm;
     private static int windSpeedKnots;
+    private static int turbulencePercent;
     private static int takeoffTicks;
     private static int rolloutTicks;
     private static float shake;
@@ -31,18 +32,20 @@ public final class FlightCameraEffects {
     }
 
     public static void updateInstruments(float bank, int activeWarnings, int radioAltitude,
-                                         int verticalSpeed, int windSpeed) {
+                                         int verticalSpeed, int windSpeed, int turbulence) {
         bankDegrees = bank;
         warnings = activeWarnings;
         radioAltitudeFeet = radioAltitude;
         verticalSpeedFpm = verticalSpeed;
         windSpeedKnots = windSpeed;
+        turbulencePercent = turbulence;
         airborne = FlightLineClient.isAirborne();
     }
 
     public static Shake sample(long timeNanos) {
         float target = 0.0f;
         if (airborne) target = Math.min(0.006f, windSpeedKnots * 0.00035f);
+        if (airborne) target = Math.max(target, turbulencePercent * 0.00014f);
         if ((warnings & FlightWarning.WINDSHEAR) != 0) target = 0.035f;
         if (phase == FlightPhase.TAKEOFF_ROLL || phase == FlightPhase.ROTATE) {
             target = Math.max(target, 0.012f);

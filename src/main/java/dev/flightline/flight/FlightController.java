@@ -625,6 +625,10 @@ public final class FlightController {
         } else if ((controls & FlightControls.RIGHT) != 0 && (controls & FlightControls.LEFT) == 0) {
             targetBank = FlightTuning.MAX_BANK_DEGREES;
         }
+        if (session.turbulencePercent > 0) {
+            long tick = player.level().getGameTime() + player.getUUID().getLeastSignificantBits();
+            targetBank += Math.sin(tick * 0.19) * session.turbulencePercent * 0.035;
+        }
 
         session.bankDegrees = approach(session.bankDegrees, targetBank,
                 FlightTuning.BANK_RESPONSE_DEGREES_PER_TICK);
@@ -806,6 +810,12 @@ public final class FlightController {
 
         Vec3 velocity = session.airVelocity;
         Vec3 wind = new Vec3(session.windX, session.windY, session.windZ);
+        double turbulence = session.turbulencePercent / 100.0;
+        long turbulenceTick = player.level().getGameTime() + player.getUUID().getLeastSignificantBits();
+        velocity = velocity.add(
+                Math.sin(turbulenceTick * 0.31) * turbulence * 0.003,
+                Math.sin(turbulenceTick * 0.47 + 1.2) * turbulence * 0.006,
+                Math.cos(turbulenceTick * 0.29 + 0.6) * turbulence * 0.003);
         Vec3 relativeAir = velocity.subtract(wind);
         double airspeed = relativeAir.length();
 
@@ -879,25 +889,28 @@ public final class FlightController {
 
     private static void updateWeather(ServerPlayer player, Session session) {
         if (session.windShearTicks > 0) session.windShearTicks--;
-        if (++session.windUpdateTicks < 40) return;
-        session.windUpdateTicks = 0;
-        long phase = player.level().getGameTime() / 40L + player.getUUID().getLeastSignificantBits();
-        double angle = Math.floorMod(phase, 360L) * Math.PI / 180.0;
-        double weather = player.level().isThundering() ? 1.0 : player.level().isRaining() ? 0.65 : 0.3;
-        double gust = 0.55 + 0.45 * Math.sin(phase * 0.37);
-        double strength = weather * gust * 0.22 * FlightTuning.WORLD_SPEED_SCALE;
-        session.windX = Math.cos(angle) * strength;
-        session.windZ = Math.sin(angle) * strength;
+        long gameTime = player.level().getGameTime();
+        long seed = player.getUUID().getLeastSignificantBits();
+        WeatherSimulation.Conditions conditions = WeatherSimulation.sample(player.level().isRaining(),
+                player.level().isThundering(), gameTime, seed);
+        session.windX = approach(session.windX, conditions.windX(), 0.008);
+        session.windZ = approach(session.windZ, conditions.windZ(), 0.008);
         session.windY = 0.0;
-        session.windSpeedKnots = (int) Math.round(strength * FlightTuning.KNOTS_PER_BLOCK_PER_TICK);
-        session.windDirectionSector = Math.floorMod((int) Math.round(Math.toDegrees(angle) / 5.625), 64);
-        if (player.level().isThundering() && Math.floorMod(phase, 90L) == 0L) {
-            session.windShearTicks = 60;
+        session.windSpeedKnots = (int) Math.round(Math.hypot(session.windX, session.windZ)
+                * FlightTuning.KNOTS_PER_BLOCK_PER_TICK);
+        session.windDirectionSector = Math.floorMod(
+                (int) Math.round(conditions.windDirectionDegrees() / 5.625), 64);
+        session.turbulencePercent = (int) Math.round(approach(session.turbulencePercent,
+                conditions.turbulencePercent(), 2.0));
+        session.visibilityBlocks = conditions.visibilityBlocks();
+        session.weatherCondition = conditions.condition();
+        if (WeatherSimulation.isWindshearEvent(player.level().isThundering(), gameTime, seed)) {
+            session.windShearTicks = 80;
             session.windX *= 2.4;
             session.windZ *= 2.4;
             if (session.airborne) {
-                session.airVelocity = session.airVelocity.add(session.windX * 0.05,
-                        -0.08 * FlightTuning.WORLD_SPEED_SCALE, session.windZ * 0.05);
+                session.airVelocity = session.airVelocity.add(session.windX * 0.16,
+                        -0.06 * FlightTuning.WORLD_SPEED_SCALE, session.windZ * 0.16);
             }
         }
     }
@@ -1196,7 +1209,8 @@ public final class FlightController {
                 ? new FlightInstrumentPayload(0, 0, 0.0f, 0.0f, 0.0f, 0, 0, false, 0,
                 0.0f, 0, 0, 0, new FlightInstrumentPayload.CockpitGuidance(
                 FlightInstrumentPayload.IlsGuidance.inactive(),
-                FlightInstrumentPayload.AutopilotGuidance.defaults()))
+                FlightInstrumentPayload.AutopilotGuidance.defaults(),
+                FlightInstrumentPayload.WeatherGuidance.defaults()))
                 : new FlightInstrumentPayload(session.radioAltitudeFeet, session.verticalSpeedFpm,
                 (float) session.bankDegrees, (float) session.pitchDegrees, (float) session.headingDegrees,
                 session.gearFailed ? 2 : (session.gearDown ? 0 : 1),
@@ -1213,7 +1227,10 @@ public final class FlightController {
                         new FlightInstrumentPayload.AutopilotGuidance((float) session.autopilotHeading,
                         session.autopilotAltitudeFeet, session.autopilotVerticalSpeedFpm,
                         session.autopilotAirspeedKnots, (float) FlightTuning.AUTOTHROTTLE_DEADBAND_KNOTS,
-                        session.autoland)));
+                        session.autoland),
+                        new FlightInstrumentPayload.WeatherGuidance(session.windSpeedKnots,
+                                session.windDirectionSector * 360 / 64, session.turbulencePercent,
+                                session.visibilityBlocks, session.weatherCondition)));
         ServerPlayNetworking.send(player, instruments);
     }
 
@@ -1233,6 +1250,9 @@ public final class FlightController {
         private int flapDetent;
         private int windSpeedKnots;
         private int windDirectionSector;
+        private int turbulencePercent;
+        private int visibilityBlocks = 320;
+        private int weatherCondition;
         private double flapPosition;
         private double windX, windY, windZ;
         private int radioAltitudeFeet;

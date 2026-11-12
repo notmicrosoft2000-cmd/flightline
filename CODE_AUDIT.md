@@ -21,6 +21,8 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 - Mob enrollment excludes NoAI mobs, passengers, and vehicles; collision checks query nearby players instead of scanning the full player list for each mob.
 - The NAV/ILS panel supports ILS-based autoland. The server requires airborne active ILS coverage, serviceable gear, a running engine, and at least stall speed; it tracks localizer/glideslope targets, manages approach configuration, and enables rollout braking after touchdown. It cancels if guidance is lost and remains manually cancelable after approach conditions deteriorate.
 - Camera shake is rotational and smoothed, with intensity from gusts/windshear, takeoff, bank angle, low descent, and landing rollout.
+- Weather sampling varies wind, turbulence, and estimated visibility across clear, rainy, and thunderstorm conditions. Turbulence affects aircraft velocity/bank and camera shake; thunderstorms produce periodic windshear events and warnings. EICAS and a new H > WX page show weather conditions, while the ND contact range scales to estimated visibility.
+- Autoland has a direct, remappable P keybind in the Flight Line controls category and appears in the cockpit key-reference page.
 
 ## Remaining Risks / Verification
 
@@ -36,5 +38,6 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 10. **HUD and flight-deck placement need live-client checks** at standard and small GUI resolutions, including ILS needles, pitch/roll readouts, radio-altimeter ticks/trend, ND counts, live key highlighting, MCP targets, and warning placement.
 11. **Autoland needs live-client/server verification.** Confirm the arming gates and ILS capture, localizer/glideslope tracking, automatic gear/flap/speed configuration, cancel and ILS-loss behavior, landing survivability, and rollout braking. Geometry tests do not model a complete world landing.
 12. **Camera shake needs visual comfort checks** during gusts, windshear, takeoff, steep banks, low descent, and rollout; verify reset on disconnect and that the smoothed effect feels consistent at different frame rates.
+13. **Weather needs live checks** in clear, rainy, and thunderstorm worlds: compare wind/turbulence/visibility readouts, confirm the ND scope changes, and verify a thunderstorm windshear warning/audio plus flight response.
 
 Use `./gradlew runClient` when assets/display support are available; a successful compile alone does not validate mixin injection, key event order, HUD placement, or movement synchronization.

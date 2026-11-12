@@ -23,6 +23,8 @@ final class FlightHud {
     private static boolean autopilot;
     private static FlightInstrumentPayload.AutopilotGuidance autopilotGuidance =
             FlightInstrumentPayload.AutopilotGuidance.defaults();
+    private static FlightInstrumentPayload.WeatherGuidance weatherGuidance =
+            FlightInstrumentPayload.WeatherGuidance.defaults();
     private static float trafficBearingDegrees;
     private static int trafficRangeBlocks, trafficAltitudeFeet;
     private static int trafficCounts;
@@ -78,6 +80,10 @@ final class FlightHud {
         return ilsReferenceGlideSlopeDegrees;
     }
 
+    static FlightInstrumentPayload.WeatherGuidance weatherGuidance() {
+        return weatherGuidance;
+    }
+
     static void update(FlightStatePayload state) {
         enabled = state.enabled();
         phase = FlightPhase.fromId(state.phase());
@@ -96,6 +102,7 @@ final class FlightHud {
         warnings = instruments.warnings();
         autopilot = instruments.autopilot();
         autopilotGuidance = instruments.autopilotGuidance();
+        weatherGuidance = instruments.cockpitGuidance().weatherGuidance();
         trafficBearingDegrees = instruments.trafficBearingDegrees();
         trafficRangeBlocks = instruments.trafficRangeBlocks();
         trafficAltitudeFeet = instruments.trafficAltitudeFeet();
@@ -114,6 +121,7 @@ final class FlightHud {
         radioAltitudeFeet = verticalSpeedFpm = gearState = systems = warnings = 0;
         autopilot = false;
         autopilotGuidance = FlightInstrumentPayload.AutopilotGuidance.defaults();
+        weatherGuidance = FlightInstrumentPayload.WeatherGuidance.defaults();
         trafficBearingDegrees = 0.0f;
         trafficRangeBlocks = trafficAltitudeFeet = 0;
         trafficCounts = 0;
@@ -193,21 +201,22 @@ final class FlightHud {
         int ndX = (screenWidth - ndWidth) / 2;
         int ndY = screenWidth < 370 ? 96 : 6;
         panel(g, ndX, ndY, ndWidth, 84, 0xAA56B9D2);
+        int radarRangeBlocks = Math.max(32, Math.min(128, weatherGuidance.visibilityBlocks()));
         int heading = Math.floorMod(Math.round(visualHeading), 360);
-        g.text(mc.font, String.format(Locale.ROOT, "ND HDG %03d°", heading), ndX + 4, ndY + 3,
+        g.text(mc.font, String.format(Locale.ROOT, "ND %03d° %dB", heading, radarRangeBlocks), ndX + 4, ndY + 3,
                 0xFF72E6F5, true);
         int radarCx = ndX + ndWidth / 2;
         int radarCy = ndY + 38;
         drawRadarGrid(g, radarCx, radarCy, 19, clock, visualHeading);
         drawAircraftSymbol(g, radarCx, radarCy);
         for (Mob mob : level.getEntitiesOfClass(Mob.class,
-                player.getBoundingBox().inflate(128.0), candidate -> candidate.isAlive())) {
+                player.getBoundingBox().inflate(radarRangeBlocks), candidate -> candidate.isAlive())) {
             double dx = mob.getX() - player.getX();
             double dz = mob.getZ() - player.getZ();
             double distance = Math.hypot(dx, dz);
-            if (distance > 128.0) continue;
+            if (distance > radarRangeBlocks) continue;
             double relativeBearing = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
-            double scale = Math.min(1.0, distance / 128.0);
+            double scale = Math.min(1.0, distance / radarRangeBlocks);
             drawTrafficBlip(g, radarCx, radarCy, relativeBearing, scale,
                     mob.onGround() ? 0xFFFFCE52 : 0xFF75E6A5);
         }
@@ -216,16 +225,16 @@ final class FlightHud {
             double dx = otherPlayer.getX() - player.getX();
             double dz = otherPlayer.getZ() - player.getZ();
             double distance = Math.hypot(dx, dz);
-            if (distance > 128.0) continue;
+            if (distance > radarRangeBlocks) continue;
             double relativeBearing = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
-            drawTrafficBlip(g, radarCx, radarCy, relativeBearing, distance / 128.0,
+            drawTrafficBlip(g, radarCx, radarCy, relativeBearing, distance / radarRangeBlocks,
                     otherPlayer.onGround() ? 0xFFFFCE52 : 0xFF75E6A5);
         }
 
         // Draw closest traffic contact blip on radar
-        if (trafficRangeBlocks > 0) {
+        if (trafficRangeBlocks > 0 && trafficRangeBlocks <= radarRangeBlocks) {
             double bearing = Math.toRadians(trafficBearingDegrees);
-            double range = Math.min(1.0, trafficRangeBlocks / 128.0);
+            double range = Math.min(1.0, trafficRangeBlocks / (double) radarRangeBlocks);
             int targetX = radarCx - (int)Math.round(Math.sin(bearing) * 17.0 * range);
             int targetY = radarCy - (int)Math.round(Math.cos(bearing) * 17.0 * range);
             int targetColor = (warnings & FlightWarning.TCAS_RESOLUTION) != 0 ? 0xFFFF5148 : 0xFFFFCE52;
@@ -250,13 +259,14 @@ final class FlightHud {
 
         // EICAS: Engine, Fuel, Gear, Flaps and Spoilers
         int eicasX = screenWidth - 118;
-        panel(g, eicasX, 6, 112, 68, 0xAA56B9D2);
+        panel(g, eicasX, 6, 112, 102, 0xAA56B9D2);
         int engine1 = systems & 7;
         int engine2 = (systems >> 3) & 7;
         int n1 = (systems >> 12) & 0x7F;
         int flap = (systems >> 9) & 7;
         boolean spoilers = (systems & (1 << 8)) != 0;
         int food = player.getFoodData().getFoodLevel();
+        g.fill(eicasX + 1, 7, eicasX + 111, 20, 0xFF1C2733);
         g.text(mc.font, "EICAS", eicasX + 5, 10, 0xFF72E6F5, true);
         g.text(mc.font, autopilotGuidance.autolandArmed() ? "A/L ON" : autopilot ? "A/P ON" : "A/P OFF",
                 eicasX + 60, 10,
@@ -264,18 +274,36 @@ final class FlightHud {
         g.text(mc.font, "E1 " + engineTag(engine1), eicasX + 4, 22, engineColor(engine1), true);
         g.text(mc.font, "E2 " + engineTag(engine2), eicasX + 59, 22, engineColor(engine2), true);
         g.text(mc.font, "N1", eicasX + 4, 34, 0xFFD5E0E8, true);
-        gauge(g, eicasX + 22, 36, 84, 5, n1 / 100.0f, n1 > 90 ? 0xFFFFA04A : 0xFF62D89B);
+        gauge(g, eicasX + 22, 36, 56, 5, n1 / 100.0f, n1 > 90 ? 0xFFFFA04A : 0xFF62D89B);
+        g.text(mc.font, String.format(Locale.ROOT, "%d%%", n1), eicasX + 82, 33,
+                n1 > 90 ? 0xFFFFA04A : 0xFFB6C8D1, true);
         g.text(mc.font, "FUEL", eicasX + 4, 45, 0xFFD5E0E8, true);
-        gauge(g, eicasX + 30, 47, 76, 5, food / 20.0f, food <= 6 ? 0xFFFF5148 : 0xFFFFCE52);
+        gauge(g, eicasX + 30, 47, 54, 5, food / 20.0f, food <= 6 ? 0xFFFF5148 : 0xFFFFCE52);
+        g.text(mc.font, String.format(Locale.ROOT, "%d%%", food * 5), eicasX + 87, 44,
+                food <= 6 ? 0xFFFF5148 : 0xFFB6C8D1, true);
         g.text(mc.font, gearState == 2 ? "GEAR FAIL" : gearState == 1 ? "GEAR UP" : "GEAR DN",
                 eicasX + 4, 57, gearColor(), true);
         g.text(mc.font, spoilers ? "SP ON" : "SP OFF", eicasX + 54, 57,
                 spoilers ? 0xFFFFCE52 : 0xFFB9CDD4, true);
+        int gearLight = gearState == 2 ? 0xFFFF5148 : gearState == 0 ? 0xFF62D89B : 0xFFFFCE52;
+        for (int i = 0; i < 3; i++) {
+            g.fill(eicasX + 88 + i * 7, 58, eicasX + 93 + i * 7, 63, gearLight);
+        }
         g.text(mc.font, "FL", eicasX + 4, 65, 0xFFD5E0E8, true);
         for (int i = 0; i < 4; i++) {
             g.fill(eicasX + 19 + i * 9, 66, eicasX + 25 + i * 9, 71,
                     i < flap ? 0xFFFFCE52 : 0xFF364650);
         }
+        g.text(mc.font, "WX " + weatherName(weatherGuidance.condition()),
+                eicasX + 4, 77, weatherColor(weatherGuidance.condition()), true);
+        String windReadout = required(String.format(Locale.ROOT, "%03d° %dKT",
+                weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots()));
+        g.text(mc.font, fitText(mc.font, windReadout, 54), eicasX + 54, 77, 0xFFB6C8D1, true);
+        String weatherSeverity = required(String.format(Locale.ROOT, "TURB %d%%  VIS %d",
+                weatherGuidance.turbulencePercent(), weatherGuidance.visibilityBlocks()));
+        int turbulenceColor = weatherGuidance.turbulencePercent() >= 70 ? 0xFFFF5148
+                : weatherGuidance.turbulencePercent() >= 35 ? 0xFFFFCE52 : 0xFF62D89B;
+        g.text(mc.font, fitText(mc.font, weatherSeverity, 104), eicasX + 4, 89, turbulenceColor, true);
 
         // Radio altimeter with a focused low-altitude tape and vertical-speed trend readout.
         int lowerY = screenHeight - 60;
@@ -314,10 +342,10 @@ final class FlightHud {
         }
 
         int controlsWidth = 132;
-        int controlsHeight = 108;
+        int controlsHeight = 118;
         int controlsX = screenWidth - controlsWidth - 6;
         int controlsY = screenHeight - controlsHeight - 6;
-        boolean controlsVisible = screenWidth >= 320 && screenHeight >= 210
+        boolean controlsVisible = screenWidth >= 320 && screenHeight >= 230
                 && controlsY >= ndY + 88 + 3;
         if (controlsVisible) {
             drawKeyHint(g, mc, controlsX, controlsY, "Gear", FlightLineClient.toggleGear());
@@ -330,8 +358,9 @@ final class FlightHud {
             drawKeyHint(g, mc, controlsX, controlsY + 63, "Spoilers Extend", FlightLineClient.spoilersExtend());
             drawKeyHint(g, mc, controlsX, controlsY + 72, "Spoilers Retract", FlightLineClient.spoilersRetract());
             drawKeyHint(g, mc, controlsX, controlsY + 81, "Flight Deck", FlightLineClient.toggleAutopilot());
-            drawKeyHint(g, mc, controlsX, controlsY + 90, "Inventory", FlightLineClient.inventory());
-            drawKeyHint(g, mc, controlsX, controlsY + 99, "Steering / Throttle", "WASD");
+            drawKeyHint(g, mc, controlsX, controlsY + 90, "Autoland", FlightLineClient.toggleAutoland());
+            drawKeyHint(g, mc, controlsX, controlsY + 99, "Inventory", FlightLineClient.inventory());
+            drawKeyHint(g, mc, controlsX, controlsY + 108, "Steering / Throttle", "WASD");
         }
 
         // Sleek Action-Bar alert presentation: unobtrusive, high-visibility, clean cockpit view
@@ -563,6 +592,22 @@ final class FlightHud {
 
     private static int engineColor(int state) {
         return state >= 3 ? 0xFFFF5148 : state == 0 ? 0xFF83959B : 0xFF62D89B;
+    }
+
+    private static String weatherName(int condition) {
+        return switch (condition) {
+            case 2 -> "TS";
+            case 1 -> "RAIN";
+            default -> "CLEAR";
+        };
+    }
+
+    private static int weatherColor(int condition) {
+        return switch (condition) {
+            case 2 -> 0xFFFF8B52;
+            case 1 -> 0xFF72C8F0;
+            default -> 0xFF62D89B;
+        };
     }
 
     private static int knots(float speed) {

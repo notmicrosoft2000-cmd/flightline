@@ -10,5 +10,6 @@
   "key.flightline.spoilers_extend": "Extend Spoilers (X)",
   "key.flightline.spoilers_retract": "Retract Spoilers (Z)",
   "key.flightline.autopilot": "Flight Deck / Autopilot (H)",
+  "key.flightline.autoland": "Toggle ILS Autoland (P)",
   "death.attack.flightline_crash": "%1$s crashed while piloting an aircraft."
 }

@@ -55,9 +55,10 @@ public class AutopilotScreen extends Screen {
         String minusFiveHundred = width < 260 ? "-" : "-500";
         String plusFiveHundred = width < 260 ? "+" : "+500";
 
-        addRenderableWidget(tabButton("MCP", 0, 18, left, top, scaleX));
-        addRenderableWidget(tabButton("NAV / ILS", 1, 110, left, top, scaleX));
-        addRenderableWidget(tabButton("KEYS", 2, 222, left, top, scaleX));
+        addRenderableWidget(tabButton("MCP", 0, 8, left, top, scaleX));
+        addRenderableWidget(tabButton("NAV / ILS", 1, 80, left, top, scaleX));
+        addRenderableWidget(tabButton("WX", 2, 174, left, top, scaleX));
+        addRenderableWidget(tabButton("KEYS", 3, 240, left, top, scaleX));
 
         if (activePage == 0) {
         // HEADING controls
@@ -154,7 +155,8 @@ public class AutopilotScreen extends Screen {
                     })
                     .bounds(place(left, 30, scaleX), place(top, 176, scaleY),
                             size(260, scaleX), size(24, scaleY)).build();
-            autolandButton.active = FlightLineClient.isFlightEnabled() && FlightHud.isIlsActive();
+            autolandButton.active = FlightLineClient.isFlightEnabled()
+                    && (FlightHud.isIlsActive() || FlightHud.autopilotGuidance().autolandArmed());
             addRenderableWidget(autolandButton);
         }
 
@@ -169,7 +171,12 @@ public class AutopilotScreen extends Screen {
         String buttonLabel = activePage == page ? "[" + compactLabel + "]" : compactLabel;
         return Button.builder(Component.literal(buttonLabel), button -> switchPage(page))
                 .bounds(place(left, x, scaleX), place(top, 25, panelHeight() / 250.0),
-                        size(label.equals("NAV / ILS") ? 96 : 72, scaleX), size(17, panelHeight() / 250.0))
+                        size(switch (page) {
+                            case 0 -> 64;
+                            case 1 -> 88;
+                            case 2 -> 52;
+                            default -> 62;
+                        }, scaleX), size(17, panelHeight() / 250.0))
                 .build();
     }
 
@@ -298,7 +305,8 @@ public class AutopilotScreen extends Screen {
         // Header
         boolean compact = width < 280;
         String title = activePage == 1 ? compact ? "NAV / ILS" : "NAVIGATION / ILS"
-                : activePage == 2 ? compact ? "KEYS" : "FLIGHT CONTROLS"
+                : activePage == 2 ? compact ? "WX" : "WEATHER / TURBULENCE"
+                : activePage == 3 ? compact ? "KEYS" : "FLIGHT CONTROLS"
                 : compact ? "AUTOPILOT" : "AUTOPILOT / FLIGHT DIRECTOR (MCP)";
         graphics.centeredText(font, title, width / 2, place(top, 7, scaleY), 0xFF72E6F5);
 
@@ -352,6 +360,40 @@ public class AutopilotScreen extends Screen {
                             "SET saves this position and heading as the runway reference.",
                             Math.max(1, panelWidth() - 24)),
                     width / 2, place(top, 128, scaleY), 0xFF83959B);
+        } else if (activePage == 2) {
+            FlightInstrumentPayload.WeatherGuidance weather = FlightHud.weatherGuidance();
+            String condition = switch (weather.condition()) {
+                case 2 -> "THUNDERSTORM";
+                case 1 -> "RAIN";
+                default -> "CLEAR";
+            };
+            graphics.centeredText(font, condition + "  |  WIND " + weather.windSpeedKnots() + " KT",
+                    width / 2, place(top, 57, scaleY),
+                    weather.condition() == 2 ? 0xFFFF8B52 : weather.condition() == 1 ? 0xFF72C8F0 : 0xFF62D89B);
+            graphics.centeredText(font, String.format(Locale.ROOT, "DIRECTION %03d°",
+                            weather.windDirectionDegrees()),
+                    width / 2, place(top, 76, scaleY), 0xFFB6C8D1);
+            graphics.centeredText(font, "TURBULENCE  " + weather.turbulencePercent() + "%",
+                    width / 2, place(top, 104, scaleY),
+                    weather.turbulencePercent() >= 70 ? 0xFFFF5148
+                            : weather.turbulencePercent() >= 35 ? 0xFFFFCE52 : 0xFF62D89B);
+            int gaugeX = place(left, 36, scaleX);
+            int gaugeY = place(top, 119, scaleY);
+            int gaugeWidth = size(248, scaleX);
+            graphics.fill(gaugeX, gaugeY, gaugeX + gaugeWidth, gaugeY + size(7, scaleY), 0xFF263540);
+            graphics.fill(gaugeX, gaugeY,
+                    gaugeX + Math.round(gaugeWidth * weather.turbulencePercent() / 100.0f),
+                    gaugeY + size(7, scaleY),
+                    weather.turbulencePercent() >= 70 ? 0xFFFF5148
+                            : weather.turbulencePercent() >= 35 ? 0xFFFFCE52 : 0xFF62D89B);
+            graphics.centeredText(font, "ESTIMATED VISIBILITY  " + weather.visibilityBlocks() + " BLOCKS",
+                    width / 2, place(top, 145, scaleY), 0xFFB6C8D1);
+            graphics.centeredText(font, weather.condition() == 2
+                            ? "Windshear possible: maintain attitude and airspeed."
+                            : weather.condition() == 1
+                                    ? "Rain increases gusts and reduces reported visibility."
+                                    : "Wind and light turbulence remain active in clear weather.",
+                    width / 2, place(top, 169, scaleY), 0xFF83959B);
         } else {
             drawKeyRow(graphics, left, top, scaleX, 54, "Gear", FlightLineClient.keyName(FlightLineClient.toggleGear()));
             drawKeyRow(graphics, left, top, scaleX, 74, "Autopilot panel", FlightLineClient.keyName(FlightLineClient.toggleAutopilot()));
@@ -364,6 +406,7 @@ public class AutopilotScreen extends Screen {
             drawKeyRow(graphics, left, top, scaleX, 154, "Pushback / brakes",
                     FlightLineClient.keyName(FlightLineClient.pushback()) + " / " + FlightLineClient.keyName(FlightLineClient.brakes()));
             drawKeyRow(graphics, left, top, scaleX, 174, "Inventory", FlightLineClient.keyName(FlightLineClient.inventory()));
+            drawKeyRow(graphics, left, top, scaleX, 194, "Autoland", FlightLineClient.keyName(FlightLineClient.toggleAutoland()));
         }
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);

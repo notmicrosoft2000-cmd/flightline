@@ -179,6 +179,27 @@ class FlightPhysicsTest {
     }
 
     @Test
+    void testWeatherSimulationIncreasesTurbulenceAndReducesVisibility() {
+        WeatherSimulation.Conditions clear = WeatherSimulation.sample(false, false, 1000L, 42L);
+        WeatherSimulation.Conditions rain = WeatherSimulation.sample(true, false, 1000L, 42L);
+        WeatherSimulation.Conditions storm = WeatherSimulation.sample(true, true, 1000L, 42L);
+
+        assertTrue(clear.visibilityBlocks() > rain.visibilityBlocks());
+        assertTrue(rain.visibilityBlocks() > storm.visibilityBlocks());
+        assertTrue(clear.turbulencePercent() < rain.turbulencePercent());
+        assertTrue(rain.turbulencePercent() < storm.turbulencePercent());
+        assertTrue(storm.windSpeedKnots() > clear.windSpeedKnots());
+        assertTrue(storm.windSpeedKnots() < 60);
+    }
+
+    @Test
+    void testWindshearOnlyOccursDuringThunderstormAtScheduledIntervals() {
+        assertFalse(WeatherSimulation.isWindshearEvent(false, 320L, 0L));
+        assertTrue(WeatherSimulation.isWindshearEvent(true, 320L, 0L));
+        assertFalse(WeatherSimulation.isWindshearEvent(true, 321L, 0L));
+    }
+
+    @Test
     void testIlsGuidanceOnRunwayCenterline() {
         double targetHeight = 100.0 * Math.tan(Math.toRadians(3.0));
         FlightInstrumentPayload.IlsGuidance guidance = FlightController.calculateIlsGuidance(

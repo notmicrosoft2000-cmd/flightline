@@ -40,13 +40,32 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
         return cockpitGuidance.autopilotGuidance();
     }
 
-    public record CockpitGuidance(IlsGuidance ilsGuidance, AutopilotGuidance autopilotGuidance) {
+    public record CockpitGuidance(IlsGuidance ilsGuidance, AutopilotGuidance autopilotGuidance,
+                                  WeatherGuidance weatherGuidance) {
         @SuppressWarnings("null")
         public static final StreamCodec<RegistryFriendlyByteBuf, CockpitGuidance> CODEC = StreamCodec.composite(
                 IlsGuidance.CODEC, guidance -> guidance.ilsGuidance(),
                 AutopilotGuidance.CODEC, guidance -> guidance.autopilotGuidance(),
+                WeatherGuidance.CODEC, guidance -> guidance.weatherGuidance(),
                 CockpitGuidance::new
         );
+    }
+
+    public record WeatherGuidance(int windSpeedKnots, int windDirectionDegrees, int turbulencePercent,
+                                  int visibilityBlocks, int condition) {
+        @SuppressWarnings("null")
+        public static final StreamCodec<RegistryFriendlyByteBuf, WeatherGuidance> CODEC = StreamCodec.composite(
+                ByteBufCodecs.VAR_INT, guidance -> guidance.windSpeedKnots(),
+                ByteBufCodecs.VAR_INT, guidance -> guidance.windDirectionDegrees(),
+                ByteBufCodecs.VAR_INT, guidance -> guidance.turbulencePercent(),
+                ByteBufCodecs.VAR_INT, guidance -> guidance.visibilityBlocks(),
+                ByteBufCodecs.VAR_INT, guidance -> guidance.condition(),
+                WeatherGuidance::new
+        );
+
+        public static WeatherGuidance defaults() {
+            return new WeatherGuidance(0, 0, 0, 320, 0);
+        }
     }
 
     public record IlsGuidance(boolean active, float localizerDegrees, float glideslopeDegrees,
