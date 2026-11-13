@@ -43,13 +43,32 @@ class FlightPhysicsTest {
         // Coordinated turn rate: omega = g * tan(bank) / v
         double bank = 20.0;
         double speed = 2.0;
-        double turnRate = 0.95 * FlightTuning.WORLD_SPEED_SCALE * Math.tan(Math.toRadians(bank)) / speed;
+        double turnRate = FlightTuning.TURN_RATE_FACTOR * FlightTuning.WORLD_SPEED_SCALE
+                * Math.tan(Math.toRadians(bank)) / speed;
 
         assertTrue(turnRate > 0.0);
         // Bank left should give negative turn rate
         double bankLeft = -20.0;
-        double turnRateLeft = 0.95 * FlightTuning.WORLD_SPEED_SCALE * Math.tan(Math.toRadians(bankLeft)) / speed;
+        double turnRateLeft = FlightTuning.TURN_RATE_FACTOR * FlightTuning.WORLD_SPEED_SCALE
+                * Math.tan(Math.toRadians(bankLeft)) / speed;
         assertEquals(-turnRate, turnRateLeft, 1e-4);
+    }
+
+    @Test
+    void testPilotTurnInputRespondsQuicklyAndReleasesGradually() {
+        assertTrue(FlightTuning.BANK_RESPONSE_DEGREES_PER_TICK
+                > FlightTuning.BANK_RELEASE_RESPONSE_DEGREES_PER_TICK);
+        assertTrue(FlightTuning.TURN_RATE_FACTOR > 1.0);
+    }
+
+    @Test
+    void testBankKeysHaveExplicitLeftAndRightAircraftDirections() {
+        assertEquals(-FlightTuning.MAX_BANK_DEGREES,
+                FlightController.bankTargetFromControls(FlightControls.LEFT, false));
+        assertEquals(FlightTuning.MAX_BANK_DEGREES,
+                FlightController.bankTargetFromControls(FlightControls.RIGHT, false));
+        assertEquals(0.0, FlightController.bankTargetFromControls(
+                FlightControls.LEFT | FlightControls.RIGHT, false));
     }
 
     @Test
@@ -114,8 +133,44 @@ class FlightPhysicsTest {
     }
 
     @Test
+    void autolandFlareLimitsDescentRateNearTouchdown() {
+        assertEquals(-0.035, FlightController.autolandFlareVerticalSpeed(-0.2, 60));
+        assertEquals(-0.02, FlightController.autolandFlareVerticalSpeed(-0.1, 20));
+        assertEquals(0.03, FlightController.autolandFlareVerticalSpeed(0.03, 10));
+        assertEquals(-0.2, FlightController.autolandFlareVerticalSpeed(-0.2, 61));
+    }
+
+    @Test
     void testAutothrottleDeadbandIsTheDisplayedTwoKnots() {
         assertEquals(2.0, FlightTuning.AUTOTHROTTLE_DEADBAND_KNOTS);
+    }
+
+    @Test
+    void overspeedWarningAllowsNormalAutopilotCruiseButFlagsNearLimit() {
+        double autopilotCruise = 160.0 / FlightTuning.KNOTS_PER_BLOCK_PER_TICK;
+        assertFalse(FlightTuning.isOverspeed(autopilotCruise));
+        assertTrue(FlightTuning.isOverspeed(FlightTuning.MAX_AIRSPEED));
+    }
+
+    @Test
+    void sustainedOverspeedBuildsAirframeStressAndCausesDamage() {
+        int stressTicks = 0;
+        for (int tick = 0; tick < FlightTuning.OVERSPEED_DAMAGE_START_TICKS; tick++) {
+            stressTicks = FlightTuning.advanceOverspeedStressTicks(stressTicks, true);
+        }
+        assertTrue(stressTicks >= FlightTuning.OVERSPEED_STRESS_START_TICKS);
+        assertTrue(FlightTuning.overspeedLiftFactor(stressTicks) < 1.0);
+        assertTrue(FlightTuning.shouldApplyOverspeedDamage(stressTicks, 0));
+        assertFalse(FlightTuning.shouldApplyOverspeedDamage(stressTicks,
+                FlightTuning.OVERSPEED_DAMAGE_INTERVAL_TICKS));
+        assertEquals(stressTicks - 2,
+                FlightTuning.advanceOverspeedStressTicks(stressTicks, false));
+    }
+
+    @Test
+    void generatedRunwaysMeetMinimumSurvivalLandingDimensions() {
+        assertEquals(400, RunwayGenerator.RUNWAY_LENGTH);
+        assertTrue(RunwayGenerator.RUNWAY_WIDTH >= 20);
     }
 
     @Test
@@ -179,6 +234,27 @@ class FlightPhysicsTest {
     }
 
     @Test
+    void icingBuildsInColdPrecipitationAndCanBeRemovedByAntiIce() {
+        WeatherSimulation.Conditions coldRain = WeatherSimulation.sample(true, false, 0.0f, 1000L, 42L);
+        WeatherSimulation.Conditions warmRain = WeatherSimulation.sample(true, false, 0.8f, 1000L, 42L);
+
+        assertTrue(coldRain.icingConditions());
+        assertFalse(warmRain.icingConditions());
+        double icing = 50.0;
+        assertTrue(WeatherSimulation.advanceIcing(icing, true, false) > icing);
+        assertTrue(WeatherSimulation.advanceIcing(icing, false, true) < icing);
+    }
+
+    @Test
+    void flapsReduceStallSpeedWhileIcingRaisesItAndSpoilersDumpLift() {
+        double cleanStallSpeed = FlightTuning.icedStallSpeed(0.0, 0.0);
+        assertTrue(FlightTuning.icedStallSpeed(0.0, 1.0) < cleanStallSpeed);
+        assertTrue(FlightTuning.icedStallSpeed(100.0, 0.0) > cleanStallSpeed);
+        assertTrue(FlightTuning.icingLiftFactor(100.0) < FlightTuning.icingLiftFactor(0.0));
+        assertTrue(FlightTuning.spoilerLiftFactor(true) < FlightTuning.spoilerLiftFactor(false));
+    }
+
+    @Test
     void testWeatherSimulationIncreasesTurbulenceAndReducesVisibility() {
         WeatherSimulation.Conditions clear = WeatherSimulation.sample(false, false, 1000L, 42L);
         WeatherSimulation.Conditions rain = WeatherSimulation.sample(true, false, 1000L, 42L);
@@ -189,14 +265,14 @@ class FlightPhysicsTest {
         assertTrue(clear.turbulencePercent() < rain.turbulencePercent());
         assertTrue(rain.turbulencePercent() < storm.turbulencePercent());
         assertTrue(storm.windSpeedKnots() > clear.windSpeedKnots());
-        assertTrue(storm.windSpeedKnots() < 60);
+        assertTrue(storm.windSpeedKnots() <= 90);
     }
 
     @Test
     void testWindshearOnlyOccursDuringThunderstormAtScheduledIntervals() {
-        assertFalse(WeatherSimulation.isWindshearEvent(false, 320L, 0L));
-        assertTrue(WeatherSimulation.isWindshearEvent(true, 320L, 0L));
-        assertFalse(WeatherSimulation.isWindshearEvent(true, 321L, 0L));
+        assertFalse(WeatherSimulation.isWindshearEvent(false, 600L, 0L));
+        assertTrue(WeatherSimulation.isWindshearEvent(true, 600L, 0L));
+        assertFalse(WeatherSimulation.isWindshearEvent(true, 601L, 0L));
     }
 
     @Test
@@ -208,6 +284,8 @@ class FlightPhysicsTest {
         assertTrue(guidance.active());
         assertEquals(0.0f, guidance.localizerDegrees(), 1e-4f);
         assertEquals(0.0f, guidance.glideslopeDegrees(), 1e-4f);
+        assertEquals(0.0f, guidance.runwayHeadingDegrees(), 1e-4f);
+        assertEquals(100.0f, guidance.thresholdDistanceBlocks(), 1e-4f);
     }
 
     @Test

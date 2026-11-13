@@ -1,10 +1,12 @@
 package dev.flightline.flight;
 
 import dev.flightline.network.FlightInstrumentPayload;
+import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
@@ -16,6 +18,9 @@ import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.UUID;
@@ -32,6 +37,8 @@ public final class FlightController {
     private static final int ENGINE_FIRE = 4;
     private static final int ENGINE_START_TICKS = 60;
     private static final double TRAFFIC_SCOPE_BLOCKS = 128.0;
+    private static final double RADAR_SCOPE_BLOCKS = 4096.0;
+    private static final int MAX_RADAR_CONTACTS = 512;
     private static final ResourceKey<DamageType> AIRCRAFT_CRASH_TYPE =
             ResourceKey.create(Registries.DAMAGE_TYPE, Identifier.fromNamespaceAndPath("flightline", "aircraft_crash"));
     private static final Map<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
@@ -74,13 +81,30 @@ public final class FlightController {
         return session != null && session.airborne && !session.crashed;
     }
 
+    public static boolean isAutolandArmed(ServerPlayer player) {
+        Session session = SESSIONS.get(player.getUUID());
+        return session != null && session.autoland;
+    }
+
     public static boolean setIlsReference(ServerPlayer player, float glideSlopeDegrees) {
+        return setIlsReference(player, player.blockPosition().getX(), player.blockPosition().getZ(),
+                player.getYRot(), glideSlopeDegrees);
+    }
+
+    public static boolean setIlsReference(ServerPlayer player, int thresholdX, int thresholdZ,
+                                          float runwayHeadingDegrees, float glideSlopeDegrees) {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || !Float.isFinite(glideSlopeDegrees)
-                || glideSlopeDegrees < 1.0f || glideSlopeDegrees > 6.0f) return false;
+                || glideSlopeDegrees < 1.0f || glideSlopeDegrees > 6.0f
+                || !Float.isFinite(runwayHeadingDegrees) || Math.abs(thresholdX) > 29_999_984
+                || Math.abs(thresholdZ) > 29_999_984
+                || !player.level().getWorldBorder().isWithinBounds(thresholdX, thresholdZ)) return false;
+        int thresholdY = player.level().getHeight(
+                net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, thresholdX, thresholdZ);
+        if (thresholdY < player.level().getMinY() || thresholdY >= player.level().getMaxY()) return false;
         session.ilsDimension = player.level().dimension();
-        session.ilsThreshold = player.position();
-        session.ilsRunwayHeading = player.getYRot();
+        session.ilsThreshold = new Vec3(thresholdX + 0.5, thresholdY, thresholdZ + 0.5);
+        session.ilsRunwayHeading = (float) wrapDegrees(runwayHeadingDegrees);
         session.ilsGlideSlopeDegrees = glideSlopeDegrees;
         sendState(player, session, true);
         return true;
@@ -162,6 +186,12 @@ public final class FlightController {
         return new LandingAssessment(true, true, 0.0f);
     }
 
+    static double autolandFlareVerticalSpeed(double verticalSpeed, int radioAltitudeFeet) {
+        if (radioAltitudeFeet <= 20) return Math.max(verticalSpeed, -0.02);
+        if (radioAltitudeFeet <= 60) return Math.max(verticalSpeed, -0.035);
+        return verticalSpeed;
+    }
+
     record LandingAssessment(boolean crashes, boolean gearFailed, float damage) {
     }
 
@@ -179,6 +209,8 @@ public final class FlightController {
         session.throttle = 0.0;
         session.pushback = false;
         session.spoilers = true;
+        session.antiIce = false;
+        session.antiIceEffective = false;
         session.crashTicksRemaining = 6;
         session.airVelocity = new Vec3(-impactVelocity.x * 0.18,
                 Math.max(0.06, -impactVelocity.y * 0.12), -impactVelocity.z * 0.18);
@@ -263,6 +295,8 @@ public final class FlightController {
         session.radioAltitudeFeet = 0;
         session.verticalSpeedFpm = 0;
         session.warningFlags = 0;
+        session.overspeedTicks = 0;
+        session.overspeedDamageCooldown = 0;
         session.groundSpeed = 0.0;
         session.throttle = 0.0;
         session.engineSpool = 0.0;
@@ -379,6 +413,13 @@ public final class FlightController {
         return true;
     }
 
+    public static void setAntiIce(ServerPlayer player, boolean enabled) {
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null || session.crashed) return;
+        session.antiIce = enabled;
+        sendState(player, session, true);
+    }
+
     public static void tick(MinecraftServer server) {
         MobFlightController.tick(server);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -485,7 +526,8 @@ public final class FlightController {
                 double vsError = desiredVsFpm - session.verticalSpeedFpm;
                 commandedPitch = Math.max(-12.0, Math.min(22.0, desiredVsFpm * 0.005 + vsError * 0.003));
             } else {
-                commandedPitch = Math.max(-20.0, Math.min(45.0, -player.getXRot()));
+                commandedPitch = Math.max(FlightTuning.MAX_NOSE_DOWN_PITCH_DEGREES,
+                        Math.min(FlightTuning.MAX_NOSE_UP_PITCH_DEGREES, -player.getXRot()));
             }
             double dynamicAuthority = Math.max(0.25, Math.min(1.2, session.airspeed / FlightTuning.ROTATION_SPEED));
             session.pitchDegrees = approach(session.pitchDegrees, commandedPitch, 0.45 * dynamicAuthority);
@@ -536,6 +578,7 @@ public final class FlightController {
             updateGroundHeading(player, session);
             simulateGroundRoll(player, session);
         }
+        updateOverspeedStress(player, session);
         updateGearHeat(session);
         updateInstruments(player, session, server);
     }
@@ -616,22 +659,22 @@ public final class FlightController {
 
     private static void updateBankAndTurn(ServerPlayer player, Session session) {
         int controls = session.controls;
-        double targetBank = 0.0;
+        double targetBank = bankTargetFromControls(controls, session.autopilot);
         if (session.autopilot) {
             double headingError = wrapDegrees(session.autopilotHeading - session.headingDegrees);
             targetBank = Math.max(-25.0, Math.min(25.0, headingError * 0.75));
-        } else if ((controls & FlightControls.LEFT) != 0 && (controls & FlightControls.RIGHT) == 0) {
-            targetBank = -FlightTuning.MAX_BANK_DEGREES;
-        } else if ((controls & FlightControls.RIGHT) != 0 && (controls & FlightControls.LEFT) == 0) {
-            targetBank = FlightTuning.MAX_BANK_DEGREES;
         }
         if (session.turbulencePercent > 0) {
             long tick = player.level().getGameTime() + player.getUUID().getLeastSignificantBits();
             targetBank += Math.sin(tick * 0.19) * session.turbulencePercent * 0.035;
         }
 
-        session.bankDegrees = approach(session.bankDegrees, targetBank,
-                FlightTuning.BANK_RESPONSE_DEGREES_PER_TICK);
+        boolean pilotTurning = !session.autopilot
+                && (controls & (FlightControls.LEFT | FlightControls.RIGHT)) != 0;
+        double bankResponse = pilotTurning || session.autopilot
+                ? FlightTuning.BANK_RESPONSE_DEGREES_PER_TICK
+                : FlightTuning.BANK_RELEASE_RESPONSE_DEGREES_PER_TICK;
+        session.bankDegrees = approach(session.bankDegrees, targetBank, bankResponse);
         if (Math.abs(session.bankDegrees) >= FlightTuning.CRITICAL_BANK_DEGREES) {
             session.criticalBankTicks++;
             if (shouldCrashForOverbank(session.bankDegrees, session.criticalBankTicks)) {
@@ -643,7 +686,7 @@ public final class FlightController {
         }
         double speed = Math.max(0.75, session.airspeed);
         // Turn rate: omega = g * tan(phi) / v
-        double turnRate = 0.95 * FlightTuning.WORLD_SPEED_SCALE
+        double turnRate = FlightTuning.TURN_RATE_FACTOR * FlightTuning.WORLD_SPEED_SCALE
                 * Math.tan(Math.toRadians(session.bankDegrees)) / speed;
         session.headingDegrees = wrapDegrees(session.headingDegrees + turnRate);
 
@@ -663,6 +706,14 @@ public final class FlightController {
         }
 
         applyHeading(player, session);
+    }
+
+    static double bankTargetFromControls(int controls, boolean autopilot) {
+        if (autopilot) return 0.0;
+        boolean left = (controls & FlightControls.LEFT) != 0;
+        boolean right = (controls & FlightControls.RIGHT) != 0;
+        if (left == right) return 0.0;
+        return left ? -FlightTuning.MAX_BANK_DEGREES : FlightTuning.MAX_BANK_DEGREES;
     }
 
     private static void updateAutolandTargets(ServerPlayer player, Session session) {
@@ -848,38 +899,58 @@ public final class FlightController {
             }
         }
 
-        double horizontalSpeed = velocity.subtract(wind).horizontalDistance();
+        Vec3 airVelocity = velocity.subtract(wind);
+        double horizontalSpeed = airVelocity.horizontalDistance();
+        double indicatedAirspeed = airVelocity.length();
         double flightPathAngle = Math.toDegrees(Math.atan2(velocity.y, Math.max(horizontalSpeed, 1.0e-4)));
         double pitchUp = session.pitchDegrees;
         double angleOfAttack = pitchUp - flightPathAngle;
-        boolean stalled = horizontalSpeed < FlightTuning.STALL_SPEED
+        double stallSpeed = FlightTuning.icedStallSpeed(session.icingPercent, session.flapPosition);
+        boolean stalled = indicatedAirspeed < stallSpeed
                 || angleOfAttack > FlightTuning.CRITICAL_ANGLE_OF_ATTACK_DEGREES || pitchUp >= 50.0;
 
         if (stalled) {
             // Aerodynamic stall recovery: nose naturally pitches down to regain airflow
-            session.pitchDegrees = approach(session.pitchDegrees, -4.0, 0.25);
+            session.pitchDegrees = approach(session.pitchDegrees, -4.0, 0.5);
         }
 
-        double effectiveAngle = Math.max(0.0, Math.min(20.0, angleOfAttack + 6.0)) + session.flapPosition * 2.4;
-        double lift = stalled ? 0.03 * FlightTuning.WORLD_SPEED_SCALE
+        double effectiveAngle = Math.max(0.0, Math.min(20.0, angleOfAttack + 6.0))
+                + session.flapPosition * 2.4;
+        double lift = stalled ? 0.0
                 : Math.min(0.24 * FlightTuning.WORLD_SPEED_SCALE,
-                horizontalSpeed * horizontalSpeed * 0.0011 / FlightTuning.WORLD_SPEED_SCALE
-                        * effectiveAngle);
+                indicatedAirspeed * indicatedAirspeed * 0.0011 / FlightTuning.WORLD_SPEED_SCALE
+                        * effectiveAngle * FlightTuning.icingLiftFactor(session.icingPercent) * loadFactor);
         lift *= Math.cos(Math.toRadians(session.bankDegrees));
         lift *= (1.0 + groundEffect * 0.22); // Ground effect lift cushioning
-        if (session.spoilers) lift *= 0.30;
+        lift *= FlightTuning.spoilerLiftFactor(session.spoilers);
+        lift *= FlightTuning.overspeedLiftFactor(session.overspeedTicks);
         if (!stalled && session.takeoffGraceTicks > 0) {
             lift = Math.max(lift, 0.12);
         }
         velocity = velocity.add(0.0, lift - 0.08, 0.0);
+        if (session.autoland) {
+            velocity = new Vec3(velocity.x,
+                    autolandFlareVerticalSpeed(velocity.y, session.radioAltitudeFeet), velocity.z);
+        }
 
         if (velocity.lengthSqr() > FlightTuning.MAX_AIRSPEED * FlightTuning.MAX_AIRSPEED) {
             velocity = velocity.normalize().scale(FlightTuning.MAX_AIRSPEED);
         }
         session.airVelocity = velocity;
         player.setDeltaMovement(velocity);
-        session.airspeed = (float) horizontalSpeed;
+        session.airspeed = (float) indicatedAirspeed;
         setPhase(player, session, stalled ? FlightPhase.STALL : FlightPhase.AIRBORNE);
+    }
+
+    private static void updateOverspeedStress(ServerPlayer player, Session session) {
+        session.overspeedDamageCooldown = Math.max(0, session.overspeedDamageCooldown - 1);
+        session.overspeedTicks = FlightTuning.advanceOverspeedStressTicks(
+                session.overspeedTicks, session.airborne && FlightTuning.isOverspeed(session.airspeed));
+        if (FlightTuning.shouldApplyOverspeedDamage(session.overspeedTicks,
+                session.overspeedDamageCooldown) && player.level() instanceof ServerLevel level) {
+            player.hurtServer(level, player.damageSources().generic(), 1.0f);
+            session.overspeedDamageCooldown = FlightTuning.OVERSPEED_DAMAGE_INTERVAL_TICKS;
+        }
     }
 
     private static void updateFlaps(Session session) {
@@ -891,8 +962,13 @@ public final class FlightController {
         if (session.windShearTicks > 0) session.windShearTicks--;
         long gameTime = player.level().getGameTime();
         long seed = player.getUUID().getLeastSignificantBits();
+        float biomeTemperature = player.level().getBiome(player.blockPosition()).value().getBaseTemperature();
         WeatherSimulation.Conditions conditions = WeatherSimulation.sample(player.level().isRaining(),
-                player.level().isThundering(), gameTime, seed);
+                player.level().isThundering(), biomeTemperature, gameTime, seed);
+        boolean antiIceEffective = session.antiIce && runningEngines(session) > 0 && session.engineSpool > 0.35;
+        session.antiIceEffective = antiIceEffective;
+        session.icingPercent = WeatherSimulation.advanceIcing(session.icingPercent,
+                conditions.icingConditions() && session.airborne, antiIceEffective);
         session.windX = approach(session.windX, conditions.windX(), 0.008);
         session.windZ = approach(session.windZ, conditions.windZ(), 0.008);
         session.windY = 0.0;
@@ -905,12 +981,12 @@ public final class FlightController {
         session.visibilityBlocks = conditions.visibilityBlocks();
         session.weatherCondition = conditions.condition();
         if (WeatherSimulation.isWindshearEvent(player.level().isThundering(), gameTime, seed)) {
-            session.windShearTicks = 80;
-            session.windX *= 2.4;
-            session.windZ *= 2.4;
+            session.windShearTicks = 120;
+            session.windX *= 3.0;
+            session.windZ *= 3.0;
             if (session.airborne) {
-                session.airVelocity = session.airVelocity.add(session.windX * 0.16,
-                        -0.06 * FlightTuning.WORLD_SPEED_SCALE, session.windZ * 0.16);
+                session.airVelocity = session.airVelocity.add(session.windX * 0.28,
+                        -0.13 * FlightTuning.WORLD_SPEED_SCALE, session.windZ * 0.28);
             }
         }
     }
@@ -961,6 +1037,7 @@ public final class FlightController {
                 && verticalSpeed < -300) warnings |= FlightWarning.DONT_SINK;
         boolean descendingTerrainAhead = false;
         if (session.windShearTicks > 0) warnings |= FlightWarning.WINDSHEAR;
+        if (session.icingPercent >= 20.0) warnings |= FlightWarning.ICE_ACCUMULATION;
         int food = player.getFoodData().getFoodLevel();
         if (food <= 0) warnings |= FlightWarning.FUEL_EMPTY;
         else if (food <= 6) warnings |= FlightWarning.FUEL_LOW;
@@ -1014,8 +1091,11 @@ public final class FlightController {
                 && (session.flapDetent == 0 || session.spoilers || session.brakesActive)) {
             warnings |= FlightWarning.TAKEOFF_CONFIG;
         }
-        if (session.airborne && session.airspeed > FlightTuning.MAX_AIRSPEED * 0.96) {
+        if (session.airborne && FlightTuning.isOverspeed(session.airspeed)) {
             warnings |= FlightWarning.OVERSPEED;
+        }
+        if (session.overspeedTicks >= FlightTuning.OVERSPEED_STRESS_START_TICKS) {
+            warnings |= FlightWarning.AIRFRAME_STRESS;
         }
         if (session.gearHeatTicks >= 100 && !session.gearFailed) warnings |= FlightWarning.GEAR_HOT;
         if (session.airborne && session.gearDown && radioAltitude < 1500 && session.airspeed > 2.5f) {
@@ -1102,6 +1182,9 @@ public final class FlightController {
         session.warningFlags = warnings;
         session.radioAltitudeFeet = radioAltitude;
         session.verticalSpeedFpm = verticalSpeed;
+        if (player.level().getGameTime() % 5 == 0) {
+            sendFlightRadar(player, session, server);
+        }
     }
 
     private static void recordTrafficContact(Session session, Vec3 separation, boolean airborne) {
@@ -1149,7 +1232,7 @@ public final class FlightController {
         double glideslope = Math.toDegrees(Math.atan2(fromThreshold.y - targetHeight,
                 Math.max(1.0, alongTrack)));
         return new FlightInstrumentPayload.IlsGuidance(inCoverage, (float) localizer, (float) glideslope,
-                glideSlopeDegrees);
+                glideSlopeDegrees, runwayHeading, (float) fromThreshold.horizontalDistance());
     }
 
     private static double recordScopeContact(Session session, Vec3 separation, double closestContact) {
@@ -1230,8 +1313,64 @@ public final class FlightController {
                         session.autoland),
                         new FlightInstrumentPayload.WeatherGuidance(session.windSpeedKnots,
                                 session.windDirectionSector * 360 / 64, session.turbulencePercent,
-                                session.visibilityBlocks, session.weatherCondition)));
+                                session.visibilityBlocks, session.weatherCondition,
+                                (int) Math.round(session.icingPercent), session.antiIce, session.antiIceEffective)));
         ServerPlayNetworking.send(player, instruments);
+    }
+
+    private static void sendFlightRadar(ServerPlayer player, Session session, MinecraftServer server) {
+        List<RadarCandidate> candidates = new ArrayList<>();
+        Vec3 ownPosition = player.position();
+        int trackingDistance = Math.max(server.getPlayerList().getViewDistance(),
+                server.getPlayerList().getSimulationDistance());
+        double scopeBlocks = Math.min(RADAR_SCOPE_BLOCKS, Math.max(2, trackingDistance) * 16.0);
+        double scopeSquared = scopeBlocks * scopeBlocks;
+        for (ServerPlayer other : server.getPlayerList().getPlayers()) {
+            if (other == player || other.level() != player.level() || other.isSpectator()) continue;
+            Vec3 position = other.position();
+            double distanceSquared = position.subtract(ownPosition).horizontalDistanceSqr();
+            if (distanceSquared > scopeSquared) continue;
+            Session otherSession = SESSIONS.get(other.getUUID());
+            Vec3 velocity = otherSession != null && otherSession.airborne
+                    ? otherSession.airVelocity : other.getDeltaMovement();
+            boolean airborne = otherSession != null && otherSession.airborne && !otherSession.crashed;
+            candidates.add(new RadarCandidate(distanceSquared, new FlightRadarPayload.Contact(
+                    other.getId(), radarName(other.getGameProfile().name()), true, airborne, other.blockPosition().getX(),
+                    other.blockPosition().getZ(), (int) Math.round(other.getY() * 3.28084),
+                    (int) Math.round(velocity.horizontalDistance() * FlightTuning.KNOTS_PER_BLOCK_PER_TICK),
+                    radarHeading(otherSession != null ? otherSession.headingDegrees : other.getYRot()))));
+        }
+        if (player.level() instanceof ServerLevel level) {
+            for (MobFlightController.Traffic traffic : MobFlightController.aircraftIn(level)) {
+                double distanceSquared = traffic.position().subtract(ownPosition).horizontalDistanceSqr();
+                if (distanceSquared > scopeSquared) continue;
+                candidates.add(new RadarCandidate(distanceSquared, new FlightRadarPayload.Contact(
+                        traffic.entityId(), radarName(traffic.name()), false, traffic.airborne(),
+                        (int) Math.floor(traffic.position().x), (int) Math.floor(traffic.position().z),
+                        (int) Math.round(traffic.position().y * 3.28084),
+                        (int) Math.round(traffic.velocity().horizontalDistance()
+                                * FlightTuning.KNOTS_PER_BLOCK_PER_TICK),
+                        radarHeading(traffic.headingDegrees()))));
+            }
+        }
+        candidates.sort(Comparator.comparingDouble(RadarCandidate::distanceSquared));
+        List<FlightRadarPayload.Contact> contacts = candidates.stream()
+                .limit(MAX_RADAR_CONTACTS).map(RadarCandidate::contact).toList();
+        ServerPlayNetworking.send(player, new FlightRadarPayload(player.blockPosition().getX(),
+                player.blockPosition().getZ(), (int) Math.round(player.getY() * 3.28084),
+                (float) session.headingDegrees, contacts));
+    }
+
+    private static String radarName(String name) {
+        return name.codePoints().limit(16).collect(StringBuilder::new, StringBuilder::appendCodePoint,
+                StringBuilder::append).toString();
+    }
+
+    private static float radarHeading(double heading) {
+        return Math.floorMod((int) Math.round(heading), 360);
+    }
+
+    private record RadarCandidate(double distanceSquared, FlightRadarPayload.Contact contact) {
     }
 
     private static final class Session {
@@ -1254,10 +1393,13 @@ public final class FlightController {
         private int visibilityBlocks = 320;
         private int weatherCondition;
         private double flapPosition;
+        private double icingPercent;
         private double windX, windY, windZ;
         private int radioAltitudeFeet;
         private int verticalSpeedFpm;
         private int warningFlags;
+        private int overspeedTicks;
+        private int overspeedDamageCooldown;
         private int trafficRangeBlocks;
         private int trafficAltitudeFeet;
         private int airborneContacts;
@@ -1281,6 +1423,8 @@ public final class FlightController {
         private boolean pushback;
         private boolean pushbackReversing;
         private boolean spoilers;
+        private boolean antiIce;
+        private boolean antiIceEffective;
         private boolean autopilot;
         private boolean autoland;
         private int autolandRolloutTicks;

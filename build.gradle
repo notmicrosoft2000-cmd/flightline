@@ -61,3 +61,14 @@ jar {
         rename { "${it}_flightline" }
     }
 }
+
+tasks.register('packageAlphaRelease', Sync) {
+    dependsOn tasks.named('jar'), tasks.named('test')
+    from(tasks.named('jar'))
+    from('pojav/flightline-touch-controls.json')
+    into(layout.buildDirectory.dir("distributions/flightline-${project.version}"))
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('packageAlphaRelease')
+}

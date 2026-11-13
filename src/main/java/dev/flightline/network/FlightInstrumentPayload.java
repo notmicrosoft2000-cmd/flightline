@@ -52,7 +52,8 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
     }
 
     public record WeatherGuidance(int windSpeedKnots, int windDirectionDegrees, int turbulencePercent,
-                                  int visibilityBlocks, int condition) {
+                                  int visibilityBlocks, int condition, int icingPercent, boolean antiIceActive,
+                                  boolean antiIceEffective) {
         @SuppressWarnings("null")
         public static final StreamCodec<RegistryFriendlyByteBuf, WeatherGuidance> CODEC = StreamCodec.composite(
                 ByteBufCodecs.VAR_INT, guidance -> guidance.windSpeedKnots(),
@@ -60,16 +61,25 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
                 ByteBufCodecs.VAR_INT, guidance -> guidance.turbulencePercent(),
                 ByteBufCodecs.VAR_INT, guidance -> guidance.visibilityBlocks(),
                 ByteBufCodecs.VAR_INT, guidance -> guidance.condition(),
+                ByteBufCodecs.VAR_INT, guidance -> guidance.icingPercent(),
+                ByteBufCodecs.BOOL, guidance -> guidance.antiIceActive(),
+                ByteBufCodecs.BOOL, guidance -> guidance.antiIceEffective(),
                 WeatherGuidance::new
         );
 
         public static WeatherGuidance defaults() {
-            return new WeatherGuidance(0, 0, 0, 320, 0);
+            return new WeatherGuidance(0, 0, 0, 320, 0, 0, false, false);
         }
     }
 
     public record IlsGuidance(boolean active, float localizerDegrees, float glideslopeDegrees,
-                              float referenceGlideSlopeDegrees) {
+                              float referenceGlideSlopeDegrees, float runwayHeadingDegrees,
+                              float thresholdDistanceBlocks) {
+        public IlsGuidance(boolean active, float localizerDegrees, float glideslopeDegrees,
+                           float referenceGlideSlopeDegrees) {
+            this(active, localizerDegrees, glideslopeDegrees, referenceGlideSlopeDegrees, 0.0f, 0.0f);
+        }
+
         public IlsGuidance(boolean active, float localizerDegrees, float glideslopeDegrees) {
             this(active, localizerDegrees, glideslopeDegrees, 3.0f);
         }
@@ -80,11 +90,13 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
                 ByteBufCodecs.FLOAT, guidance -> guidance.localizerDegrees(),
                 ByteBufCodecs.FLOAT, guidance -> guidance.glideslopeDegrees(),
                 ByteBufCodecs.FLOAT, guidance -> guidance.referenceGlideSlopeDegrees(),
+                ByteBufCodecs.FLOAT, guidance -> guidance.runwayHeadingDegrees(),
+                ByteBufCodecs.FLOAT, guidance -> guidance.thresholdDistanceBlocks(),
                 IlsGuidance::new
         );
 
         public static IlsGuidance inactive() {
-            return new IlsGuidance(false, 0.0f, 0.0f, 3.0f);
+            return new IlsGuidance(false, 0.0f, 0.0f, 3.0f, 0.0f, 0.0f);
         }
     }
 

@@ -7,6 +7,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.Vec3;
+import dev.flightline.network.AtcOrderPayload;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -58,6 +59,54 @@ public final class MobFlightController {
         }
     }
 
+    public static boolean issueAtcOrder(ServerPlayer commander, Mob mob, int order, int value, int referenceEntityId) {
+        MobAircraft aircraft = AIRCRAFT.get(mob.getUUID());
+        if (aircraft == null || aircraft.crashed || !mob.isAlive()) return false;
+        if (order < AtcOrderPayload.HOLD || order > AtcOrderPayload.FOLLOW) return false;
+
+        switch (order) {
+            case AtcOrderPayload.HOLD -> {
+                aircraft.targetHeading = aircraft.heading;
+                aircraft.targetAltitude = mob.getY();
+            }
+            case AtcOrderPayload.TURN -> {
+                if (value < 0 || value >= 360) return false;
+                aircraft.targetHeading = value;
+                aircraft.targetAltitude = mob.getY();
+            }
+            case AtcOrderPayload.CLIMB, AtcOrderPayload.DESCEND -> {
+                if (value < 0 || value > 40000) return false;
+                aircraft.targetHeading = aircraft.heading;
+                aircraft.targetAltitude = Math.max(mob.level().getMinY() + 8.0,
+                        Math.min(mob.level().getMaxY() - 8.0, value * 0.3048));
+                if (order == AtcOrderPayload.CLIMB && aircraft.targetAltitude <= mob.getY()) return false;
+                if (order == AtcOrderPayload.DESCEND && aircraft.targetAltitude >= mob.getY()) return false;
+            }
+            case AtcOrderPayload.SPEED -> {
+                if (value < 40 || value > 300) return false;
+                aircraft.targetSpeed = Math.max(0.30, Math.min(0.75, CRUISE_SPEED * value / 130.0));
+            }
+            case AtcOrderPayload.ORBIT, AtcOrderPayload.RETURN -> {
+                aircraft.commanderId = commander.getId();
+            }
+            case AtcOrderPayload.FOLLOW -> {
+                Entity reference = mob.level().getEntity(referenceEntityId);
+                if (reference == null || reference == mob || reference == commander) return false;
+                if (!(reference instanceof ServerPlayer)
+                        && (!(reference instanceof Mob leadMob) || !AIRCRAFT.containsKey(leadMob.getUUID()))) {
+                    return false;
+                }
+                aircraft.followEntityId = referenceEntityId;
+            }
+            default -> {
+                return false;
+            }
+        }
+        aircraft.atcOrder = order;
+        aircraft.targetTicks = 0;
+        return true;
+    }
+
     private static void simulate(MobAircraft aircraft, MinecraftServer server) {
         Mob mob = aircraft.mob;
         aircraft.ticks++;
@@ -74,7 +123,30 @@ public final class MobFlightController {
             return;
         }
 
-        if (mob.horizontalCollision || (aircraft.airborne && mob.verticalCollision)) {
+        if (aircraft.airborne && mob.onGround()) {
+            aircraft.airborne = false;
+            aircraft.touchdownTicks = 120;
+            aircraft.speed = mob.getDeltaMovement().horizontalDistance();
+            aircraft.verticalSpeed = 0.0;
+            aircraft.velocity = heading(aircraft.heading).scale(aircraft.speed);
+            mob.setNoGravity(aircraft.originalNoGravity);
+            mob.setXRot(0.0f);
+            mob.resetFallDistance();
+            mob.setDeltaMovement(aircraft.velocity);
+            return;
+        }
+
+        if (aircraft.touchdownTicks > 0) {
+            aircraft.touchdownTicks--;
+            mob.setNoGravity(aircraft.originalNoGravity);
+            aircraft.speed = approach(aircraft.speed, 0.0, 0.009);
+            aircraft.velocity = heading(aircraft.heading).scale(aircraft.speed);
+            mob.setDeltaMovement(aircraft.velocity);
+            return;
+        }
+
+        if ((aircraft.airborne && (mob.horizontalCollision || mob.verticalCollision))
+                || (!aircraft.airborne && aircraft.touchdownTicks <= 0 && mob.horizontalCollision)) {
             crash(aircraft, aircraft.velocity.length());
             return;
         }
@@ -95,7 +167,9 @@ public final class MobFlightController {
         }
 
         mob.setNoGravity(true);
-        if (aircraft.targetTicks-- <= 0 || mob.position().distanceToSqr(aircraft.target) < 64.0) {
+        if (aircraft.atcOrder != -1) {
+            updateAtcTarget(aircraft);
+        } else if (aircraft.targetTicks-- <= 0 || mob.position().distanceToSqr(aircraft.target) < 64.0) {
             chooseTarget(aircraft, server);
             aircraft.targetTicks = 100 + Math.floorMod(mob.getUUID().hashCode() + aircraft.ticks, 100);
         }
@@ -112,7 +186,7 @@ public final class MobFlightController {
         double desiredVerticalSpeed = Math.max(-0.13, Math.min(0.13, altitudeError * 0.006));
         desiredVerticalSpeed = tcasAvoidance(mob, aircraft, desiredVerticalSpeed);
         aircraft.verticalSpeed = approach(aircraft.verticalSpeed, desiredVerticalSpeed, 0.006);
-        aircraft.speed = approach(aircraft.speed, CRUISE_SPEED, 0.002);
+        aircraft.speed = approach(aircraft.speed, aircraft.targetSpeed, 0.002);
         Vec3 forward = heading(aircraft.heading).scale(aircraft.speed);
         aircraft.velocity = new Vec3(forward.x, aircraft.verticalSpeed, forward.z);
 
@@ -122,6 +196,38 @@ public final class MobFlightController {
         mob.setDeltaMovement(aircraft.velocity);
 
         avoidPlayerCollision(aircraft);
+    }
+
+    private static void updateAtcTarget(MobAircraft aircraft) {
+        Mob mob = aircraft.mob;
+        if (aircraft.atcOrder == AtcOrderPayload.ORBIT || aircraft.atcOrder == AtcOrderPayload.RETURN) {
+            Entity commander = mob.level().getEntity(aircraft.commanderId);
+            if (commander == null || !commander.isAlive()) {
+                aircraft.atcOrder = -1;
+                return;
+            }
+            if (aircraft.atcOrder == AtcOrderPayload.RETURN) {
+                aircraft.target = commander.position().add(0.0, 4.0, 0.0);
+            } else {
+                double angle = aircraft.ticks * 0.025;
+                aircraft.target = commander.position().add(Math.cos(angle) * 24.0, 8.0,
+                        Math.sin(angle) * 24.0);
+            }
+            return;
+        }
+        if (aircraft.atcOrder == AtcOrderPayload.FOLLOW) {
+            Entity reference = mob.level().getEntity(aircraft.followEntityId);
+            if (reference == null || !reference.isAlive()) {
+                aircraft.atcOrder = -1;
+                return;
+            }
+            aircraft.target = reference.position().add(0.0, 5.0, 0.0);
+            return;
+        }
+
+        Vec3 forward = heading(aircraft.targetHeading);
+        aircraft.target = new Vec3(mob.getX() + forward.x * 240.0,
+                aircraft.targetAltitude, mob.getZ() + forward.z * 240.0);
     }
 
     private static double tcasAvoidance(Mob mob, MobAircraft aircraft, double desiredVerticalSpeed) {
@@ -257,10 +363,16 @@ public final class MobFlightController {
         List<Traffic> traffic = new ArrayList<>();
         for (MobAircraft aircraft : AIRCRAFT.values()) {
             if (!aircraft.crashed && aircraft.mob.level() == level && aircraft.mob.isAlive()) {
-                traffic.add(new Traffic(aircraft.mob.position(), aircraft.velocity, aircraft.airborne));
+                traffic.add(new Traffic(aircraft.mob.getId(), aircraft.mob.getName().getString(), aircraft.mob.position(),
+                        aircraft.velocity, aircraft.airborne, aircraft.mob.getYRot()));
             }
         }
         return traffic;
+    }
+
+    public static boolean suppressVanillaFallDamage(Mob mob) {
+        MobAircraft aircraft = AIRCRAFT.get(mob.getUUID());
+        return aircraft != null && !aircraft.crashed;
     }
 
     private static Vec3 heading(double yaw) {
@@ -285,7 +397,8 @@ public final class MobFlightController {
         return Math.max(target, current - step);
     }
 
-    public record Traffic(Vec3 position, Vec3 velocity, boolean airborne) {
+    public record Traffic(int entityId, String name, Vec3 position, Vec3 velocity,
+                          boolean airborne, float headingDegrees) {
     }
 
     private static final class MobAircraft {
@@ -294,10 +407,17 @@ public final class MobFlightController {
         private int ticks;
         private int targetTicks;
         private int crashTicks;
+        private int touchdownTicks;
         private double speed;
         private double heading;
         private double bank;
         private double verticalSpeed;
+        private double targetHeading;
+        private double targetAltitude;
+        private double targetSpeed = CRUISE_SPEED;
+        private int atcOrder = -1;
+        private int commanderId = -1;
+        private int followEntityId = -1;
         private Vec3 velocity = Vec3.ZERO;
         private Vec3 target;
         private boolean airborne;
@@ -307,6 +427,8 @@ public final class MobFlightController {
             this.mob = mob;
             this.originalNoGravity = mob.isNoGravity();
             this.heading = mob.getYRot();
+            this.targetHeading = this.heading;
+            this.targetAltitude = mob.getY();
             this.speed = mob.getDeltaMovement().horizontalDistance();
             this.velocity = mob.getDeltaMovement();
             this.target = mob.position();

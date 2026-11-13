@@ -7,6 +7,14 @@
       }
     ]
   },
+  "engine_cruise": {
+    "sounds": [
+      {
+        "name": "flightline:engine_cruise",
+        "stream": true
+      }
+    ]
+  },
   "tcas_traffic": {"sounds": ["flightline:tcas_traffic"]},
   "tcas_climb_now": {"sounds": ["flightline:tcas_climb_now"]},
   "tcas_climb_crossing": {"sounds": ["flightline:tcas_climb_crossing"]},
@@ -34,5 +42,17 @@
   "callout_30": {"sounds": ["flightline:callout_30"]},
   "callout_20": {"sounds": ["flightline:callout_20"]},
   "callout_10": {"sounds": ["flightline:callout_10"]},
-  "callout_retard": {"sounds": ["flightline:callout_retard"]}
+  "callout_retard": {"sounds": ["flightline:callout_retard"]},
+  "callout_plus_100": {"sounds": ["flightline:callout_plus_100"]},
+  "voice_approaching_minimums": {"sounds": ["flightline:voice_approaching_minimums"]},
+  "voice_minimums": {"sounds": ["flightline:voice_minimums"]},
+  "voice_adjust_vertical_speed": {"sounds": ["flightline:voice_adjust_vertical_speed"]},
+  "voice_maintain_vertical_speed": {"sounds": ["flightline:voice_maintain_vertical_speed"]},
+  "voice_monitor_vertical_speed": {"sounds": ["flightline:voice_monitor_vertical_speed"]},
+  "voice_increase_climb": {"sounds": ["flightline:voice_increase_climb"]},
+  "voice_increase_descend": {"sounds": ["flightline:voice_increase_descend"]},
+  "voice_reduce_climb": {"sounds": ["flightline:voice_reduce_climb"]},
+  "voice_reduce_descend": {"sounds": ["flightline:voice_reduce_descend"]},
+  "tcas_test_pass": {"sounds": ["flightline:tcas_test_pass"]},
+  "tcas_test_fail": {"sounds": ["flightline:tcas_test_fail"]}
 }

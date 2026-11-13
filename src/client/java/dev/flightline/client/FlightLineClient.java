@@ -8,13 +8,18 @@ import dev.flightline.flight.FlightWarning;
 import dev.flightline.network.AdjustFlapsPayload;
 import dev.flightline.network.FlightInputPayload;
 import dev.flightline.network.FlightInstrumentPayload;
+import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
 import dev.flightline.network.StartEnginesPayload;
 import dev.flightline.network.ShutdownEnginesPayload;
 import dev.flightline.network.ToggleGearPayload;
-import dev.flightline.network.ToggleAutolandPayload;
 import dev.flightline.network.TogglePushbackPayload;
 import dev.flightline.network.ToggleSpoilersPayload;
+import dev.flightline.network.ToggleAntiIcePayload;
+import dev.flightline.network.AtcOrderPayload;
+import dev.flightline.network.AtcRadioPayload;
+import dev.flightline.network.AtcAckPayload;
+import dev.flightline.network.OpenAtcPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
@@ -24,14 +29,18 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.sounds.SoundEvent;
 import org.jspecify.annotations.Nullable;
 
-import java.util.ArrayDeque;
-import java.util.Queue;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Set;
 
 public class FlightLineClient implements ClientModInitializer {
     private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(FlightLine.id("controls"));
@@ -45,7 +54,27 @@ public class FlightLineClient implements ClientModInitializer {
     private static final KeyMapping SPOILERS_EXTEND = key("key.flightline.spoilers_extend", 88);
     private static final KeyMapping SPOILERS_RETRACT = key("key.flightline.spoilers_retract", 90);
     private static final KeyMapping TOGGLE_AUTOPILOT = key("key.flightline.autopilot", 72);
-    private static final KeyMapping TOGGLE_AUTOLAND = key("key.flightline.autoland", 80);
+    private static final KeyMapping OPEN_FLIGHT_RADAR = key("key.flightline.flight_radar", 82);
+    private static final KeyMapping TOGGLE_PFD = key("key.flightline.toggle_pfd", 85);
+    private static final KeyMapping TOGGLE_EICAS = key("key.flightline.toggle_eicas", 73);
+    private static final KeyMapping TOGGLE_ND_RADAR = key("key.flightline.toggle_nd_radar", 66);
+    private static final KeyMapping TOGGLE_RADIO_ALTIMETER = key("key.flightline.toggle_radio_altimeter", 78);
+    private static final KeyMapping TOGGLE_KEYBIND_HINTS = key("key.flightline.toggle_keybind_hints", 298);
+    private static final KeyMapping OPEN_CONTROLS = key("key.flightline.open_controls", 299);
+    private static final KeyMapping ACK_ATC = key("key.flightline.ack_atc", 296);
+    private static final KeyMapping TOGGLE_ANTI_ICE = key("key.flightline.toggle_anti_ice", 84);
+    private static final KeyMapping BANK_LEFT = key("key.flightline.bank_left", 65);
+    private static final KeyMapping BANK_RIGHT = key("key.flightline.bank_right", 68);
+    private static final List<KeyMapping> FLIGHTLINE_BINDINGS = List.of(
+            TOGGLE_GEAR, START_ENGINES, SHUTDOWN_ENGINES, TOGGLE_PUSHBACK, BRAKES,
+            FLAPS_UP, FLAPS_DOWN, SPOILERS_EXTEND, SPOILERS_RETRACT, TOGGLE_AUTOPILOT,
+            OPEN_FLIGHT_RADAR, TOGGLE_PFD, TOGGLE_EICAS, TOGGLE_ND_RADAR,
+            TOGGLE_RADIO_ALTIMETER, TOGGLE_KEYBIND_HINTS, OPEN_CONTROLS, ACK_ATC, TOGGLE_ANTI_ICE,
+            BANK_LEFT, BANK_RIGHT);
+    private static final List<String> LAPTOP_KEY_CANDIDATES = List.of(
+            "q", "e", "r", "t", "y", "u", "i", "o", "p",
+            "a", "s", "d", "f", "g", "h", "j", "k", "l",
+            "z", "x", "c", "v", "b", "n", "m", "w");
     private static volatile boolean flightEnabled;
     private boolean savedViewBobbing;
     private boolean hasSavedViewBobbing;
@@ -65,13 +94,28 @@ public class FlightLineClient implements ClientModInitializer {
     private static int lastWarningCallout;
     private static int warningRepeatCooldown;
     private static int activeAlertId;
-    private static final Queue<QueuedVoice> VOICE_QUEUE = new ArrayDeque<>();
+    private static final PriorityQueue<QueuedVoice> VOICE_QUEUE = new PriorityQueue<>(
+            Comparator.comparingInt(QueuedVoice::priority).reversed()
+                    .thenComparingLong(QueuedVoice::sequence));
     private static @Nullable SoundInstance activeVoice;
+    private static int activeVoicePriority = -1;
+    private static int activeVoiceWarningId;
+    private static long nextVoiceSequence;
     private static boolean groundGearWarningWasActive;
     private static int previousRadioAltitude = -1;
     private static int armedCallouts = 0;
     private static boolean retardFired;
+    private static boolean approachingMinimumsFired;
+    private static boolean minimumsFired;
+    private static int previousAircraftAltitudeFeet = -1;
+    private static int lastVerticalVoiceId;
+    private static int verticalVoiceCooldown;
     private @Nullable FlightEngineSound engineSound;
+    private boolean engineSoundCruise;
+    private static int cameraFollowEntityId = -1;
+    private static int atcHighlightedEntityId = -1;
+    private static @Nullable Entity atcHighlightedEntity;
+    private static boolean atcHighlightOriginalGlow;
 
     private static KeyMapping key(String translation, int keyCode) {
         return KeyMappingHelper.registerKeyMapping(new KeyMapping(translation,
@@ -79,9 +123,22 @@ public class FlightLineClient implements ClientModInitializer {
     }
 
     public static boolean isFlightEnabled() { return flightEnabled; }
+    public static KeyMapping flightRadar() { return OPEN_FLIGHT_RADAR; }
+    public static KeyMapping togglePfd() { return TOGGLE_PFD; }
+    public static KeyMapping toggleEicas() { return TOGGLE_EICAS; }
+    public static KeyMapping toggleNdRadar() { return TOGGLE_ND_RADAR; }
+    public static KeyMapping toggleRadioAltimeter() { return TOGGLE_RADIO_ALTIMETER; }
+    public static KeyMapping toggleKeybindHints() { return TOGGLE_KEYBIND_HINTS; }
+    public static KeyMapping openControls() { return OPEN_CONTROLS; }
+
+    public static void playTcasTest(Minecraft client) {
+        SoundEvent result = FlightHud.hasRadarData() ? FlightLine.TCAS_TEST_PASS : FlightLine.TCAS_TEST_FAIL;
+        client.getSoundManager().play(SimpleSoundInstance.forUI(result, 1.6f, 1.0f));
+    }
 
     @Override
     public void onInitializeClient() {
+        FlightHud.loadPreferences();
         ClientPlayNetworking.registerGlobalReceiver(FlightStatePayload.TYPE, (payload, context) -> {
             flightEnabled = payload.enabled();
             airborne = payload.enabled() && (payload.phase() == 4 || payload.phase() == 5);
@@ -112,6 +169,15 @@ public class FlightLineClient implements ClientModInitializer {
                     payload.cockpitGuidance().weatherGuidance().turbulencePercent());
             playCockpitAlerts(context.client(), payload.warnings(), payload.radioAltitudeFeet(), payload.verticalSpeedFpm());
         });
+        ClientPlayNetworking.registerGlobalReceiver(FlightRadarPayload.TYPE, (payload, context) ->
+                FlightHud.updateRadar(payload));
+        ClientPlayNetworking.registerGlobalReceiver(AtcRadioPayload.TYPE, (payload, context) -> {
+            FlightHud.showAtcMessage(payload.message(), payload.senderEntityId());
+            context.client().getSoundManager().play(SimpleSoundInstance.forUI(
+                    FlightLine.CALLOUT_DING, 1.3f, 1.0f));
+        });
+        ClientPlayNetworking.registerGlobalReceiver(OpenAtcPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> context.client().gui.setScreen(new AtcScreen())));
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
                 FlightLine.id("flight_status"), FlightHud::render);
 
@@ -134,10 +200,33 @@ public class FlightLineClient implements ClientModInitializer {
                         FlightHud.currentSpeedKnots()
                 ));
             }
-            boolean autolandClick = TOGGLE_AUTOLAND.consumeClick();
-            if (autolandClick && player != null && client.level != null && flightEnabled
-                    && client.gui.screen() == null) {
-                ClientPlayNetworking.send(new ToggleAutolandPayload());
+            if (client.gui.screen() == null) {
+                if (ACK_ATC.consumeClick() && player != null && FlightHud.hasAtcMessage()) {
+                    int controllerId = FlightHud.atcControllerEntityId();
+                    if (controllerId >= 0) {
+                        ClientPlayNetworking.send(new AtcAckPayload(controllerId));
+                        FlightHud.showAtcMessage("ACK SENT TO ATC", -1);
+                    }
+                }
+                if (TOGGLE_PFD.consumeClick()) FlightHud.togglePfd();
+                if (TOGGLE_EICAS.consumeClick()) FlightHud.toggleEicas();
+                if (TOGGLE_ND_RADAR.consumeClick()) FlightHud.toggleRadar();
+                if (TOGGLE_RADIO_ALTIMETER.consumeClick()) FlightHud.toggleRadioAltimeter();
+                if (TOGGLE_KEYBIND_HINTS.consumeClick()) FlightHud.toggleKeybinds();
+                if (OPEN_CONTROLS.consumeClick()) client.gui.setScreen(new FlightControlsScreen());
+                if (TOGGLE_ANTI_ICE.consumeClick() && player != null && flightEnabled) {
+                    ClientPlayNetworking.send(new ToggleAntiIcePayload(!FlightHud.weatherGuidance().antiIceActive()));
+                }
+                if (OPEN_FLIGHT_RADAR.consumeClick() && flightEnabled
+                        && player != null && client.level != null) {
+                    client.gui.setScreen(new FlightRadarScreen());
+                }
+            }
+            updateAtcCameraFollow(client);
+            if (player != null && FlightHud.isAutopilotEngaged()) {
+                player.setYRot(FlightHud.currentHeading());
+                player.setYHeadRot(FlightHud.currentHeading());
+                player.setXRot(-FlightHud.currentPitch());
             }
             if (player == null || client.level == null || !flightEnabled) return;
             if (client.gui.screen() != null) {
@@ -192,8 +281,8 @@ public class FlightLineClient implements ClientModInitializer {
             int controls = 0;
             if (client.options.keyUp.isDown()) controls |= FlightControls.FORWARD;
             if (client.options.keyDown.isDown()) controls |= FlightControls.REVERSE;
-            if (client.options.keyLeft.isDown()) controls |= FlightControls.LEFT;
-            if (client.options.keyRight.isDown()) controls |= FlightControls.RIGHT;
+            if (BANK_LEFT.isDown()) controls |= FlightControls.LEFT;
+            if (BANK_RIGHT.isDown()) controls |= FlightControls.RIGHT;
             if (BRAKES.isDown()) controls |= FlightControls.BRAKE;
             if (controls != lastSentControls) {
                 ClientPlayNetworking.send(new FlightInputPayload(controls));
@@ -216,10 +305,18 @@ public class FlightLineClient implements ClientModInitializer {
                 client.getSoundManager().stop(activeVoice);
                 activeVoice = null;
             }
+            activeVoicePriority = -1;
+            activeVoiceWarningId = 0;
+            nextVoiceSequence = 0;
             groundGearWarningWasActive = false;
             previousRadioAltitude = -1;
             armedCallouts = 0;
             retardFired = false;
+            approachingMinimumsFired = false;
+            minimumsFired = false;
+            previousAircraftAltitudeFeet = -1;
+            lastVerticalVoiceId = 0;
+            verticalVoiceCooldown = 0;
             warningRepeatCooldown = 0;
             lastSentControls = -1;
             if (engineSound != null) {
@@ -227,6 +324,8 @@ public class FlightLineClient implements ClientModInitializer {
                 engineSound = null;
             }
             FlightHud.clear();
+            stopAtcCameraFollow(client);
+            clearAtcHighlight();
             if (client.player != null) client.player.setNoGravity(false);
         });
     }
@@ -241,15 +340,18 @@ public class FlightLineClient implements ClientModInitializer {
         if ((warnings & FlightWarning.WINDSHEAR) != 0) {
             alertId = 10;
             sound = FlightLine.GPWS_WINDSHEAR;
+            cautionPreamble = true;
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.PULL_UP) != 0) {
             alertId = 11;
             phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN,
                     FlightLine.GPWS_PULL_UP};
+            cautionPreamble = true;
             repeatInterval = 30;
         } else if ((warnings & FlightWarning.TERRAIN) != 0) {
             alertId = 12;
             phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN};
+            cautionPreamble = true;
             repeatInterval = 35;
         } else if ((warnings & FlightWarning.TCAS_RESOLUTION) != 0) {
             boolean climb = (warnings & FlightWarning.TCAS_CLIMB) != 0;
@@ -294,6 +396,7 @@ public class FlightLineClient implements ClientModInitializer {
         } else if ((warnings & FlightWarning.TCAS_TRAFFIC) != 0) {
             alertId = 1;
             sound = FlightLine.TCAS_TRAFFIC;
+            cautionPreamble = true;
             repeatInterval = 0;
         } else if ((warnings & (FlightWarning.GLIDESLOPE_LOW | FlightWarning.GLIDESLOPE_HIGH)) != 0) {
             alertId = 18;
@@ -337,6 +440,11 @@ public class FlightLineClient implements ClientModInitializer {
             alertId = 27;
             sound = FlightLine.CAUTION_ALARM;
             repeatInterval = 60;
+        } else if ((warnings & FlightWarning.AIRFRAME_STRESS) != 0) {
+            alertId = 29;
+            sound = FlightLine.CAUTION_ALARM;
+            cautionPreamble = true;
+            repeatInterval = 45;
         } else if ((warnings & FlightWarning.OVERSPEED) != 0) {
             alertId = 28;
             sound = FlightLine.CAUTION_ALARM;
@@ -349,6 +457,7 @@ public class FlightLineClient implements ClientModInitializer {
             warningRepeatCooldown = 0;
         } else if (alertId != lastWarningCallout) {
             lastWarningCallout = alertId;
+            preemptLowerPriorityVoice(client, alertId, alertPriority(alertId));
             if (cautionPreamble) enqueueVoice(FlightLine.CAUTION_ALARM, alertId);
             if (phrase != null) enqueueVoiceSequence(alertId, phrase);
             else enqueueVoice(sound, alertId);
@@ -365,7 +474,7 @@ public class FlightLineClient implements ClientModInitializer {
 
         boolean groundGearWarningActive = (warnings & FlightWarning.GEAR_SELECTED_ON_GROUND) != 0;
         if (groundGearWarningActive && !groundGearWarningWasActive) {
-            enqueueVoice(FlightLine.CAUTION_ALARM, 0);
+            enqueueCalloutVoice(FlightLine.CAUTION_ALARM);
         }
         groundGearWarningWasActive = groundGearWarningActive;
 
@@ -385,12 +494,27 @@ public class FlightLineClient implements ClientModInitializer {
 
             if (radioAlt <= 20 && radioAlt > 2 && FlightHud.throttle() > 0.05f && !retardFired) {
                 retardFired = true;
-                enqueueVoiceSequence(0, FlightLine.CALLOUT_DING, FlightLine.CALLOUT_RETARD);
+                enqueueCalloutVoice(FlightLine.CALLOUT_RETARD);
+            }
+            if (FlightHud.isIlsActive() && !approachingMinimumsFired
+                    && previousRadioAltitude > 200 && radioAlt <= 200) {
+                approachingMinimumsFired = true;
+                enqueueCalloutVoice(FlightLine.VOICE_APPROACHING_MINIMUMS);
+            }
+            if (FlightHud.isIlsActive() && !minimumsFired
+                    && previousRadioAltitude > 100 && radioAlt <= 100) {
+                minimumsFired = true;
+                enqueueCalloutVoice(FlightLine.VOICE_MINIMUMS);
             }
         }
         if (radioAlt > 50) {
             retardFired = false;
         }
+        if (radioAlt > 250) {
+            approachingMinimumsFired = false;
+            minimumsFired = false;
+        }
+        playAltitudeAndVerticalGuidance(client, verticalSpeed);
         previousRadioAltitude = radioAlt;
         startNextVoice(client);
     }
@@ -405,7 +529,6 @@ public class FlightLineClient implements ClientModInitializer {
         while (SPOILERS_EXTEND.consumeClick()) { }
         while (SPOILERS_RETRACT.consumeClick()) { }
         while (TOGGLE_AUTOPILOT.consumeClick()) { }
-        while (TOGGLE_AUTOLAND.consumeClick()) { }
         gearWasDown = TOGGLE_GEAR.isDown();
         startEnginesWasDown = START_ENGINES.isDown();
         shutdownEnginesWasDown = SHUTDOWN_ENGINES.isDown();
@@ -421,12 +544,86 @@ public class FlightLineClient implements ClientModInitializer {
             armedCallouts |= mask;
         } else if ((armedCallouts & mask) != 0 && previousRadioAltitude >= threshold && currentAlt < threshold) {
             armedCallouts &= ~mask;
-            enqueueVoiceSequence(0, FlightLine.CALLOUT_DING, sound);
+            enqueueCalloutVoice(sound);
         }
     }
 
+    private static void playAltitudeAndVerticalGuidance(Minecraft client, int verticalSpeed) {
+        var player = client.player;
+        if (player == null) return;
+        int currentAltitudeFeet = (int) Math.round(player.getY() * 3.28084);
+        var guidance = FlightHud.autopilotGuidance();
+        if (FlightHud.isAutopilotEngaged()) {
+            int plus100Altitude = guidance.targetAltitudeFeet() + 100;
+            if (previousAircraftAltitudeFeet >= 0
+                    && ((previousAircraftAltitudeFeet < plus100Altitude && currentAltitudeFeet >= plus100Altitude)
+                    || (previousAircraftAltitudeFeet > plus100Altitude && currentAltitudeFeet <= plus100Altitude))) {
+                enqueueCalloutVoice(FlightLine.CALLOUT_PLUS_100);
+            }
+            int error = guidance.targetVerticalSpeedFpm() - verticalSpeed;
+            int voiceId;
+            SoundEvent voice;
+            if (Math.abs(error) > 800) {
+                voiceId = 7;
+                voice = FlightLine.VOICE_ADJUST_VERTICAL_SPEED;
+            } else if (Math.abs(error) <= 150) {
+                voiceId = 1;
+                voice = FlightLine.VOICE_MAINTAIN_VERTICAL_SPEED;
+            } else if (guidance.targetVerticalSpeedFpm() > 0) {
+                voiceId = error > 0 ? 2 : 3;
+                voice = error > 0 ? FlightLine.VOICE_INCREASE_CLIMB : FlightLine.VOICE_REDUCE_CLIMB;
+            } else if (guidance.targetVerticalSpeedFpm() < 0) {
+                voiceId = error > 0 ? 4 : 5;
+                voice = error > 0 ? FlightLine.VOICE_INCREASE_DESCEND : FlightLine.VOICE_REDUCE_DESCEND;
+            } else {
+                voiceId = 6;
+                voice = FlightLine.VOICE_MONITOR_VERTICAL_SPEED;
+            }
+            if (voiceId != lastVerticalVoiceId && verticalVoiceCooldown <= 0) {
+                enqueueGuidanceVoice(voice);
+                lastVerticalVoiceId = voiceId;
+                verticalVoiceCooldown = 100;
+            }
+            if (verticalVoiceCooldown > 0) verticalVoiceCooldown--;
+        } else {
+            lastVerticalVoiceId = 0;
+            verticalVoiceCooldown = 0;
+        }
+        previousAircraftAltitudeFeet = currentAltitudeFeet;
+    }
+
+    private static void enqueueGuidanceVoice(SoundEvent sound) {
+        enqueueVoice(sound, 0);
+    }
+
     private static void enqueueVoice(@Nullable SoundEvent sound, int warningId) {
-        if (sound != null) VOICE_QUEUE.add(new QueuedVoice(sound, warningId));
+        if (sound != null) {
+            VOICE_QUEUE.add(new QueuedVoice(sound, warningId,
+                    warningId == 0 ? 0 : alertPriority(warningId), nextVoiceSequence++));
+        }
+    }
+
+    private static void enqueueCalloutVoice(SoundEvent sound) {
+        VOICE_QUEUE.add(new QueuedVoice(sound, 0, 2, nextVoiceSequence++));
+    }
+
+    private static int alertPriority(int warningId) {
+        return switch (warningId) {
+            case 2, 3, 4, 5, 10, 11, 12, 13, 15, 16, 17, 29 -> 4;
+            default -> 3;
+        };
+    }
+
+    private static void preemptLowerPriorityVoice(Minecraft client, int warningId, int priority) {
+        VOICE_QUEUE.removeIf(voice -> voice.priority() < priority
+                || voice.warningId() != 0 && voice.warningId() != warningId);
+        if (activeVoice != null && activeVoiceWarningId != warningId
+                && activeVoicePriority <= priority) {
+            client.getSoundManager().stop(activeVoice);
+            activeVoice = null;
+            activeVoicePriority = -1;
+            activeVoiceWarningId = 0;
+        }
     }
 
     private static void enqueueVoiceSequence(int warningId, SoundEvent... sounds) {
@@ -437,17 +634,21 @@ public class FlightLineClient implements ClientModInitializer {
         var soundManager = client.getSoundManager();
         if (activeVoice != null && soundManager.isActive(activeVoice)) return;
         activeVoice = null;
+        activeVoicePriority = -1;
+        activeVoiceWarningId = 0;
         while (!VOICE_QUEUE.isEmpty()) {
             QueuedVoice next = VOICE_QUEUE.remove();
             if (next.warningId() != 0 && next.warningId() != activeAlertId) continue;
-            SoundInstance instance = SimpleSoundInstance.forUI(next.sound(), 1.0f, 1.0f);
+            SoundInstance instance = SimpleSoundInstance.forUI(next.sound(), 1.6f, 1.0f);
             soundManager.play(instance);
             activeVoice = instance;
+            activeVoicePriority = next.priority();
+            activeVoiceWarningId = next.warningId();
             return;
         }
     }
 
-    private record QueuedVoice(SoundEvent sound, int warningId) {
+    private record QueuedVoice(SoundEvent sound, int warningId, int priority, long sequence) {
     }
 
     private void updateViewBobbing(Minecraft client) {
@@ -472,9 +673,15 @@ public class FlightLineClient implements ClientModInitializer {
             }
             return;
         }
+        boolean cruise = airborne;
+        if (engineSound != null && engineSoundCruise != cruise) {
+            engineSound.stopLoop();
+            engineSound = null;
+        }
         if (engineSound == null || engineSound.isStopped()) {
-            FlightEngineSound sound = new FlightEngineSound();
+            FlightEngineSound sound = new FlightEngineSound(cruise);
             engineSound = sound;
+            engineSoundCruise = cruise;
             client.getSoundManager().queueTickingSound(sound);
         }
     }
@@ -491,7 +698,47 @@ public class FlightLineClient implements ClientModInitializer {
         changed |= migrateBinding(FLAPS_DOWN, "key.keyboard.v", "key.keyboard.z", "key.keyboard.keypad.3", "key.keyboard.left.bracket");
         changed |= migrateBinding(SPOILERS_EXTEND, "key.keyboard.x", "key.keyboard.p", "key.keyboard.o");
         changed |= migrateBinding(SPOILERS_RETRACT, "key.keyboard.z");
+        changed |= migrateBinding(TOGGLE_PFD, "key.keyboard.u", "key.keyboard.f6");
+        changed |= migrateBinding(TOGGLE_EICAS, "key.keyboard.i", "key.keyboard.f7");
+        changed |= migrateBinding(TOGGLE_ND_RADAR, "key.keyboard.b", "key.keyboard.f8");
+        changed |= migrateBinding(TOGGLE_RADIO_ALTIMETER, "key.keyboard.n", "key.keyboard.f9");
+        changed |= migrateBinding(TOGGLE_KEYBIND_HINTS, "key.keyboard.f9", "key.keyboard.o", "key.keyboard.f10");
+        changed |= assignFreeDefaultBindings(Minecraft.getInstance());
         if (changed) KeyMapping.resetMapping();
+    }
+
+    private static boolean assignFreeDefaultBindings(Minecraft client) {
+        Set<KeyMapping> flightlineBindings = Set.copyOf(FLIGHTLINE_BINDINGS);
+        List<KeyMapping> occupied = new ArrayList<>();
+        for (KeyMapping mapping : client.options.keyMappings) {
+            if (!flightlineBindings.contains(mapping) && !mapping.isUnbound()) occupied.add(mapping);
+        }
+
+        boolean changed = false;
+        for (KeyMapping mapping : FLIGHTLINE_BINDINGS) {
+            boolean conflict = occupied.stream().anyMatch(other -> mapping.same(other)
+                    && !isDefaultBankKeyOverlap(mapping, other, client));
+            if (conflict && mapping.isDefault()) {
+                boolean assigned = false;
+                for (String candidateName : LAPTOP_KEY_CANDIDATES) {
+                    InputConstants.Key candidate = InputConstants.getKey("key.keyboard." + candidateName);
+                    if (occupied.stream().noneMatch(other -> other.matches(candidate))) {
+                        mapping.setKey(candidate);
+                        FlightLine.LOGGER.info("Moved conflicting Flight Line keybind {} to {}",
+                                mapping.getName(), candidateName.toUpperCase(java.util.Locale.ROOT));
+                        changed = true;
+                        assigned = true;
+                        break;
+                    }
+                }
+                if (!assigned) {
+                    FlightLine.LOGGER.warn("No free laptop-friendly key found for Flight Line binding {}",
+                            mapping.getName());
+                }
+            }
+            if (!mapping.isUnbound()) occupied.add(mapping);
+        }
+        return changed;
     }
 
     private static boolean migrateBinding(KeyMapping mapping, String target, String... oldKeys) {
@@ -504,13 +751,100 @@ public class FlightLineClient implements ClientModInitializer {
         return false;
     }
 
+    private static boolean isDefaultBankKeyOverlap(KeyMapping mapping, KeyMapping occupied,
+                                                   Minecraft client) {
+        return (mapping == BANK_LEFT && occupied == client.options.keyLeft)
+                || (mapping == BANK_RIGHT && occupied == client.options.keyRight);
+    }
+
+    private static void updateAtcCameraFollow(Minecraft client) {
+        updateAtcHighlight(client);
+        if (cameraFollowEntityId < 0 || client.level == null || client.player == null) return;
+        Entity target = client.level.getEntity(cameraFollowEntityId);
+        if (target == null || !target.isAlive()) {
+            stopAtcCameraFollow(client);
+            return;
+        }
+        if (client.getCameraEntity() != target) client.setCameraEntity(target);
+    }
+
+    private static void updateAtcHighlight(Minecraft client) {
+        if (atcHighlightedEntityId < 0 || client.level == null) return;
+        Entity target = client.level.getEntity(atcHighlightedEntityId);
+        if (target == null || !target.isAlive()) {
+            clearAtcHighlight();
+            return;
+        }
+        if (atcHighlightedEntity != target) {
+            int selectedEntityId = atcHighlightedEntityId;
+            clearAtcHighlight();
+            atcHighlightedEntityId = selectedEntityId;
+            atcHighlightedEntity = target;
+            atcHighlightOriginalGlow = target.isCurrentlyGlowing();
+        }
+        if (!target.isCurrentlyGlowing()) target.setGlowingTag(true);
+    }
+
+    public static void setAtcSelectedTarget(int entityId) {
+        if (atcHighlightedEntityId == entityId) return;
+        clearAtcHighlight();
+        atcHighlightedEntityId = entityId;
+        updateAtcHighlight(Minecraft.getInstance());
+    }
+
+    static int atcSelectedTarget() {
+        return atcHighlightedEntityId;
+    }
+
+    public static void toggleAtcCameraFollow(int entityId) {
+        Minecraft client = Minecraft.getInstance();
+        if (cameraFollowEntityId == entityId) {
+            stopAtcCameraFollow(client);
+        } else {
+            stopAtcCameraFollow(client);
+            cameraFollowEntityId = entityId;
+            updateAtcCameraFollow(client);
+        }
+    }
+
+    public static boolean isFollowingAtcTarget(int entityId) {
+        return cameraFollowEntityId == entityId;
+    }
+
+    static KeyMapping ackAtc() { return ACK_ATC; }
+
+    private static void stopAtcCameraFollow(Minecraft client) {
+        cameraFollowEntityId = -1;
+        if (client.player != null && client.getCameraEntity() != client.player) {
+            client.setCameraEntity(client.player);
+        }
+    }
+
+    private static void clearAtcHighlight() {
+        if (atcHighlightedEntity != null) {
+            atcHighlightedEntity.setGlowingTag(atcHighlightOriginalGlow);
+            atcHighlightedEntity = null;
+        }
+        atcHighlightedEntityId = -1;
+    }
+
+    public static List<KeyMapping> flightlineBindings() {
+        return FLIGHTLINE_BINDINGS;
+    }
+
+    public static List<KeyMapping> controlScreenBindings() {
+        List<KeyMapping> bindings = new ArrayList<>(FLIGHTLINE_BINDINGS);
+        bindings.add(Minecraft.getInstance().options.keyInventory);
+        bindings.sort(Comparator.comparing(FlightLineClient::keyName, String.CASE_INSENSITIVE_ORDER));
+        return bindings;
+    }
+
     public static float bankDegrees() { return bankDegrees; }
     public static boolean isAirborne() { return airborne; }
     public static boolean areEnginesActive() { return enginesActive; }
 
     static KeyMapping toggleGear() { return TOGGLE_GEAR; }
     static KeyMapping toggleAutopilot() { return TOGGLE_AUTOPILOT; }
-    static KeyMapping toggleAutoland() { return TOGGLE_AUTOLAND; }
     static KeyMapping startEngines() { return START_ENGINES; }
     static KeyMapping shutdownEngines() { return SHUTDOWN_ENGINES; }
     static KeyMapping flapsUp() { return FLAPS_UP; }
@@ -519,7 +853,10 @@ public class FlightLineClient implements ClientModInitializer {
     static KeyMapping spoilersRetract() { return SPOILERS_RETRACT; }
     static KeyMapping pushback() { return TOGGLE_PUSHBACK; }
     static KeyMapping brakes() { return BRAKES; }
+    static KeyMapping antiIce() { return TOGGLE_ANTI_ICE; }
     static KeyMapping inventory() { return Minecraft.getInstance().options.keyInventory; }
+    static KeyMapping bankLeft() { return BANK_LEFT; }
+    static KeyMapping bankRight() { return BANK_RIGHT; }
 
     static String keyName(KeyMapping mapping) {
         return java.util.Objects.requireNonNull(mapping.getTranslatedKeyMessage().getString());

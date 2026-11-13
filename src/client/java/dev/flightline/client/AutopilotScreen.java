@@ -5,6 +5,7 @@ import dev.flightline.network.ConfigureIlsPayload;
 import dev.flightline.network.FlightInstrumentPayload;
 import dev.flightline.network.ToggleAutolandPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -20,11 +21,18 @@ public class AutopilotScreen extends Screen {
     private static int cachedVs = 1000;
     private static int cachedSpeed = 160;
     private static float cachedGlideSlope = 3.0f;
+    private static int cachedThresholdX;
+    private static int cachedThresholdZ;
+    private static int cachedRunwayHeading;
+    private static boolean thresholdDefaultsInitialized;
 
     private @Nullable EditBox headingBox;
     private @Nullable EditBox altitudeBox;
     private @Nullable EditBox vsBox;
     private @Nullable EditBox speedBox;
+    private @Nullable EditBox thresholdXBox;
+    private @Nullable EditBox thresholdZBox;
+    private @Nullable EditBox runwayHeadingBox;
     private @Nullable Button apMasterBtn;
     private boolean engaged;
     private int activePage;
@@ -39,6 +47,15 @@ public class AutopilotScreen extends Screen {
         if (currentAltitudeFeet > 0) cachedAltitude = Math.max(100, currentAltitudeFeet);
         if (Math.abs(currentVsFpm) > 50) cachedVs = currentVsFpm;
         if (currentSpeedKnots > 0) cachedSpeed = currentSpeedKnots;
+        if (!thresholdDefaultsInitialized) {
+            var player = Minecraft.getInstance().player;
+            if (player != null) {
+                cachedThresholdX = player.blockPosition().getX();
+                cachedThresholdZ = player.blockPosition().getZ();
+                cachedRunwayHeading = Math.floorMod(Math.round(player.getYRot()), 360);
+            }
+            thresholdDefaultsInitialized = true;
+        }
     }
 
     @Override
@@ -132,29 +149,33 @@ public class AutopilotScreen extends Screen {
                         size(114, scaleX), size(22, scaleY)).build();
         addRenderableWidget(apMasterButton());
         } else if (activePage == 1) {
-            String setIlsText = width < 300 ? "SET ILS" : "SET THRESHOLD HERE";
-            String clearIlsText = width < 300 ? "CLEAR" : "CLEAR ILS";
+            thresholdXBox = coordinateInput(left, top, scaleX, scaleY, 38, "X", cachedThresholdX);
+            thresholdZBox = coordinateInput(left, top, scaleX, scaleY, 126, "Z", cachedThresholdZ);
+            runwayHeadingBox = coordinateInput(left, top, scaleX, scaleY, 214, "HDG", cachedRunwayHeading);
             addRenderableWidget(Button.builder(Component.literal("- 0.1°"), b -> adjustGlideSlope(-0.1f))
-                    .bounds(place(left, 35, scaleX), place(top, 90, scaleY),
-                            size(76, scaleX), size(20, scaleY)).build());
+                    .bounds(place(left, 54, scaleX), place(top, 95, scaleY),
+                            size(76, scaleX), size(18, scaleY)).build());
             addRenderableWidget(Button.builder(Component.literal("+ 0.1°"), b -> adjustGlideSlope(0.1f))
-                    .bounds(place(left, 209, scaleX), place(top, 90, scaleY),
-                            size(76, scaleX), size(20, scaleY)).build());
-            addRenderableWidget(Button.builder(Component.literal(setIlsText), b -> setIls())
-                    .bounds(place(left, 30, scaleX), place(top, 144, scaleY),
-                            size(124, scaleX), size(24, scaleY)).build());
-            addRenderableWidget(Button.builder(Component.literal(clearIlsText), b -> clearIls())
-                    .bounds(place(left, 166, scaleX), place(top, 144, scaleY),
-                            size(124, scaleX), size(24, scaleY)).build());
+                    .bounds(place(left, 190, scaleX), place(top, 95, scaleY),
+                            size(76, scaleX), size(18, scaleY)).build());
+            addRenderableWidget(Button.builder(Component.literal("SET RUNWAY / ILS"), b -> setIls())
+                    .bounds(place(left, 20, scaleX), place(top, 122, scaleY),
+                            size(138, scaleX), size(20, scaleY)).build());
+            addRenderableWidget(Button.builder(Component.literal("USE MY POSITION"), b -> useCurrentPosition())
+                    .bounds(place(left, 162, scaleX), place(top, 122, scaleY),
+                            size(138, scaleX), size(20, scaleY)).build());
+            addRenderableWidget(Button.builder(Component.literal("CLEAR ILS"), b -> clearIls())
+                    .bounds(place(left, 20, scaleX), place(top, 148, scaleY),
+                            size(280, scaleX), size(18, scaleY)).build());
             String autolandText = FlightHud.autopilotGuidance().autolandArmed()
-                    ? width < 300 ? "CANCEL LAND" : "DISARM AUTOLAND"
-                    : width < 300 ? "AUTO LAND" : "ARM AUTOLAND";
+                    ? "DISARM AUTOLAND"
+                    : "ARM ILS AUTOLAND";
             Button autolandButton = Button.builder(Component.literal(autolandText), b -> {
                         ClientPlayNetworking.send(new ToggleAutolandPayload());
                         ilsMessage = "";
                     })
-                    .bounds(place(left, 30, scaleX), place(top, 176, scaleY),
-                            size(260, scaleX), size(24, scaleY)).build();
+                    .bounds(place(left, 20, scaleX), place(top, 196, scaleY),
+                            size(280, scaleX), size(22, scaleY)).build();
             autolandButton.active = FlightLineClient.isFlightEnabled()
                     && (FlightHud.isIlsActive() || FlightHud.autopilotGuidance().autolandArmed());
             addRenderableWidget(autolandButton);
@@ -195,6 +216,43 @@ public class AutopilotScreen extends Screen {
         cachedSpeed = parseSpeed();
     }
 
+    private void saveIlsValues() {
+        cachedThresholdX = parseCoordinate(thresholdXInput(), "threshold X");
+        cachedThresholdZ = parseCoordinate(thresholdZInput(), "threshold Z");
+        cachedRunwayHeading = Math.floorMod(parseCoordinate(runwayHeadingInput(), "runway heading"), 360);
+    }
+
+    private int parseCoordinate(EditBox input, String label) {
+        try {
+            return Integer.parseInt(input.getValue().trim());
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("Enter a whole-number " + label + ".");
+        }
+    }
+
+    private void useCurrentPosition() {
+        var player = Minecraft.getInstance().player;
+        if (player == null) {
+            ilsMessage = "Player position is unavailable.";
+            return;
+        }
+        thresholdXInput().setValue(String.valueOf(player.blockPosition().getX()));
+        thresholdZInput().setValue(String.valueOf(player.blockPosition().getZ()));
+        runwayHeadingInput().setValue(String.valueOf(Math.floorMod(Math.round(player.getYRot()), 360)));
+        ilsMessage = "Threshold coordinates filled from your position.";
+    }
+
+    private EditBox coordinateInput(int left, int top, double scaleX, double scaleY, int x,
+                                    String label, int initialValue) {
+        int fieldX = place(left, x, scaleX);
+        EditBox input = new EditBox(font, fieldX, place(top, 60, scaleY),
+                size(54, scaleX), size(18, scaleY), Component.literal(label));
+        input.setValue(String.valueOf(initialValue));
+        input.setMaxLength(10);
+        addRenderableWidget(input);
+        return input;
+    }
+
     private void adjustGlideSlope(float delta) {
         cachedGlideSlope = Math.max(1.0f, Math.min(6.0f,
                 Math.round((cachedGlideSlope + delta) * 10.0f) / 10.0f));
@@ -205,8 +263,15 @@ public class AutopilotScreen extends Screen {
             ilsMessage = "Enable flight mode before setting a runway reference.";
             return;
         }
-        ClientPlayNetworking.send(new ConfigureIlsPayload(true, cachedGlideSlope));
-        ilsMessage = "Runway reference sent.";
+        try {
+            saveIlsValues();
+        } catch (IllegalArgumentException exception) {
+            ilsMessage = exception.getMessage();
+            return;
+        }
+        ClientPlayNetworking.send(new ConfigureIlsPayload(true, cachedGlideSlope,
+                cachedThresholdX, cachedThresholdZ, cachedRunwayHeading));
+        ilsMessage = "Runway reference submitted.";
     }
 
     private void clearIls() {
@@ -214,7 +279,8 @@ public class AutopilotScreen extends Screen {
             ilsMessage = "Enable flight mode before changing ILS.";
             return;
         }
-        ClientPlayNetworking.send(new ConfigureIlsPayload(false, cachedGlideSlope));
+        ClientPlayNetworking.send(new ConfigureIlsPayload(false, cachedGlideSlope,
+                cachedThresholdX, cachedThresholdZ, cachedRunwayHeading));
         ilsMessage = "Clear request sent.";
     }
 
@@ -339,27 +405,27 @@ public class AutopilotScreen extends Screen {
             graphics.text(font, fitText(font, autothrottle, panelWidth - 40),
                     place(left, 24, scaleX), place(top, 210, scaleY), 0xFFB6C8D1, true);
         } else if (activePage == 1) {
-            graphics.centeredText(font, compact ? "ILS APPROACH" : "INSTRUMENT LANDING SYSTEM", width / 2,
-                    place(top, 62, scaleY), 0xFFB6C8D1);
-            graphics.centeredText(font, "Glide slope: " + String.format(Locale.ROOT, "%.1f°", cachedGlideSlope),
-                    width / 2, place(top, 78, scaleY), 0xFFFF6CD9);
+            graphics.text(font, "THRESHOLD X", place(left, 38, scaleX), place(top, 48, scaleY), 0xFF9FC4D0, true);
+            graphics.text(font, "THRESHOLD Z", place(left, 126, scaleX), place(top, 48, scaleY), 0xFF9FC4D0, true);
+            graphics.text(font, "RUNWAY HDG", place(left, 214, scaleX), place(top, 48, scaleY), 0xFF9FC4D0, true);
+            graphics.centeredText(font, String.format(Locale.ROOT,
+                            "GS %.1f°  ·  HDG 0=S 90=W 180=N 270=E", cachedGlideSlope),
+                    width / 2, place(top, 82, scaleY), 0xFFFF6CD9);
             String ilsStatus = !ilsMessage.isEmpty() ? ilsMessage
-                    : !FlightLineClient.isFlightEnabled() ? "Enable flight mode to configure an approach."
                     : FlightHud.isIlsActive()
-                            ? required(String.format(Locale.ROOT, "REFERENCE ACTIVE  |  LOC %+.1f°  GS %+.1f°",
+                            ? required(String.format(Locale.ROOT, "LOC %+.1f°  GS %+.1f°",
                                     FlightHud.localizerDeviation(), FlightHud.glideslopeDeviation()))
-                            : "Stand at the runway threshold and face down the runway.";
+                            : "Enter runway X/Z; threshold height is read from terrain.";
             graphics.centeredText(font, fitText(font, ilsStatus, Math.max(1, panelWidth() - 24)),
-                    width / 2, place(top, 112, scaleY), 0xFFB6C8D1);
-            graphics.centeredText(font, FlightHud.autopilotGuidance().autolandArmed()
-                            ? "AUTOLAND ARMED  |  GEAR / FLAPS / SPEED MANAGED"
-                            : "Autoland arms only while airborne inside ILS coverage.",
-                    width / 2, place(top, 158, scaleY),
+                    width / 2, place(top, 174, scaleY), 0xFFB6C8D1);
+            String armedStatus = FlightHud.autopilotGuidance().autolandArmed()
+                    ? "ARMED · 130 KT · GEAR / FLAPS MANAGED"
+                    : FlightLineClient.isFlightEnabled()
+                            ? "Arm airborne inside the ILS approach area."
+                            : "Enable flight mode to configure or arm.";
+            graphics.centeredText(font, fitText(font, armedStatus, Math.max(1, panelWidth() - 24)),
+                    width / 2, place(top, 187, scaleY),
                     FlightHud.autopilotGuidance().autolandArmed() ? 0xFF62D89B : 0xFF83959B);
-            graphics.centeredText(font, fitText(font,
-                            "SET saves this position and heading as the runway reference.",
-                            Math.max(1, panelWidth() - 24)),
-                    width / 2, place(top, 128, scaleY), 0xFF83959B);
         } else if (activePage == 2) {
             FlightInstrumentPayload.WeatherGuidance weather = FlightHud.weatherGuidance();
             String condition = switch (weather.condition()) {
@@ -388,12 +454,20 @@ public class AutopilotScreen extends Screen {
                             : weather.turbulencePercent() >= 35 ? 0xFFFFCE52 : 0xFF62D89B);
             graphics.centeredText(font, "ESTIMATED VISIBILITY  " + weather.visibilityBlocks() + " BLOCKS",
                     width / 2, place(top, 145, scaleY), 0xFFB6C8D1);
+            String antiIceStatus = weather.antiIceEffective() ? "CLEARING"
+                    : weather.antiIceActive() ? "ON · WAITING FOR ENGINE POWER" : "OFF";
+            graphics.centeredText(font, "ICING  " + weather.icingPercent() + "%  ·  ANTI-ICE "
+                            + antiIceStatus,
+                    width / 2, place(top, 161, scaleY),
+                    weather.icingPercent() >= 20 ? 0xFFFFCE52 : 0xFFB6C8D1);
             graphics.centeredText(font, weather.condition() == 2
                             ? "Windshear possible: maintain attitude and airspeed."
                             : weather.condition() == 1
                                     ? "Rain increases gusts and reduces reported visibility."
                                     : "Wind and light turbulence remain active in clear weather.",
-                    width / 2, place(top, 169, scaleY), 0xFF83959B);
+                    width / 2, place(top, 180, scaleY), 0xFF83959B);
+            graphics.centeredText(font, "Anti-ice removes buildup only while an engine is running.",
+                    width / 2, place(top, 196, scaleY), 0xFF83959B);
         } else {
             drawKeyRow(graphics, left, top, scaleX, 54, "Gear", FlightLineClient.keyName(FlightLineClient.toggleGear()));
             drawKeyRow(graphics, left, top, scaleX, 74, "Autopilot panel", FlightLineClient.keyName(FlightLineClient.toggleAutopilot()));
@@ -406,7 +480,16 @@ public class AutopilotScreen extends Screen {
             drawKeyRow(graphics, left, top, scaleX, 154, "Pushback / brakes",
                     FlightLineClient.keyName(FlightLineClient.pushback()) + " / " + FlightLineClient.keyName(FlightLineClient.brakes()));
             drawKeyRow(graphics, left, top, scaleX, 174, "Inventory", FlightLineClient.keyName(FlightLineClient.inventory()));
-            drawKeyRow(graphics, left, top, scaleX, 194, "Autoland", FlightLineClient.keyName(FlightLineClient.toggleAutoland()));
+            drawKeyRow(graphics, left, top, scaleX, 194, "Flight radar", FlightLineClient.keyName(FlightLineClient.flightRadar()));
+            drawKeyRow(graphics, left, top, scaleX, 214, "Displays / prompts",
+                    FlightLineClient.keyName(FlightLineClient.togglePfd()) + "/"
+                            + FlightLineClient.keyName(FlightLineClient.toggleEicas()) + "/"
+                            + FlightLineClient.keyName(FlightLineClient.toggleNdRadar()) + "/"
+                            + FlightLineClient.keyName(FlightLineClient.toggleRadioAltimeter()) + "/"
+                            + FlightLineClient.keyName(FlightLineClient.toggleKeybindHints()));
+            drawKeyRow(graphics, left, top, scaleX, 224, "Anti-ice", FlightLineClient.keyName(FlightLineClient.antiIce()));
+            graphics.centeredText(font, "FLAPS add lift and drag · SPOILERS dump lift and slow descent",
+                    width / 2, place(top, 239, panelHeight() / 250.0), 0xFF83959B);
         }
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
@@ -462,6 +545,18 @@ public class AutopilotScreen extends Screen {
 
     private Button apMasterButton() {
         return java.util.Objects.requireNonNull(apMasterBtn, "Autopilot screen is not initialized");
+    }
+
+    private EditBox thresholdXInput() {
+        return java.util.Objects.requireNonNull(thresholdXBox, "ILS page is not initialized");
+    }
+
+    private EditBox thresholdZInput() {
+        return java.util.Objects.requireNonNull(thresholdZBox, "ILS page is not initialized");
+    }
+
+    private EditBox runwayHeadingInput() {
+        return java.util.Objects.requireNonNull(runwayHeadingBox, "ILS page is not initialized");
     }
 
     private static String required(@Nullable String value) {

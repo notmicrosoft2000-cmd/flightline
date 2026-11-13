@@ -1,9 +1,11 @@
 package dev.flightline.mixin;
 
 import dev.flightline.flight.FlightController;
+import dev.flightline.flight.MobFlightController;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -17,6 +19,8 @@ public abstract class FlightLandingMixin {
                                                            CallbackInfoReturnable<Boolean> callback) {
         if ((Object) this instanceof ServerPlayer player && FlightController.isFlightActive(player)) {
             callback.setReturnValue(FlightController.handleFallImpact(player, fallDistance));
+        } else if ((Object) this instanceof Mob mob && MobFlightController.suppressVanillaFallDamage(mob)) {
+            callback.setReturnValue(true);
         }
     }
 }

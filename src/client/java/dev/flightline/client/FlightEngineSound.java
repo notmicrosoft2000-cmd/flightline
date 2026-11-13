@@ -7,13 +7,17 @@ import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.sounds.SoundSource;
 
 final class FlightEngineSound extends AbstractTickableSoundInstance {
-    FlightEngineSound() {
-        super(FlightLine.ENGINE_LOOP, SoundSource.PLAYERS, SoundInstance.createUnseededRandom());
+    private final boolean cruise;
+
+    FlightEngineSound(boolean cruise) {
+        super(cruise ? FlightLine.ENGINE_CRUISE : FlightLine.ENGINE_LOOP,
+                SoundSource.PLAYERS, SoundInstance.createUnseededRandom());
+        this.cruise = cruise;
         this.looping = true;
         this.relative = true;
         this.attenuation = SoundInstance.Attenuation.NONE;
-        this.volume = 0.12f;
-        this.pitch = 0.85f;
+        this.volume = cruise ? 0.9f : 0.12f;
+        this.pitch = cruise ? 0.95f : 0.85f;
     }
 
     @Override
@@ -29,9 +33,11 @@ final class FlightEngineSound extends AbstractTickableSoundInstance {
         this.y = player.getY();
         this.z = player.getZ();
         float throttle = FlightHud.throttle();
-        this.volume = 0.10f + throttle * 0.14f;
-        this.pitch = 0.78f + throttle * 0.42f;
+        this.volume = cruise ? 0.78f + throttle * 0.22f : 0.10f + throttle * 0.14f;
+        this.pitch = cruise ? 0.92f + throttle * 0.18f : 0.78f + throttle * 0.42f;
     }
+
+    boolean isCruise() { return cruise; }
 
     void stopLoop() {
         stop();

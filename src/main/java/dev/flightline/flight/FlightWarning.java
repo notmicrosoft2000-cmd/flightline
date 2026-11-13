@@ -28,6 +28,8 @@ public final class FlightWarning {
     public static final int TERRAIN = 1 << 24;
     public static final int TOO_LOW_TERRAIN = 1 << 25;
     public static final int GEAR_SELECTED_ON_GROUND = 1 << 26;
+    public static final int ICE_ACCUMULATION = 1 << 27;
+    public static final int AIRFRAME_STRESS = 1 << 28;
 
     private FlightWarning() {
     }
