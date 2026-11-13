@@ -234,6 +234,8 @@ public class FlightLineClient implements ClientModInitializer {
     private static void playCockpitAlerts(Minecraft client, int warnings, int radioAlt, int verticalSpeed) {
         int alertId = 0;
         SoundEvent sound = null;
+        SoundEvent[] phrase = null;
+        boolean cautionPreamble = false;
         int repeatInterval = 40;
 
         if ((warnings & FlightWarning.WINDSHEAR) != 0) {
@@ -242,11 +244,12 @@ public class FlightLineClient implements ClientModInitializer {
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.PULL_UP) != 0) {
             alertId = 11;
-            sound = FlightLine.GPWS_PULL_UP;
+            phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN,
+                    FlightLine.GPWS_PULL_UP};
             repeatInterval = 30;
         } else if ((warnings & FlightWarning.TERRAIN) != 0) {
             alertId = 12;
-            sound = FlightLine.GPWS_TERRAIN;
+            phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN};
             repeatInterval = 35;
         } else if ((warnings & FlightWarning.TCAS_RESOLUTION) != 0) {
             boolean climb = (warnings & FlightWarning.TCAS_CLIMB) != 0;
@@ -266,34 +269,77 @@ public class FlightLineClient implements ClientModInitializer {
         } else if ((warnings & FlightWarning.SINK_RATE) != 0) {
             alertId = 13;
             sound = FlightLine.GPWS_SINK_RATE;
+            cautionPreamble = true;
             repeatInterval = 45;
         } else if ((warnings & FlightWarning.DONT_SINK) != 0) {
             alertId = 14;
             sound = FlightLine.GPWS_DONT_SINK;
+            cautionPreamble = true;
             repeatInterval = 45;
         } else if ((warnings & FlightWarning.TOO_LOW_TERRAIN) != 0) {
             alertId = 15;
             sound = FlightLine.GPWS_TOO_LOW_TERRAIN;
+            cautionPreamble = true;
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.GEAR_UP) != 0) {
             alertId = 16;
             sound = FlightLine.GPWS_TOO_LOW_GEAR;
+            cautionPreamble = true;
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.TOO_LOW_FLAPS) != 0) {
             alertId = 17;
             sound = FlightLine.GPWS_TOO_LOW_FLAPS;
+            cautionPreamble = true;
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.TCAS_TRAFFIC) != 0) {
             alertId = 1;
             sound = FlightLine.TCAS_TRAFFIC;
             repeatInterval = 0;
-        } else if ((warnings & FlightWarning.GLIDESLOPE_LOW) != 0) {
+        } else if ((warnings & (FlightWarning.GLIDESLOPE_LOW | FlightWarning.GLIDESLOPE_HIGH)) != 0) {
             alertId = 18;
             sound = FlightLine.GPWS_GLIDESLOPE;
+            cautionPreamble = true;
             repeatInterval = 50;
         } else if ((warnings & FlightWarning.BANK_ANGLE) != 0) {
             alertId = 19;
             sound = FlightLine.GPWS_BANK_ANGLE;
+            cautionPreamble = true;
+            repeatInterval = 45;
+        } else if ((warnings & FlightWarning.STALL) != 0) {
+            alertId = 20;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 45;
+        } else if ((warnings & FlightWarning.ENGINE_FIRE) != 0) {
+            alertId = 21;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 45;
+        } else if ((warnings & FlightWarning.ENGINE_FAILURE) != 0) {
+            alertId = 22;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 45;
+        } else if ((warnings & FlightWarning.FUEL_EMPTY) != 0) {
+            alertId = 23;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 60;
+        } else if ((warnings & FlightWarning.FUEL_LOW) != 0) {
+            alertId = 24;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 60;
+        } else if ((warnings & FlightWarning.GEAR_FAILED) != 0) {
+            alertId = 25;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 60;
+        } else if ((warnings & FlightWarning.GEAR_HOT) != 0) {
+            alertId = 26;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 60;
+        } else if ((warnings & FlightWarning.TAKEOFF_CONFIG) != 0) {
+            alertId = 27;
+            sound = FlightLine.CAUTION_ALARM;
+            repeatInterval = 60;
+        } else if ((warnings & FlightWarning.OVERSPEED) != 0) {
+            alertId = 28;
+            sound = FlightLine.CAUTION_ALARM;
             repeatInterval = 45;
         }
 
@@ -303,11 +349,14 @@ public class FlightLineClient implements ClientModInitializer {
             warningRepeatCooldown = 0;
         } else if (alertId != lastWarningCallout) {
             lastWarningCallout = alertId;
-            enqueueVoice(sound, alertId);
+            if (cautionPreamble) enqueueVoice(FlightLine.CAUTION_ALARM, alertId);
+            if (phrase != null) enqueueVoiceSequence(alertId, phrase);
+            else enqueueVoice(sound, alertId);
             warningRepeatCooldown = repeatInterval;
         } else if (alertId != 1 && --warningRepeatCooldown <= 0) {
             if (activeVoice == null && VOICE_QUEUE.isEmpty()) {
-                enqueueVoice(sound, alertId);
+                if (phrase != null) enqueueVoiceSequence(alertId, phrase);
+                else enqueueVoice(sound, alertId);
                 warningRepeatCooldown = repeatInterval;
             } else {
                 warningRepeatCooldown = 10;
@@ -316,7 +365,7 @@ public class FlightLineClient implements ClientModInitializer {
 
         boolean groundGearWarningActive = (warnings & FlightWarning.GEAR_SELECTED_ON_GROUND) != 0;
         if (groundGearWarningActive && !groundGearWarningWasActive) {
-            enqueueVoice(FlightLine.GPWS_TOO_LOW_GEAR, 0);
+            enqueueVoice(FlightLine.CAUTION_ALARM, 0);
         }
         groundGearWarningWasActive = groundGearWarningActive;
 
@@ -336,7 +385,7 @@ public class FlightLineClient implements ClientModInitializer {
 
             if (radioAlt <= 20 && radioAlt > 2 && FlightHud.throttle() > 0.05f && !retardFired) {
                 retardFired = true;
-                enqueueVoice(FlightLine.CALLOUT_RETARD, 0);
+                enqueueVoiceSequence(0, FlightLine.CALLOUT_DING, FlightLine.CALLOUT_RETARD);
             }
         }
         if (radioAlt > 50) {
@@ -372,12 +421,16 @@ public class FlightLineClient implements ClientModInitializer {
             armedCallouts |= mask;
         } else if ((armedCallouts & mask) != 0 && previousRadioAltitude >= threshold && currentAlt < threshold) {
             armedCallouts &= ~mask;
-            enqueueVoice(sound, 0);
+            enqueueVoiceSequence(0, FlightLine.CALLOUT_DING, sound);
         }
     }
 
     private static void enqueueVoice(@Nullable SoundEvent sound, int warningId) {
         if (sound != null) VOICE_QUEUE.add(new QueuedVoice(sound, warningId));
+    }
+
+    private static void enqueueVoiceSequence(int warningId, SoundEvent... sounds) {
+        for (SoundEvent sound : sounds) enqueueVoice(sound, warningId);
     }
 
     private static void startNextVoice(Minecraft client) {

@@ -56,6 +56,8 @@ public class FlightLine implements ModInitializer {
     public static final SoundEvent GPWS_BANK_ANGLE = registerSound("gpws_bank_angle");
     public static final SoundEvent GPWS_GLIDESLOPE = registerSound("gpws_glideslope");
     public static final SoundEvent GPWS_WINDSHEAR = registerSound("gpws_windshear");
+    public static final SoundEvent CAUTION_ALARM = registerSound("caution_alarm");
+    public static final SoundEvent CALLOUT_DING = registerSound("callout_ding");
     public static final SoundEvent CALLOUT_2500 = registerSound("callout_2500");
     public static final SoundEvent CALLOUT_1000 = registerSound("callout_1000");
     public static final SoundEvent CALLOUT_500 = registerSound("callout_500");

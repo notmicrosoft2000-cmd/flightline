@@ -23,6 +23,7 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 - Camera shake is rotational and smoothed, with intensity from gusts/windshear, takeoff, bank angle, low descent, and landing rollout.
 - Weather sampling varies wind, turbulence, and estimated visibility across clear, rainy, and thunderstorm conditions. Turbulence affects aircraft velocity/bank and camera shake; thunderstorms produce periodic windshear events and warnings. EICAS and a new H > WX page show weather conditions, while the ND contact range scales to estimated visibility.
 - Autoland has a direct, remappable P keybind in the Flight Line controls category and appears in the cockpit key-reference page.
+- Cockpit alert playback is serialized and supports ordered clip sequences. Terrain/terrain/pull-up and terrain/terrain are composed from the updated clips; radio-altimeter numbers and RETARD use the ding, and caution-class alerts use the caution tone. The gear word recording currently supplied is only 2.4 ms, and no separate “too low” recording exists, so the existing complete TOO LOW GEAR asset remains in use.
 
 ## Remaining Risks / Verification
 
@@ -39,5 +40,6 @@ Follow-up to the static review. `./gradlew build` passes; this includes the auto
 11. **Autoland needs live-client/server verification.** Confirm the arming gates and ILS capture, localizer/glideslope tracking, automatic gear/flap/speed configuration, cancel and ILS-loss behavior, landing survivability, and rollout braking. Geometry tests do not model a complete world landing.
 12. **Camera shake needs visual comfort checks** during gusts, windshear, takeoff, steep banks, low descent, and rollout; verify reset on disconnect and that the smoothed effect feels consistent at different frame rates.
 13. **Weather needs live checks** in clear, rainy, and thunderstorm worlds: compare wind/turbulence/visibility readouts, confirm the ND scope changes, and verify a thunderstorm windshear warning/audio plus flight response.
+14. **Audio needs live checks** for sequential playback, alert cancellation when a warning clears, the caution/ding cues, the composed terrain phrase, and updated user recordings. Stall, engine, fuel, gear-system, takeoff-configuration, and overspeed warnings currently have a caution tone but no spoken phrase; gear/too-low word clips should be added when valid recordings are available.
 
 Use `./gradlew runClient` when assets/display support are available; a successful compile alone does not validate mixin injection, key event order, HUD placement, or movement synchronization.

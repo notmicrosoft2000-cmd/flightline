@@ -23,6 +23,8 @@
   "gpws_bank_angle": {"sounds": ["flightline:gpws_bank_angle"]},
   "gpws_glideslope": {"sounds": ["flightline:gpws_glideslope"]},
   "gpws_windshear": {"sounds": ["flightline:gpws_windshear"]},
+  "caution_alarm": {"sounds": ["flightline:caution_alarm"]},
+  "callout_ding": {"sounds": ["flightline:callout_ding"]},
   "callout_2500": {"sounds": ["flightline:callout_2500"]},
   "callout_1000": {"sounds": ["flightline:callout_1000"]},
   "callout_500": {"sounds": ["flightline:callout_500"]},
