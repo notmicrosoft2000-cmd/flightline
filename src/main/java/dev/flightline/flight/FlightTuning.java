@@ -15,10 +15,10 @@ public final class FlightTuning {
     static final int OVERSPEED_STRESS_START_TICKS = 80;
     static final int OVERSPEED_DAMAGE_START_TICKS = 160;
     static final int OVERSPEED_DAMAGE_INTERVAL_TICKS = 40;
-    public static final double SAFE_TOUCHDOWN_SINK_SPEED = 0.18 * WORLD_SPEED_SCALE;
-    public static final double MAX_HARD_LANDING_SINK_SPEED = 0.42 * WORLD_SPEED_SCALE;
-    public static final double SAFE_TOUCHDOWN_SPEED = MAX_AIRSPEED * 0.92;
-    public static final double MAX_HARD_LANDING_SPEED = MAX_AIRSPEED;
+    public static final double SAFE_TOUCHDOWN_SINK_SPEED = 0.30 * WORLD_SPEED_SCALE;
+    public static final double MAX_HARD_LANDING_SINK_SPEED = 0.58 * WORLD_SPEED_SCALE;
+    public static final double SAFE_TOUCHDOWN_SPEED = MAX_AIRSPEED * 0.98;
+    public static final double MAX_HARD_LANDING_SPEED = MAX_AIRSPEED * 1.08;
     public static final double AUTOTHROTTLE_DEADBAND_KNOTS = 2.0;
     public static final double KNOTS_PER_BLOCK_PER_TICK = 38.88 / WORLD_SPEED_SCALE;
     public static final double THROTTLE_LEVER_RATE = 0.02;

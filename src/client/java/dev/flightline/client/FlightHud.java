@@ -38,7 +38,7 @@ final class FlightHud {
     private static float trafficBearingDegrees;
     private static int trafficRangeBlocks, trafficAltitudeFeet;
     private static int trafficCounts;
-    private static FlightRadarPayload radarPayload = new FlightRadarPayload(0, 0, 0, 0.0f, List.of());
+    private static FlightRadarPayload radarPayload = new FlightRadarPayload(0, 0, 0, 0.0f, 0, List.of());
     private static boolean showPfd = true;
     private static boolean showEicas = true;
     private static boolean showRadar = true;
@@ -89,6 +89,14 @@ final class FlightHud {
 
     static boolean isAutopilotEngaged() {
         return autopilot;
+    }
+
+    static boolean spoilersDeployed() {
+        return (systems & (1 << 8)) != 0;
+    }
+
+    static boolean isCrashed() {
+        return phase == FlightPhase.CRASHED;
     }
 
     static FlightInstrumentPayload.AutopilotGuidance autopilotGuidance() {
@@ -270,7 +278,7 @@ final class FlightHud {
         trafficBearingDegrees = 0.0f;
         trafficRangeBlocks = trafficAltitudeFeet = 0;
         trafficCounts = 0;
-        radarPayload = new FlightRadarPayload(0, 0, 0, 0.0f, List.of());
+        radarPayload = new FlightRadarPayload(0, 0, 0, 0.0f, 0, List.of());
         radarDataReceived = false;
         lastRadarUpdateNanos = 0L;
         ilsActive = false;
@@ -341,10 +349,11 @@ final class FlightHud {
         // Altitude Tape & VSI (Right)
         g.fill(pfdX + 86, pfdY + 15, pfdX + 107, pfdY + 70, 0xD0121A22);
         g.outline(pfdX + 86, pfdY + 15, 21, 55, 0x8035A5B8);
-        // Current altitude digital readout box
+        // Current barometric altitude digital readout box
         g.fill(pfdX + 84, pfdY + 36, pfdX + 109, pfdY + 48, 0xFF0E141B);
         g.outline(pfdX + 84, pfdY + 36, 25, 12, 0xFF72E6F5);
-        g.centeredText(mc.font, fitText(mc.font, required(String.valueOf(radioAltitudeFeet)), 23), pfdX + 96, pfdY + 38,
+        int baroAltitudeFeet = (int) Math.round(player.getY() * 3.28084);
+        g.centeredText(mc.font, fitText(mc.font, required(String.valueOf(baroAltitudeFeet)), 23), pfdX + 96, pfdY + 38,
                 radioAltitudeFeet < 300 ? 0xFFFF5148 : 0xFFFFFFFF);
         g.text(mc.font, "ALT", pfdX + 88, pfdY + 17, 0xFF72E6F5, true);
 
@@ -537,18 +546,22 @@ final class FlightHud {
                     warningBlink ? 0xFFFFA29C : 0xFF72E6F5, true);
             String altitudeText = required(String.format(Locale.ROOT, "%04d", radioAltitudeFeet));
             int altitudeColor = radioAltitudeColor(radioAltitudeFeet);
-            g.text(mc.font, fitText(mc.font, altitudeText, 42), 11, lowerY + 16, altitudeColor, true);
-            g.text(mc.font, "FT AGL", 42, lowerY + 17, 0xFFB6C8D1, true);
+            g.text(mc.font, altitudeText, 11, lowerY + 16, altitudeColor, true);
+            int altWidth = mc.font.width(altitudeText);
+            g.text(mc.font, "FT AGL", 11 + altWidth + 3, lowerY + 17, 0xFFB6C8D1, true);
 
             String trendText = required(String.format(Locale.ROOT, "%s %d FPM",
                     verticalSpeedFpm < 0 ? "▼" : "▲", Math.abs(verticalSpeedFpm)));
             int trendColor = verticalSpeedFpm < -1000 ? 0xFFFF5148
                     : verticalSpeedFpm < 0 ? 0xFFFFCE52 : 0xFF68E8A5;
-            g.text(mc.font, fitText(mc.font, trendText, 88), 58, lowerY + 17, trendColor, true);
+            int trendWidth = mc.font.width(trendText);
+            int trendX = Math.max(11 + altWidth + 3 + mc.font.width("FT AGL") + 6,
+                    radioPanelWidth + 5 - trendWidth - 6);
+            g.text(mc.font, trendText, trendX, lowerY + 17, trendColor, true);
 
             int tapeX = 11;
             int tapeY = lowerY + 31;
-            int tapeWidth = 136;
+            int tapeWidth = 124;
             gauge(g, tapeX, tapeY, tapeWidth, 7,
                     Math.min(1.0f, radioAltitudeFeet / 500.0f), altitudeColor);
             for (int tickFeet : new int[]{10, 20, 50, 100, 200, 300, 400, 500}) {
@@ -582,8 +595,9 @@ final class FlightHud {
         List<String> alerts = warningLabels();
         if (!alerts.isEmpty()) {
             if (alerts.size() > 4) {
+                int hiddenAlerts = alerts.size() - 3;
                 alerts = new ArrayList<>(alerts.subList(0, 3));
-                alerts.add("+" + (warningLabels().size() - 3) + " MORE");
+                alerts.add("+" + hiddenAlerts + " MORE");
             }
             int stackHeight = alerts.size() * 12;
             int alertX = 6;
@@ -607,18 +621,17 @@ final class FlightHud {
     private static void drawKeybindList(GuiGraphicsExtractor graphics, Minecraft mc,
                                         int screenWidth, int screenHeight) {
         List<String> bindings = new ArrayList<>(List.of(
-                binding(FlightLineClient.bankLeft(), "BANK LEFT"),
-                binding(FlightLineClient.bankRight(), "BANK RIGHT"),
+                pairBinding(FlightLineClient.throttleUp(), FlightLineClient.throttleDown(), "THROTTLE"),
+                pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(), "RUDDER"),
                 binding(FlightLineClient.brakes(), "BRAKES"),
                 binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT PANEL"),
                 binding(FlightLineClient.openControls(), "ALL CONTROLS"),
                 binding(FlightLineClient.toggleKeybindHints(), "HIDE PROMPTS")));
         if (FlightLineClient.isAirborne()) {
             bindings.addAll(List.of(
-                    binding(FlightLineClient.flapsUp(), "FLAPS (+)"),
-                    binding(FlightLineClient.flapsDown(), "FLAPS (-)"),
-                    binding(FlightLineClient.spoilersExtend(), "SPOILERS (+)"),
-                    binding(FlightLineClient.spoilersRetract(), "SPOILERS (-)"),
+                    pairBinding(FlightLineClient.flapsIncrease(), FlightLineClient.flapsDecrease(),
+                            "FLAPS (+ / -)"),
+                    binding(FlightLineClient.spoilersToggle(), "SPOILERS"),
                     binding(FlightLineClient.toggleGear(), "LANDING GEAR"),
                     binding(FlightLineClient.antiIce(), "ANTI-ICE")));
         } else {
@@ -626,8 +639,10 @@ final class FlightHud {
             bindings.add(binding(FlightLineClient.pushback(), "PUSHBACK"));
             if (FlightLineClient.areEnginesActive()) {
                 bindings.add(binding(FlightLineClient.shutdownEngines(), "SHUT DOWN ENGINES"));
+            } else if (isCrashed()) {
+                bindings.add(binding(FlightLineClient.inventory(), "RESET AIRCRAFT"));
             } else {
-                bindings.add(binding(FlightLineClient.startEngines(), "START ENGINES"));
+                bindings.add(binding(FlightLineClient.inventory(), "START ENGINES"));
             }
         }
         if (FlightLineClient.isAirborne()) bindings.add(binding(FlightLineClient.flightRadar(), "FLIGHT RADAR"));
@@ -656,6 +671,11 @@ final class FlightHud {
 
     private static String binding(net.minecraft.client.KeyMapping mapping, String label) {
         return FlightLineClient.keyName(mapping) + " - " + label;
+    }
+
+    private static String pairBinding(net.minecraft.client.KeyMapping first,
+                                      net.minecraft.client.KeyMapping second, String label) {
+        return FlightLineClient.keyName(first) + "/" + FlightLineClient.keyName(second) + " - " + label;
     }
 
     private static boolean isAirbornePhase() {
@@ -956,7 +976,9 @@ final class FlightHud {
 
     private static List<String> warningLabels() {
         List<String> labels = new ArrayList<>();
-        if (phase == FlightPhase.CRASHED) labels.add("AIRFRAME CRASH - J TO RESET");
+        if (phase == FlightPhase.CRASHED) {
+            labels.add("AIRFRAME CRASH - " + FlightLineClient.keyName(FlightLineClient.inventory()) + " TO RESET");
+        }
         if ((warnings & FlightWarning.STALL) != 0) labels.add("STALL");
         if ((warnings & FlightWarning.WINDSHEAR) != 0) labels.add("WINDSHEAR");
         if ((warnings & FlightWarning.PULL_UP) != 0) labels.add("PULL UP");

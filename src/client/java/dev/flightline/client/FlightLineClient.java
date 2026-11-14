@@ -30,7 +30,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.sounds.SoundEvent;
@@ -40,57 +39,44 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
-import java.util.Set;
 
 public class FlightLineClient implements ClientModInitializer {
+    private static final float VOICE_PITCH = 1.0f;
+    private static final float VOICE_VOLUME = 1.4f;
+    private static final float CUE_VOLUME = 1.3f;
     private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(FlightLine.id("controls"));
-    private static final KeyMapping TOGGLE_GEAR = key("key.flightline.toggle_gear", 71);
-    private static final KeyMapping START_ENGINES = key("key.flightline.start_engines", 74);
-    private static final KeyMapping SHUTDOWN_ENGINES = key("key.flightline.shutdown_engines", 76);
-    private static final KeyMapping TOGGLE_PUSHBACK = key("key.flightline.toggle_pushback", 75);
-    private static final KeyMapping BRAKES = key("key.flightline.brakes", 77);
-    private static final KeyMapping FLAPS_UP = key("key.flightline.flaps_up", 67);
-    private static final KeyMapping FLAPS_DOWN = key("key.flightline.flaps_down", 86);
-    private static final KeyMapping SPOILERS_EXTEND = key("key.flightline.spoilers_extend", 88);
-    private static final KeyMapping SPOILERS_RETRACT = key("key.flightline.spoilers_retract", 90);
-    private static final KeyMapping TOGGLE_AUTOPILOT = key("key.flightline.autopilot", 72);
-    private static final KeyMapping OPEN_FLIGHT_RADAR = key("key.flightline.flight_radar", 82);
-    private static final KeyMapping TOGGLE_PFD = key("key.flightline.toggle_pfd", 85);
-    private static final KeyMapping TOGGLE_EICAS = key("key.flightline.toggle_eicas", 73);
-    private static final KeyMapping TOGGLE_ND_RADAR = key("key.flightline.toggle_nd_radar", 66);
-    private static final KeyMapping TOGGLE_RADIO_ALTIMETER = key("key.flightline.toggle_radio_altimeter", 78);
-    private static final KeyMapping TOGGLE_KEYBIND_HINTS = key("key.flightline.toggle_keybind_hints", 298);
-    private static final KeyMapping OPEN_CONTROLS = key("key.flightline.open_controls", 299);
-    private static final KeyMapping ACK_ATC = key("key.flightline.ack_atc", 296);
-    private static final KeyMapping TOGGLE_ANTI_ICE = key("key.flightline.toggle_anti_ice", 84);
-    private static final KeyMapping BANK_LEFT = key("key.flightline.bank_left", 65);
-    private static final KeyMapping BANK_RIGHT = key("key.flightline.bank_right", 68);
+    private static final KeyMapping TOGGLE_GEAR = key("key.flightline.gear", InputConstants.KEY_G);
+    private static final KeyMapping SHUTDOWN_ENGINES = key("key.flightline.shutdown", InputConstants.KEY_J);
+    private static final KeyMapping TOGGLE_PUSHBACK = key("key.flightline.pushback", InputConstants.KEY_K);
+    private static final KeyMapping BRAKES = key("key.flightline.brakes", InputConstants.KEY_M);
+    private static final KeyMapping FLAPS_INCREASE = key("key.flightline.flaps_increase", InputConstants.KEY_C);
+    private static final KeyMapping FLAPS_DECREASE = key("key.flightline.flaps_decrease", InputConstants.KEY_V);
+    private static final KeyMapping TOGGLE_SPOILERS = key("key.flightline.spoilers_toggle", InputConstants.KEY_X);
+    private static final KeyMapping TOGGLE_AUTOPILOT = key("key.flightline.autopilot", InputConstants.KEY_H);
+    private static final KeyMapping OPEN_FLIGHT_RADAR = key("key.flightline.radar", InputConstants.KEY_R);
+    private static final KeyMapping TOGGLE_PFD = key("key.flightline.pfd", InputConstants.KEY_U);
+    private static final KeyMapping TOGGLE_EICAS = key("key.flightline.eicas", InputConstants.KEY_I);
+    private static final KeyMapping TOGGLE_ND_RADAR = key("key.flightline.nd", InputConstants.KEY_B);
+    private static final KeyMapping TOGGLE_RADIO_ALTIMETER = key("key.flightline.radio_altimeter", InputConstants.KEY_N);
+    private static final KeyMapping TOGGLE_KEYBIND_HINTS = key("key.flightline.keybind_hints", InputConstants.KEY_F9);
+    private static final KeyMapping OPEN_CONTROLS = key("key.flightline.controls", InputConstants.KEY_F10);
+    private static final KeyMapping ACK_ATC = key("key.flightline.atc_ack", InputConstants.KEY_F7);
+    private static final KeyMapping TOGGLE_ANTI_ICE = key("key.flightline.anti_ice", InputConstants.KEY_F8);
     private static final List<KeyMapping> FLIGHTLINE_BINDINGS = List.of(
-            TOGGLE_GEAR, START_ENGINES, SHUTDOWN_ENGINES, TOGGLE_PUSHBACK, BRAKES,
-            FLAPS_UP, FLAPS_DOWN, SPOILERS_EXTEND, SPOILERS_RETRACT, TOGGLE_AUTOPILOT,
+            TOGGLE_GEAR, SHUTDOWN_ENGINES, TOGGLE_PUSHBACK, BRAKES,
+            FLAPS_INCREASE, FLAPS_DECREASE, TOGGLE_SPOILERS, TOGGLE_AUTOPILOT,
             OPEN_FLIGHT_RADAR, TOGGLE_PFD, TOGGLE_EICAS, TOGGLE_ND_RADAR,
-            TOGGLE_RADIO_ALTIMETER, TOGGLE_KEYBIND_HINTS, OPEN_CONTROLS, ACK_ATC, TOGGLE_ANTI_ICE,
-            BANK_LEFT, BANK_RIGHT);
-    private static final List<String> LAPTOP_KEY_CANDIDATES = List.of(
-            "q", "e", "r", "t", "y", "u", "i", "o", "p",
-            "a", "s", "d", "f", "g", "h", "j", "k", "l",
-            "z", "x", "c", "v", "b", "n", "m", "w");
+            TOGGLE_RADIO_ALTIMETER, TOGGLE_KEYBIND_HINTS, OPEN_CONTROLS, ACK_ATC, TOGGLE_ANTI_ICE);
     private static volatile boolean flightEnabled;
     private boolean savedViewBobbing;
     private boolean hasSavedViewBobbing;
     private static volatile float bankDegrees;
     private static volatile boolean airborne;
     private static volatile boolean enginesActive;
+    private static volatile boolean enginesStarting;
+    private static volatile boolean enginesRunning;
+    private static int engineStartRequestTicks;
     private int lastSentControls = -1;
-    private boolean bindingsMigrated;
-    private boolean gearWasDown;
-    private boolean startEnginesWasDown;
-    private boolean shutdownEnginesWasDown;
-    private boolean pushbackWasDown;
-    private boolean flapsUpWasDown;
-    private boolean flapsDownWasDown;
-    private boolean spoilersExtendWasDown;
-    private boolean spoilersRetractWasDown;
     private static int lastWarningCallout;
     private static int warningRepeatCooldown;
     private static int activeAlertId;
@@ -133,7 +119,7 @@ public class FlightLineClient implements ClientModInitializer {
 
     public static void playTcasTest(Minecraft client) {
         SoundEvent result = FlightHud.hasRadarData() ? FlightLine.TCAS_TEST_PASS : FlightLine.TCAS_TEST_FAIL;
-        client.getSoundManager().play(SimpleSoundInstance.forUI(result, 1.6f, 1.0f));
+        client.getSoundManager().play(SimpleSoundInstance.forUI(result, VOICE_PITCH, VOICE_VOLUME));
     }
 
     @Override
@@ -142,6 +128,7 @@ public class FlightLineClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(FlightStatePayload.TYPE, (payload, context) -> {
             flightEnabled = payload.enabled();
             airborne = payload.enabled() && (payload.phase() == 4 || payload.phase() == 5);
+            if (!payload.enabled()) engineStartRequestTicks = 0;
             if (lastSentControls == -1) lastSentControls = 0;
             FlightHud.update(payload);
             FlightCameraEffects.updateFlightState(FlightPhase.fromId(payload.phase()));
@@ -162,7 +149,9 @@ public class FlightLineClient implements ClientModInitializer {
             }
             int engine1 = payload.systems() & 7;
             int engine2 = (payload.systems() >> 3) & 7;
-            enginesActive = engine1 == 1 || engine1 == 2 || engine2 == 1 || engine2 == 2;
+            enginesStarting = engine1 == 1 || engine2 == 1;
+            enginesRunning = engine1 == 2 || engine2 == 2;
+            enginesActive = enginesStarting || enginesRunning;
             FlightHud.updateInstruments(payload);
             FlightCameraEffects.updateInstruments(payload.bankDegrees(), payload.warnings(),
                     payload.radioAltitudeFeet(), payload.verticalSpeedFpm(), (payload.systems() >> 19) & 0x7F,
@@ -174,52 +163,73 @@ public class FlightLineClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(AtcRadioPayload.TYPE, (payload, context) -> {
             FlightHud.showAtcMessage(payload.message(), payload.senderEntityId());
             context.client().getSoundManager().play(SimpleSoundInstance.forUI(
-                    FlightLine.CALLOUT_DING, 1.3f, 1.0f));
+                    FlightLine.CALLOUT_DING, VOICE_PITCH, CUE_VOLUME));
         });
         ClientPlayNetworking.registerGlobalReceiver(OpenAtcPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> context.client().gui.setScreen(new AtcScreen())));
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
                 FlightLine.id("flight_status"), FlightHud::render);
 
+        ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            MobBankTracker.tick(client);
+            if (engineStartRequestTicks > 0) engineStartRequestTicks--;
+            if (!flightEnabled || client.player == null || client.gui.screen() != null) return;
+
+            // G is the landing gear key in flight; keep vanilla quick actions from opening.
+            while (client.options.keyQuickActions.consumeClick()) { }
+
+            // E starts the engines until they are running, then behaves as the inventory key.
+            if (enginesRunning) {
+                engineStartRequestTicks = 0;
+                return;
+            }
+            if (enginesStarting || engineStartRequestTicks > 0) {
+                while (client.options.keyInventory.consumeClick()) { }
+                return;
+            }
+            boolean startRequested = false;
+            while (client.options.keyInventory.consumeClick()) startRequested = true;
+            if (startRequested) {
+                ClientPlayNetworking.send(new StartEnginesPayload());
+                if (!FlightHud.isCrashed()) engineStartRequestTicks = 120;
+            }
+        });
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            migrateLegacyBindings();
             updateViewBobbing(client);
             updateEngineSound(client);
             var player = client.player;
-            if (player != null && flightEnabled && client.gui.screen() == null
-                    && client.options.keyInventory.consumeClick()) {
-                client.gui.setScreen(new InventoryScreen(player));
-            }
-            boolean apClick = TOGGLE_AUTOPILOT.consumeClick();
-            if (apClick && player != null && client.level != null && client.gui.screen() == null) {
-                client.gui.setScreen(new AutopilotScreen(
-                        FlightHud.isAutopilotEngaged(),
-                        Math.round(FlightHud.currentHeading()),
-                        FlightHud.currentAltitudeFeet(),
-                        FlightHud.currentVsFpm(),
-                        FlightHud.currentSpeedKnots()
-                ));
-            }
-            if (client.gui.screen() == null) {
-                if (ACK_ATC.consumeClick() && player != null && FlightHud.hasAtcMessage()) {
-                    int controllerId = FlightHud.atcControllerEntityId();
-                    if (controllerId >= 0) {
-                        ClientPlayNetworking.send(new AtcAckPayload(controllerId));
-                        FlightHud.showAtcMessage("ACK SENT TO ATC", -1);
+
+            if (player != null && client.gui.screen() == null) {
+                if (TOGGLE_AUTOPILOT.consumeClick() && client.level != null) {
+                    client.gui.setScreen(new AutopilotScreen(
+                            FlightHud.isAutopilotEngaged(),
+                            Math.round(FlightHud.currentHeading()),
+                            FlightHud.currentAltitudeFeet(),
+                            FlightHud.currentVsFpm(),
+                            FlightHud.currentSpeedKnots()
+                    ));
+                }
+                if (client.gui.screen() == null) {
+                    if (ACK_ATC.consumeClick() && FlightHud.hasAtcMessage()) {
+                        int controllerId = FlightHud.atcControllerEntityId();
+                        if (controllerId >= 0) {
+                            ClientPlayNetworking.send(new AtcAckPayload(controllerId));
+                            FlightHud.showAtcMessage("ACK SENT TO ATC", -1);
+                        }
                     }
-                }
-                if (TOGGLE_PFD.consumeClick()) FlightHud.togglePfd();
-                if (TOGGLE_EICAS.consumeClick()) FlightHud.toggleEicas();
-                if (TOGGLE_ND_RADAR.consumeClick()) FlightHud.toggleRadar();
-                if (TOGGLE_RADIO_ALTIMETER.consumeClick()) FlightHud.toggleRadioAltimeter();
-                if (TOGGLE_KEYBIND_HINTS.consumeClick()) FlightHud.toggleKeybinds();
-                if (OPEN_CONTROLS.consumeClick()) client.gui.setScreen(new FlightControlsScreen());
-                if (TOGGLE_ANTI_ICE.consumeClick() && player != null && flightEnabled) {
-                    ClientPlayNetworking.send(new ToggleAntiIcePayload(!FlightHud.weatherGuidance().antiIceActive()));
-                }
-                if (OPEN_FLIGHT_RADAR.consumeClick() && flightEnabled
-                        && player != null && client.level != null) {
-                    client.gui.setScreen(new FlightRadarScreen());
+                    if (TOGGLE_PFD.consumeClick()) FlightHud.togglePfd();
+                    if (TOGGLE_EICAS.consumeClick()) FlightHud.toggleEicas();
+                    if (TOGGLE_ND_RADAR.consumeClick()) FlightHud.toggleRadar();
+                    if (TOGGLE_RADIO_ALTIMETER.consumeClick()) FlightHud.toggleRadioAltimeter();
+                    if (TOGGLE_KEYBIND_HINTS.consumeClick()) FlightHud.toggleKeybinds();
+                    if (OPEN_CONTROLS.consumeClick()) client.gui.setScreen(new FlightControlsScreen());
+                    if (TOGGLE_ANTI_ICE.consumeClick() && flightEnabled) {
+                        ClientPlayNetworking.send(new ToggleAntiIcePayload(!FlightHud.weatherGuidance().antiIceActive()));
+                    }
+                    if (OPEN_FLIGHT_RADAR.consumeClick() && flightEnabled && client.level != null) {
+                        client.gui.setScreen(new FlightRadarScreen());
+                    }
                 }
             }
             updateAtcCameraFollow(client);
@@ -237,52 +247,21 @@ public class FlightLineClient implements ClientModInitializer {
                 }
                 return;
             }
-            boolean gearClick = TOGGLE_GEAR.consumeClick() || (TOGGLE_GEAR.isDown() && !gearWasDown);
-            gearWasDown = TOGGLE_GEAR.isDown();
-            if (gearClick) ClientPlayNetworking.send(new ToggleGearPayload());
 
-            boolean startEnginesClick = START_ENGINES.consumeClick() || (START_ENGINES.isDown() && !startEnginesWasDown);
-            startEnginesWasDown = START_ENGINES.isDown();
-            if (startEnginesClick) ClientPlayNetworking.send(new StartEnginesPayload());
-
-            boolean shutdownEnginesClick = SHUTDOWN_ENGINES.consumeClick() || (SHUTDOWN_ENGINES.isDown() && !shutdownEnginesWasDown);
-            shutdownEnginesWasDown = SHUTDOWN_ENGINES.isDown();
-            if (shutdownEnginesClick) ClientPlayNetworking.send(new ShutdownEnginesPayload());
-
-            boolean pushbackClick = TOGGLE_PUSHBACK.consumeClick() || (TOGGLE_PUSHBACK.isDown() && !pushbackWasDown);
-            pushbackWasDown = TOGGLE_PUSHBACK.isDown();
-            if (pushbackClick) ClientPlayNetworking.send(new TogglePushbackPayload());
-
-            boolean flapsUpClick = FLAPS_UP.consumeClick() || (FLAPS_UP.isDown() && !flapsUpWasDown);
-            flapsUpWasDown = FLAPS_UP.isDown();
-            if (flapsUpClick) ClientPlayNetworking.send(new AdjustFlapsPayload(1));
-
-            boolean flapsDownClick = FLAPS_DOWN.consumeClick() || (FLAPS_DOWN.isDown() && !flapsDownWasDown);
-            flapsDownWasDown = FLAPS_DOWN.isDown();
-            if (flapsDownClick) ClientPlayNetworking.send(new AdjustFlapsPayload(-1));
-
-            boolean spoilersExtendClick = SPOILERS_EXTEND.consumeClick() || (SPOILERS_EXTEND.isDown() && !spoilersExtendWasDown);
-            spoilersExtendWasDown = SPOILERS_EXTEND.isDown();
-            if (spoilersExtendClick) ClientPlayNetworking.send(new ToggleSpoilersPayload(true));
-
-            boolean spoilersRetractClick = SPOILERS_RETRACT.consumeClick() || (SPOILERS_RETRACT.isDown() && !spoilersRetractWasDown);
-            spoilersRetractWasDown = SPOILERS_RETRACT.isDown();
-            if (spoilersRetractClick) ClientPlayNetworking.send(new ToggleSpoilersPayload(false));
-
-            if (client.gui.screen() != null) {
-                discardFlightInput();
-                if (lastSentControls != 0) {
-                    ClientPlayNetworking.send(new FlightInputPayload(0));
-                    lastSentControls = 0;
-                }
-                return;
+            if (TOGGLE_GEAR.consumeClick()) ClientPlayNetworking.send(new ToggleGearPayload());
+            if (SHUTDOWN_ENGINES.consumeClick()) ClientPlayNetworking.send(new ShutdownEnginesPayload());
+            if (TOGGLE_PUSHBACK.consumeClick()) ClientPlayNetworking.send(new TogglePushbackPayload());
+            if (FLAPS_INCREASE.consumeClick()) ClientPlayNetworking.send(new AdjustFlapsPayload(1));
+            if (FLAPS_DECREASE.consumeClick()) ClientPlayNetworking.send(new AdjustFlapsPayload(-1));
+            if (TOGGLE_SPOILERS.consumeClick()) {
+                ClientPlayNetworking.send(new ToggleSpoilersPayload(!FlightHud.spoilersDeployed()));
             }
 
             int controls = 0;
             if (client.options.keyUp.isDown()) controls |= FlightControls.FORWARD;
             if (client.options.keyDown.isDown()) controls |= FlightControls.REVERSE;
-            if (BANK_LEFT.isDown()) controls |= FlightControls.LEFT;
-            if (BANK_RIGHT.isDown()) controls |= FlightControls.RIGHT;
+            if (client.options.keyLeft.isDown()) controls |= FlightControls.LEFT;
+            if (client.options.keyRight.isDown()) controls |= FlightControls.RIGHT;
             if (BRAKES.isDown()) controls |= FlightControls.BRAKE;
             if (controls != lastSentControls) {
                 ClientPlayNetworking.send(new FlightInputPayload(controls));
@@ -297,6 +276,9 @@ public class FlightLineClient implements ClientModInitializer {
             FlightCameraEffects.updateFlightState(FlightPhase.OFF);
             FlightCameraEffects.updateInstruments(0.0f, 0, 0, 0, 0, 0);
             enginesActive = false;
+            enginesStarting = false;
+            enginesRunning = false;
+            engineStartRequestTicks = 0;
             lastWarningCallout = 0;
             warningRepeatCooldown = 0;
             activeAlertId = 0;
@@ -334,24 +316,24 @@ public class FlightLineClient implements ClientModInitializer {
         int alertId = 0;
         SoundEvent sound = null;
         SoundEvent[] phrase = null;
-        boolean cautionPreamble = false;
         int repeatInterval = 40;
 
         if ((warnings & FlightWarning.WINDSHEAR) != 0) {
             alertId = 10;
             sound = FlightLine.GPWS_WINDSHEAR;
-            cautionPreamble = true;
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.PULL_UP) != 0) {
             alertId = 11;
             phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN,
                     FlightLine.GPWS_PULL_UP};
-            cautionPreamble = true;
             repeatInterval = 30;
+        } else if ((warnings & FlightWarning.TOO_LOW_TERRAIN) != 0) {
+            alertId = 15;
+            sound = FlightLine.GPWS_TOO_LOW_TERRAIN;
+            repeatInterval = 40;
         } else if ((warnings & FlightWarning.TERRAIN) != 0) {
             alertId = 12;
             phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN};
-            cautionPreamble = true;
             repeatInterval = 35;
         } else if ((warnings & FlightWarning.TCAS_RESOLUTION) != 0) {
             boolean climb = (warnings & FlightWarning.TCAS_CLIMB) != 0;
@@ -371,42 +353,30 @@ public class FlightLineClient implements ClientModInitializer {
         } else if ((warnings & FlightWarning.SINK_RATE) != 0) {
             alertId = 13;
             sound = FlightLine.GPWS_SINK_RATE;
-            cautionPreamble = true;
             repeatInterval = 45;
         } else if ((warnings & FlightWarning.DONT_SINK) != 0) {
             alertId = 14;
             sound = FlightLine.GPWS_DONT_SINK;
-            cautionPreamble = true;
             repeatInterval = 45;
-        } else if ((warnings & FlightWarning.TOO_LOW_TERRAIN) != 0) {
-            alertId = 15;
-            sound = FlightLine.GPWS_TOO_LOW_TERRAIN;
-            cautionPreamble = true;
-            repeatInterval = 40;
         } else if ((warnings & FlightWarning.GEAR_UP) != 0) {
             alertId = 16;
             sound = FlightLine.GPWS_TOO_LOW_GEAR;
-            cautionPreamble = true;
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.TOO_LOW_FLAPS) != 0) {
             alertId = 17;
             sound = FlightLine.GPWS_TOO_LOW_FLAPS;
-            cautionPreamble = true;
             repeatInterval = 40;
         } else if ((warnings & FlightWarning.TCAS_TRAFFIC) != 0) {
             alertId = 1;
             sound = FlightLine.TCAS_TRAFFIC;
-            cautionPreamble = true;
             repeatInterval = 0;
         } else if ((warnings & (FlightWarning.GLIDESLOPE_LOW | FlightWarning.GLIDESLOPE_HIGH)) != 0) {
             alertId = 18;
             sound = FlightLine.GPWS_GLIDESLOPE;
-            cautionPreamble = true;
             repeatInterval = 50;
         } else if ((warnings & FlightWarning.BANK_ANGLE) != 0) {
             alertId = 19;
             sound = FlightLine.GPWS_BANK_ANGLE;
-            cautionPreamble = true;
             repeatInterval = 45;
         } else if ((warnings & FlightWarning.STALL) != 0) {
             alertId = 20;
@@ -443,7 +413,6 @@ public class FlightLineClient implements ClientModInitializer {
         } else if ((warnings & FlightWarning.AIRFRAME_STRESS) != 0) {
             alertId = 29;
             sound = FlightLine.CAUTION_ALARM;
-            cautionPreamble = true;
             repeatInterval = 45;
         } else if ((warnings & FlightWarning.OVERSPEED) != 0) {
             alertId = 28;
@@ -458,7 +427,6 @@ public class FlightLineClient implements ClientModInitializer {
         } else if (alertId != lastWarningCallout) {
             lastWarningCallout = alertId;
             preemptLowerPriorityVoice(client, alertId, alertPriority(alertId));
-            if (cautionPreamble) enqueueVoice(FlightLine.CAUTION_ALARM, alertId);
             if (phrase != null) enqueueVoiceSequence(alertId, phrase);
             else enqueueVoice(sound, alertId);
             warningRepeatCooldown = repeatInterval;
@@ -519,24 +487,45 @@ public class FlightLineClient implements ClientModInitializer {
         startNextVoice(client);
     }
 
+    public static boolean isVanillaKeySuppressed(@Nullable KeyMapping mapping) {
+        if (!flightEnabled || mapping == null) return false;
+        Minecraft client = Minecraft.getInstance();
+        if (client == null) return false;
+        var options = client.options;
+        return mapping == options.keyQuickActions
+                || mapping == options.keyAdvancements
+                || mapping == options.keySocialInteractions
+                || mapping == options.keyFriends
+                || mapping == options.keySaveHotbarActivator
+                || mapping == options.keyLoadHotbarActivator
+                || mapping == options.keySwapOffhand
+                || mapping == options.keyDrop;
+    }
+
+    public static void drainSuppressedVanillaClicks() {
+        if (!flightEnabled) return;
+        Minecraft client = Minecraft.getInstance();
+        if (client == null) return;
+        var options = client.options;
+        drainClicks(options.keyQuickActions);
+        drainClicks(options.keyAdvancements);
+        drainClicks(options.keySocialInteractions);
+        drainClicks(options.keyFriends);
+        drainClicks(options.keySaveHotbarActivator);
+        drainClicks(options.keyLoadHotbarActivator);
+        drainClicks(options.keySwapOffhand);
+        drainClicks(options.keyDrop);
+    }
+
+    private static void drainClicks(KeyMapping mapping) {
+        while (mapping.consumeClick()) { }
+    }
+
     private void discardFlightInput() {
-        while (TOGGLE_GEAR.consumeClick()) { }
-        while (START_ENGINES.consumeClick()) { }
-        while (SHUTDOWN_ENGINES.consumeClick()) { }
-        while (TOGGLE_PUSHBACK.consumeClick()) { }
-        while (FLAPS_UP.consumeClick()) { }
-        while (FLAPS_DOWN.consumeClick()) { }
-        while (SPOILERS_EXTEND.consumeClick()) { }
-        while (SPOILERS_RETRACT.consumeClick()) { }
-        while (TOGGLE_AUTOPILOT.consumeClick()) { }
-        gearWasDown = TOGGLE_GEAR.isDown();
-        startEnginesWasDown = START_ENGINES.isDown();
-        shutdownEnginesWasDown = SHUTDOWN_ENGINES.isDown();
-        pushbackWasDown = TOGGLE_PUSHBACK.isDown();
-        flapsUpWasDown = FLAPS_UP.isDown();
-        flapsDownWasDown = FLAPS_DOWN.isDown();
-        spoilersExtendWasDown = SPOILERS_EXTEND.isDown();
-        spoilersRetractWasDown = SPOILERS_RETRACT.isDown();
+        for (KeyMapping mapping : FLIGHTLINE_BINDINGS) {
+            while (mapping.consumeClick()) { }
+        }
+        while (Minecraft.getInstance().options.keyInventory.consumeClick()) { }
     }
 
     private static void checkAltimeterCallout(int threshold, int mask, SoundEvent sound, int currentAlt) {
@@ -639,7 +628,7 @@ public class FlightLineClient implements ClientModInitializer {
         while (!VOICE_QUEUE.isEmpty()) {
             QueuedVoice next = VOICE_QUEUE.remove();
             if (next.warningId() != 0 && next.warningId() != activeAlertId) continue;
-            SoundInstance instance = SimpleSoundInstance.forUI(next.sound(), 1.6f, 1.0f);
+            SoundInstance instance = SimpleSoundInstance.forUI(next.sound(), VOICE_PITCH, VOICE_VOLUME);
             soundManager.play(instance);
             activeVoice = instance;
             activeVoicePriority = next.priority();
@@ -686,77 +675,6 @@ public class FlightLineClient implements ClientModInitializer {
         }
     }
 
-    private void migrateLegacyBindings() {
-        if (bindingsMigrated) return;
-        bindingsMigrated = true;
-        boolean changed = false;
-        changed |= migrateBinding(START_ENGINES, "key.keyboard.j", "key.keyboard.e", "key.keyboard.f8");
-        changed |= migrateBinding(TOGGLE_PUSHBACK, "key.keyboard.k", "key.keyboard.p", "key.keyboard.f9");
-        changed |= migrateBinding(BRAKES, "key.keyboard.m", "key.keyboard.b", "key.keyboard.f10");
-        changed |= migrateBinding(TOGGLE_GEAR, "key.keyboard.g", "key.keyboard.u", "key.keyboard.h");
-        changed |= migrateBinding(FLAPS_UP, "key.keyboard.c", "key.keyboard.x", "key.keyboard.slash", "key.keyboard.keypad.5", "key.keyboard.right.bracket");
-        changed |= migrateBinding(FLAPS_DOWN, "key.keyboard.v", "key.keyboard.z", "key.keyboard.keypad.3", "key.keyboard.left.bracket");
-        changed |= migrateBinding(SPOILERS_EXTEND, "key.keyboard.x", "key.keyboard.p", "key.keyboard.o");
-        changed |= migrateBinding(SPOILERS_RETRACT, "key.keyboard.z");
-        changed |= migrateBinding(TOGGLE_PFD, "key.keyboard.u", "key.keyboard.f6");
-        changed |= migrateBinding(TOGGLE_EICAS, "key.keyboard.i", "key.keyboard.f7");
-        changed |= migrateBinding(TOGGLE_ND_RADAR, "key.keyboard.b", "key.keyboard.f8");
-        changed |= migrateBinding(TOGGLE_RADIO_ALTIMETER, "key.keyboard.n", "key.keyboard.f9");
-        changed |= migrateBinding(TOGGLE_KEYBIND_HINTS, "key.keyboard.f9", "key.keyboard.o", "key.keyboard.f10");
-        changed |= assignFreeDefaultBindings(Minecraft.getInstance());
-        if (changed) KeyMapping.resetMapping();
-    }
-
-    private static boolean assignFreeDefaultBindings(Minecraft client) {
-        Set<KeyMapping> flightlineBindings = Set.copyOf(FLIGHTLINE_BINDINGS);
-        List<KeyMapping> occupied = new ArrayList<>();
-        for (KeyMapping mapping : client.options.keyMappings) {
-            if (!flightlineBindings.contains(mapping) && !mapping.isUnbound()) occupied.add(mapping);
-        }
-
-        boolean changed = false;
-        for (KeyMapping mapping : FLIGHTLINE_BINDINGS) {
-            boolean conflict = occupied.stream().anyMatch(other -> mapping.same(other)
-                    && !isDefaultBankKeyOverlap(mapping, other, client));
-            if (conflict && mapping.isDefault()) {
-                boolean assigned = false;
-                for (String candidateName : LAPTOP_KEY_CANDIDATES) {
-                    InputConstants.Key candidate = InputConstants.getKey("key.keyboard." + candidateName);
-                    if (occupied.stream().noneMatch(other -> other.matches(candidate))) {
-                        mapping.setKey(candidate);
-                        FlightLine.LOGGER.info("Moved conflicting Flight Line keybind {} to {}",
-                                mapping.getName(), candidateName.toUpperCase(java.util.Locale.ROOT));
-                        changed = true;
-                        assigned = true;
-                        break;
-                    }
-                }
-                if (!assigned) {
-                    FlightLine.LOGGER.warn("No free laptop-friendly key found for Flight Line binding {}",
-                            mapping.getName());
-                }
-            }
-            if (!mapping.isUnbound()) occupied.add(mapping);
-        }
-        return changed;
-    }
-
-    private static boolean migrateBinding(KeyMapping mapping, String target, String... oldKeys) {
-        for (String oldKey : oldKeys) {
-            if (mapping.saveString().equals(oldKey)) {
-                mapping.setKey(InputConstants.getKey(target));
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean isDefaultBankKeyOverlap(KeyMapping mapping, KeyMapping occupied,
-                                                   Minecraft client) {
-        return (mapping == BANK_LEFT && occupied == client.options.keyLeft)
-                || (mapping == BANK_RIGHT && occupied == client.options.keyRight);
-    }
-
     private static void updateAtcCameraFollow(Minecraft client) {
         updateAtcHighlight(client);
         if (cameraFollowEntityId < 0 || client.level == null || client.player == null) return;
@@ -792,8 +710,12 @@ public class FlightLineClient implements ClientModInitializer {
         updateAtcHighlight(Minecraft.getInstance());
     }
 
-    static int atcSelectedTarget() {
+    public static int atcSelectedTarget() {
         return atcHighlightedEntityId;
+    }
+
+    public static boolean isAtcSelectedTarget(int entityId) {
+        return atcHighlightedEntityId >= 0 && atcHighlightedEntityId == entityId;
     }
 
     public static void toggleAtcCameraFollow(int entityId) {
@@ -828,13 +750,14 @@ public class FlightLineClient implements ClientModInitializer {
         atcHighlightedEntityId = -1;
     }
 
-    public static List<KeyMapping> flightlineBindings() {
-        return FLIGHTLINE_BINDINGS;
-    }
-
     public static List<KeyMapping> controlScreenBindings() {
+        Minecraft client = Minecraft.getInstance();
         List<KeyMapping> bindings = new ArrayList<>(FLIGHTLINE_BINDINGS);
-        bindings.add(Minecraft.getInstance().options.keyInventory);
+        bindings.add(client.options.keyUp);
+        bindings.add(client.options.keyDown);
+        bindings.add(client.options.keyLeft);
+        bindings.add(client.options.keyRight);
+        bindings.add(client.options.keyInventory);
         bindings.sort(Comparator.comparing(FlightLineClient::keyName, String.CASE_INSENSITIVE_ORDER));
         return bindings;
     }
@@ -845,18 +768,18 @@ public class FlightLineClient implements ClientModInitializer {
 
     static KeyMapping toggleGear() { return TOGGLE_GEAR; }
     static KeyMapping toggleAutopilot() { return TOGGLE_AUTOPILOT; }
-    static KeyMapping startEngines() { return START_ENGINES; }
     static KeyMapping shutdownEngines() { return SHUTDOWN_ENGINES; }
-    static KeyMapping flapsUp() { return FLAPS_UP; }
-    static KeyMapping flapsDown() { return FLAPS_DOWN; }
-    static KeyMapping spoilersExtend() { return SPOILERS_EXTEND; }
-    static KeyMapping spoilersRetract() { return SPOILERS_RETRACT; }
+    static KeyMapping flapsIncrease() { return FLAPS_INCREASE; }
+    static KeyMapping flapsDecrease() { return FLAPS_DECREASE; }
+    static KeyMapping spoilersToggle() { return TOGGLE_SPOILERS; }
     static KeyMapping pushback() { return TOGGLE_PUSHBACK; }
     static KeyMapping brakes() { return BRAKES; }
     static KeyMapping antiIce() { return TOGGLE_ANTI_ICE; }
     static KeyMapping inventory() { return Minecraft.getInstance().options.keyInventory; }
-    static KeyMapping bankLeft() { return BANK_LEFT; }
-    static KeyMapping bankRight() { return BANK_RIGHT; }
+    static KeyMapping throttleUp() { return Minecraft.getInstance().options.keyUp; }
+    static KeyMapping throttleDown() { return Minecraft.getInstance().options.keyDown; }
+    static KeyMapping rudderLeft() { return Minecraft.getInstance().options.keyLeft; }
+    static KeyMapping rudderRight() { return Minecraft.getInstance().options.keyRight; }
 
     static String keyName(KeyMapping mapping) {
         return java.util.Objects.requireNonNull(mapping.getTranslatedKeyMessage().getString());

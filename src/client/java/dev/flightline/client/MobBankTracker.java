@@ -1,0 +1,70 @@
+package dev.flightline.client;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Mob;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Estimates a visual roll angle for nearby mob aircraft from their heading changes.
+ * The server still owns the authoritative flight path; this only makes the model
+ * lean into turns instead of sliding around the sky perfectly upright.
+ */
+public final class MobBankTracker {
+    private static final Map<Integer, BankState> STATES = new HashMap<>();
+
+    private MobBankTracker() {
+    }
+
+    public static void tick(Minecraft client) {
+        if (client.level == null || client.player == null) {
+            STATES.clear();
+            return;
+        }
+        Map<Integer, BankState> next = new HashMap<>();
+        for (Mob mob : client.level.getEntitiesOfClass(Mob.class,
+                client.player.getBoundingBox().inflate(256.0), Mob::isAlive)) {
+            int id = mob.getId();
+            BankState state = STATES.get(id);
+            if (state == null) {
+                state = new BankState(mob.getYRot(), 0.0f);
+            }
+            double delta = wrapDegrees(mob.getYRot() - state.lastYaw);
+            state.lastYaw = mob.getYRot();
+            if (Math.abs(delta) > 45.0) delta = 0.0;
+            float target = mob.onGround() ? 0.0f : (float) Math.max(-35.0, Math.min(35.0, delta * 16.0));
+            float response = Math.abs(target) > 0.5f ? 0.25f : 0.12f;
+            state.bank += (target - state.bank) * response;
+            next.put(id, state);
+        }
+        STATES.clear();
+        STATES.putAll(next);
+    }
+
+    public static float bankFor(int entityId) {
+        BankState state = STATES.get(entityId);
+        return state == null ? 0.0f : state.bank;
+    }
+
+    public static void clear() {
+        STATES.clear();
+    }
+
+    private static double wrapDegrees(double degrees) {
+        double wrapped = degrees % 360.0;
+        if (wrapped >= 180.0) wrapped -= 360.0;
+        if (wrapped < -180.0) wrapped += 360.0;
+        return wrapped;
+    }
+
+    private static final class BankState {
+        private double lastYaw;
+        private float bank;
+
+        private BankState(double lastYaw, float bank) {
+            this.lastYaw = lastYaw;
+            this.bank = bank;
+        }
+    }
+}

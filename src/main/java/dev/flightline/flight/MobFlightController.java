@@ -23,6 +23,10 @@ public final class MobFlightController {
     private static final double TAXI_ACCELERATION = 0.009;
     private static final double TAKEOFF_SPEED = 0.58;
     private static final double CRUISE_SPEED = 0.62;
+    private static final double MAX_TURN_RATE_DEGREES_PER_TICK = 1.6;
+    private static final double MAX_BANK_DEGREES = 35.0;
+    private static final double BANK_RESPONSE_DEGREES_PER_TICK = 0.55;
+    private static final double TURN_GRAVITY = 0.12;
     private static final Map<UUID, MobAircraft> AIRCRAFT = new HashMap<>();
 
     private MobFlightController() {
@@ -79,8 +83,6 @@ public final class MobFlightController {
                 aircraft.targetHeading = aircraft.heading;
                 aircraft.targetAltitude = Math.max(mob.level().getMinY() + 8.0,
                         Math.min(mob.level().getMaxY() - 8.0, value * 0.3048));
-                if (order == AtcOrderPayload.CLIMB && aircraft.targetAltitude <= mob.getY()) return false;
-                if (order == AtcOrderPayload.DESCEND && aircraft.targetAltitude >= mob.getY()) return false;
             }
             case AtcOrderPayload.SPEED -> {
                 if (value < 40 || value > 300) return false;
@@ -176,11 +178,24 @@ public final class MobFlightController {
 
         double desiredHeading = bearing(mob.position(), aircraft.target);
         double headingError = wrap(desiredHeading - aircraft.heading);
-        double desiredBank = Math.max(-28.0, Math.min(28.0, headingError * 0.45));
-        aircraft.bank = approach(aircraft.bank, desiredBank, 0.18);
-        double turnRate = Math.tan(Math.toRadians(aircraft.bank)) * 3.2
-                * CRUISE_SPEED / Math.max(0.35, aircraft.speed);
-        aircraft.heading = wrap(aircraft.heading + Math.max(-2.8, Math.min(2.8, turnRate)));
+        // Bank into the turn, but keep the aircraft within a realistic envelope.
+        // A mob cannot pirouette on the spot: at cruise speed the heading rate is
+        // capped, so a 180-degree reversal takes a wide, visible arc.
+        double desiredBank = 0.0;
+        if (Math.abs(headingError) > 2.0) {
+            desiredBank = Math.max(-MAX_BANK_DEGREES,
+                    Math.min(MAX_BANK_DEGREES, headingError * 0.34));
+            if (Math.abs(desiredBank) < 6.0) desiredBank = Math.copySign(6.0, headingError);
+        }
+        aircraft.bank = approach(aircraft.bank, desiredBank, BANK_RESPONSE_DEGREES_PER_TICK);
+        double turnRate = Math.toDegrees(Math.atan(
+                TURN_GRAVITY * Math.tan(Math.toRadians(aircraft.bank))
+                        / Math.max(0.20, aircraft.speed)));
+        turnRate = Math.max(-MAX_TURN_RATE_DEGREES_PER_TICK,
+                Math.min(MAX_TURN_RATE_DEGREES_PER_TICK, turnRate));
+        // Roll-out damping near the target heading prevents oscillation.
+        if (Math.abs(headingError) < 1.5) turnRate *= Math.abs(headingError) / 1.5;
+        aircraft.heading = wrap(aircraft.heading + turnRate);
 
         double altitudeError = aircraft.target.y - mob.getY();
         double desiredVerticalSpeed = Math.max(-0.13, Math.min(0.13, altitudeError * 0.006));
@@ -192,8 +207,10 @@ public final class MobFlightController {
 
         mob.setYRot((float) aircraft.heading);
         mob.setYHeadRot((float) aircraft.heading);
+        mob.setYBodyRot((float) aircraft.heading);
         mob.setXRot((float) -Math.toDegrees(Math.atan2(aircraft.verticalSpeed, Math.max(0.001, aircraft.speed))));
         mob.setDeltaMovement(aircraft.velocity);
+        mob.getNavigation().stop();
 
         avoidPlayerCollision(aircraft);
     }
@@ -245,7 +262,7 @@ public final class MobFlightController {
             // Coordinated escape with player: if mob is higher than player, mob climbs; otherwise descends
             double escape = separation.y >= 0.0 ? 0.14 : -0.14;
             if (relativeVelocity.horizontalDistance() > 0.35) {
-                aircraft.heading = wrap(aircraft.heading + 1.2);
+                aircraft.heading = wrap(aircraft.heading + 0.35);
             }
             return escape;
         }
@@ -273,7 +290,7 @@ public final class MobFlightController {
                 escape = mob.getUUID().compareTo(other.mob.getUUID()) > 0 ? 0.14 : -0.14;
             }
             if (relativeVelocity.horizontalDistance() > 0.35) {
-                aircraft.heading = wrap(aircraft.heading + 1.2);
+                aircraft.heading = wrap(aircraft.heading + 0.35);
             }
             return escape;
         }
@@ -285,7 +302,14 @@ public final class MobFlightController {
         Mob mob = aircraft.mob;
         LivingEntity target = mob.getTarget();
         if (target != null && target.isAlive()) {
-            aircraft.target = target.position().add(0.0, 4.0, 0.0);
+            Vec3 targetPos = target.position();
+            double dist = mob.position().distanceTo(targetPos);
+            if (dist < 18.0) {
+                Vec3 flyby = heading(aircraft.heading).scale(28.0);
+                aircraft.target = targetPos.add(flyby.x, 3.0, flyby.z);
+            } else {
+                aircraft.target = targetPos.add(0.0, 3.0, 0.0);
+            }
             return;
         }
         ServerPlayer nearest = null;
@@ -301,9 +325,9 @@ public final class MobFlightController {
 
         if (nearest != null) {
             double orbitAngle = Math.floorMod(mob.getUUID().hashCode(), 360) * Math.PI / 180.0
-                    + aircraft.ticks * 0.004;
-            aircraft.target = nearest.position().add(Math.cos(orbitAngle) * 7.5,
-                    3.0, Math.sin(orbitAngle) * 7.5);
+                    + aircraft.ticks * 0.005;
+            aircraft.target = nearest.position().add(Math.cos(orbitAngle) * 36.0,
+                    6.0, Math.sin(orbitAngle) * 36.0);
         } else {
             long seed = mob.getUUID().getLeastSignificantBits() + aircraft.ticks;
             double angle = Math.floorMod(seed, 360L) * Math.PI / 180.0;

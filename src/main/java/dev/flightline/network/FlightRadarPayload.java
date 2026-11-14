@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public record FlightRadarPayload(int ownX, int ownZ, int ownAltitudeFeet, float ownHeadingDegrees,
-                                 List<Contact> contacts) implements CustomPacketPayload {
+                                 int scopeBlocks, List<Contact> contacts) implements CustomPacketPayload {
     public static final Type<FlightRadarPayload> TYPE = new Type<>(FlightLine.id("flight_radar"));
 
     @SuppressWarnings("null")
@@ -19,6 +19,7 @@ public record FlightRadarPayload(int ownX, int ownZ, int ownAltitudeFeet, float 
             ByteBufCodecs.VAR_INT, FlightRadarPayload::ownZ,
             ByteBufCodecs.VAR_INT, FlightRadarPayload::ownAltitudeFeet,
             ByteBufCodecs.FLOAT, FlightRadarPayload::ownHeadingDegrees,
+            ByteBufCodecs.VAR_INT, FlightRadarPayload::scopeBlocks,
             ByteBufCodecs.collection(ArrayList::new, Contact.CODEC, 512), FlightRadarPayload::contacts,
             FlightRadarPayload::new
     );
@@ -29,7 +30,7 @@ public record FlightRadarPayload(int ownX, int ownZ, int ownAltitudeFeet, float 
     }
 
     public record Contact(int entityId, String name, boolean player, boolean airborne, int x, int z,
-                          int altitudeFeet, int speedKnots, float headingDegrees) {
+                          int altitudeFeet, int speedKnots, float headingDegrees, int verticalSpeedFpm) {
         @SuppressWarnings("null")
         public static final StreamCodec<RegistryFriendlyByteBuf, Contact> CODEC = StreamCodec.composite(
                 ByteBufCodecs.VAR_INT, Contact::entityId,
@@ -41,6 +42,7 @@ public record FlightRadarPayload(int ownX, int ownZ, int ownAltitudeFeet, float 
                 ByteBufCodecs.VAR_INT, Contact::altitudeFeet,
                 ByteBufCodecs.VAR_INT, Contact::speedKnots,
                 ByteBufCodecs.FLOAT, Contact::headingDegrees,
+                ByteBufCodecs.VAR_INT, Contact::verticalSpeedFpm,
                 Contact::new
         );
     }

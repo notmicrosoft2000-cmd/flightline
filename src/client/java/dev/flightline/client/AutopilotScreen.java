@@ -471,18 +471,26 @@ public class AutopilotScreen extends Screen {
         } else {
             drawKeyRow(graphics, left, top, scaleX, 54, "Gear", FlightLineClient.keyName(FlightLineClient.toggleGear()));
             drawKeyRow(graphics, left, top, scaleX, 74, "Autopilot panel", FlightLineClient.keyName(FlightLineClient.toggleAutopilot()));
-            drawKeyRow(graphics, left, top, scaleX, 94, "Engines", FlightLineClient.keyName(FlightLineClient.startEngines())
-                    + " / " + FlightLineClient.keyName(FlightLineClient.shutdownEngines()));
-            drawKeyRow(graphics, left, top, scaleX, 114, "Flaps", FlightLineClient.keyName(FlightLineClient.flapsUp())
-                    + " / " + FlightLineClient.keyName(FlightLineClient.flapsDown()));
-            drawKeyRow(graphics, left, top, scaleX, 134, "Spoilers", FlightLineClient.keyName(FlightLineClient.spoilersExtend())
-                    + " / " + FlightLineClient.keyName(FlightLineClient.spoilersRetract()));
-            drawKeyRow(graphics, left, top, scaleX, 154, "Pushback / brakes",
-                    FlightLineClient.keyName(FlightLineClient.pushback()) + " / " + FlightLineClient.keyName(FlightLineClient.brakes()));
-            drawKeyRow(graphics, left, top, scaleX, 174, "Inventory", FlightLineClient.keyName(FlightLineClient.inventory()));
-            drawKeyRow(graphics, left, top, scaleX, 194, "Flight radar", FlightLineClient.keyName(FlightLineClient.flightRadar()));
-            drawKeyRow(graphics, left, top, scaleX, 214, "Displays / prompts",
-                    FlightLineClient.keyName(FlightLineClient.togglePfd()) + "/"
+            drawKeyRow(graphics, left, top, scaleX, 94, "Engines / inventory",
+                    FlightLineClient.keyName(FlightLineClient.inventory()) + " / "
+                            + FlightLineClient.keyName(FlightLineClient.shutdownEngines()));
+            drawKeyRow(graphics, left, top, scaleX, 114, "Throttle",
+                    FlightLineClient.keyName(FlightLineClient.throttleUp()) + " / "
+                            + FlightLineClient.keyName(FlightLineClient.throttleDown()));
+            drawKeyRow(graphics, left, top, scaleX, 134, "Rudder",
+                    FlightLineClient.keyName(FlightLineClient.rudderLeft()) + " / "
+                            + FlightLineClient.keyName(FlightLineClient.rudderRight()));
+            drawKeyRow(graphics, left, top, scaleX, 154, "Flaps",
+                    FlightLineClient.keyName(FlightLineClient.flapsIncrease()) + " / "
+                            + FlightLineClient.keyName(FlightLineClient.flapsDecrease()));
+            drawKeyRow(graphics, left, top, scaleX, 174, "Spoilers",
+                    FlightLineClient.keyName(FlightLineClient.spoilersToggle()));
+            drawKeyRow(graphics, left, top, scaleX, 194, "Pushback / brakes",
+                    FlightLineClient.keyName(FlightLineClient.pushback()) + " / "
+                            + FlightLineClient.keyName(FlightLineClient.brakes()));
+            drawKeyRow(graphics, left, top, scaleX, 214, "Radar / displays / prompts",
+                    FlightLineClient.keyName(FlightLineClient.flightRadar()) + "/"
+                            + FlightLineClient.keyName(FlightLineClient.togglePfd()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleEicas()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleNdRadar()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleRadioAltimeter()) + "/"

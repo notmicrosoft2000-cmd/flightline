@@ -128,14 +128,15 @@ public final class FlightControlsScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (listeningFor == null) return super.keyPressed(event);
-        if (event.key() == 256) {
+        if (event.key() == InputConstants.KEY_ESCAPE) {
             Button button = bindingButtons.get(listeningFor);
             if (button != null) button.setMessage(keyLabel(listeningFor));
             listeningFor = null;
             return true;
         }
         KeyMapping changed = listeningFor;
-        listeningFor.setKey(event.key() == 259 ? InputConstants.UNKNOWN : InputConstants.getKey(event));
+        listeningFor.setKey(event.key() == InputConstants.KEY_BACKSPACE
+                ? InputConstants.UNKNOWN : InputConstants.getKey(event));
         KeyMapping.resetMapping();
         Minecraft.getInstance().options.save();
         listeningFor = null;
@@ -149,6 +150,12 @@ public final class FlightControlsScreen extends Screen {
     }
 
     private String bindingName(KeyMapping mapping) {
+        var options = Minecraft.getInstance().options;
+        if (mapping == options.keyUp) return "Increase Throttle";
+        if (mapping == options.keyDown) return "Decrease Throttle";
+        if (mapping == options.keyLeft) return "Rudder Left";
+        if (mapping == options.keyRight) return "Rudder Right";
+        if (mapping == options.keyInventory) return "Start Engines / Inventory";
         return Component.translatable(mapping.getName()).getString();
     }
 

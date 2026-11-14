@@ -156,6 +156,14 @@ public final class FlightController {
                 session.spoilers = true;
                 session.autolandRolloutTicks = 100;
             }
+            session.airborne = false;
+            session.groundSpeed = horizontalSpeed;
+            session.airVelocity = Vec3.ZERO;
+            session.landingRoll = true;
+            player.setNoGravity(false);
+            player.resetFallDistance();
+            player.setDeltaMovement(headingVector(session.headingDegrees).scale(session.groundSpeed));
+            setPhase(player, session, FlightPhase.LANDING_ROLL);
             float damage = Math.min(landing.damage(), Math.max(0.0f, player.getHealth() - 1.0f));
             if (damage > 0.0f) {
                 player.hurtServer(player.level(), player.damageSources().generic(), damage);
@@ -169,16 +177,19 @@ public final class FlightController {
     }
 
     static LandingAssessment assessLanding(boolean gearDown, double sinkSpeed, double horizontalSpeed) {
-        if (gearDown && sinkSpeed <= FlightTuning.SAFE_TOUCHDOWN_SINK_SPEED
+        if (!gearDown) {
+            return new LandingAssessment(true, true, 0.0f);
+        }
+        if (sinkSpeed <= FlightTuning.SAFE_TOUCHDOWN_SINK_SPEED
                 && horizontalSpeed <= FlightTuning.SAFE_TOUCHDOWN_SPEED) {
             return new LandingAssessment(false, false, 0.0f);
         }
-        if (gearDown && sinkSpeed <= FlightTuning.MAX_HARD_LANDING_SINK_SPEED
+        if (sinkSpeed <= FlightTuning.MAX_HARD_LANDING_SINK_SPEED
                 && horizontalSpeed <= FlightTuning.MAX_HARD_LANDING_SPEED) {
             double sinkRatio = sinkSpeed / FlightTuning.MAX_HARD_LANDING_SINK_SPEED;
             double excessSpeedRatio = Math.max(0.0,
                     (horizontalSpeed - FlightTuning.SAFE_TOUCHDOWN_SPEED) / FlightTuning.MAX_HARD_LANDING_SPEED);
-            float damage = (float) Math.min(6.0, 1.0 + sinkRatio * 3.0 + excessSpeedRatio * 2.0);
+            float damage = (float) Math.min(8.0, 1.0 + sinkRatio * 4.0 + excessSpeedRatio * 3.0);
             boolean gearFailed = sinkSpeed > FlightTuning.SAFE_TOUCHDOWN_SINK_SPEED
                     || horizontalSpeed > FlightTuning.SAFE_TOUCHDOWN_SPEED;
             return new LandingAssessment(false, gearFailed, damage);
@@ -348,22 +359,10 @@ public final class FlightController {
         }
     }
 
-    public static void toggleSpoilers(ServerPlayer player) {
-        Session session = SESSIONS.get(player.getUUID());
-        if (session != null) {
-            session.spoilers = !session.spoilers;
-            sendState(player, session, true);
-        }
-    }
-
     public static void setSpoilers(ServerPlayer player, boolean deployed) {
         Session session = SESSIONS.get(player.getUUID());
         if (session != null) {
-            if (deployed && session.spoilers) {
-                session.spoilers = false;
-            } else {
-                session.spoilers = deployed;
-            }
+            session.spoilers = deployed;
             sendState(player, session, true);
         }
     }
@@ -483,14 +482,26 @@ public final class FlightController {
         if (!session.airborne && session.autolandRolloutTicks > 0) session.autolandRolloutTicks--;
         boolean onGround = player.onGround();
 
-        if (session.airborne && !onGround
+        // A runway contact can be reported as a vertical collision or low-altitude horizontal collision
+        // before or together with vanilla onGround. Treat surface contact as a touchdown to be assessed.
+        boolean runwayContact = session.airborne && session.takeoffGraceTicks == 0
+                && (onGround || player.verticalCollision
+                || (player.horizontalCollision && session.radioAltitudeFeet <= 80));
+        if (runwayContact) {
+            handleFallImpact(player, player.fallDistance);
+            if (session.crashed) {
+                player.setDeltaMovement(Vec3.ZERO);
+                updateInstruments(player, session, server);
+                return;
+            }
+        } else if (session.airborne && !onGround
                 && (player.horizontalCollision || player.verticalCollision)) {
             crashAircraft(player, session, session.airVelocity.length());
             updateInstruments(player, session, server);
             return;
         }
         if (!session.airborne && player.horizontalCollision
-                && session.groundSpeed > 0.70 * FlightTuning.WORLD_SPEED_SCALE) {
+                && session.groundSpeed > 0.90 * FlightTuning.MAX_AIRSPEED) {
             crashAircraft(player, session, session.groundSpeed);
             updateInstruments(player, session, server);
             return;
@@ -533,27 +544,6 @@ public final class FlightController {
             session.pitchDegrees = approach(session.pitchDegrees, commandedPitch, 0.45 * dynamicAuthority);
         } else {
             session.pitchDegrees = 0.0;
-        }
-
-        if (session.airborne && onGround && session.takeoffGraceTicks == 0
-                && session.airVelocity.y <= 0.0) {
-            handleFallImpact(player, player.fallDistance);
-            if (session.crashed) {
-                player.setDeltaMovement(Vec3.ZERO);
-                updateInstruments(player, session, server);
-                return;
-            }
-            session.airborne = false;
-            session.groundSpeed = session.airVelocity.horizontalDistance();
-            if (!session.gearDown || session.airVelocity.y < -FlightTuning.SAFE_TOUCHDOWN_SINK_SPEED) {
-                session.gearFailed = true;
-            }
-            session.airVelocity = Vec3.ZERO;
-            session.landingRoll = true;
-            player.setNoGravity(false);
-            player.resetFallDistance();
-            player.setDeltaMovement(headingVector(session.headingDegrees).scale(session.groundSpeed));
-            setPhase(player, session, FlightPhase.LANDING_ROLL);
         }
 
         if (!session.airborne && !onGround && session.groundSpeed < FlightTuning.ROTATION_SPEED) {
@@ -921,13 +911,22 @@ public final class FlightController {
                 indicatedAirspeed * indicatedAirspeed * 0.0011 / FlightTuning.WORLD_SPEED_SCALE
                         * effectiveAngle * FlightTuning.icingLiftFactor(session.icingPercent) * loadFactor);
         lift *= Math.cos(Math.toRadians(session.bankDegrees));
-        lift *= (1.0 + groundEffect * 0.22); // Ground effect lift cushioning
+        lift *= (1.0 + groundEffect * 0.32); // Ground effect lift cushioning
         lift *= FlightTuning.spoilerLiftFactor(session.spoilers);
         lift *= FlightTuning.overspeedLiftFactor(session.overspeedTicks);
         if (!stalled && session.takeoffGraceTicks > 0) {
             lift = Math.max(lift, 0.12);
         }
         velocity = velocity.add(0.0, lift - 0.08, 0.0);
+        if (session.gearDown && session.radioAltitudeFeet < 45) {
+            // Ground-effect flare cushion: in the last few metres the wing is close
+            // enough to the runway that a normal approach should not arrive at the
+            // hard-landing sink rate simply because the pilot was a little late.
+            double maxSink = -FlightTuning.SAFE_TOUCHDOWN_SINK_SPEED * 1.15;
+            if (velocity.y < maxSink) {
+                velocity = new Vec3(velocity.x, maxSink, velocity.z);
+            }
+        }
         if (session.autoland) {
             velocity = new Vec3(velocity.x,
                     autolandFlareVerticalSpeed(velocity.y, session.radioAltitudeFeet), velocity.z);
@@ -1321,9 +1320,7 @@ public final class FlightController {
     private static void sendFlightRadar(ServerPlayer player, Session session, MinecraftServer server) {
         List<RadarCandidate> candidates = new ArrayList<>();
         Vec3 ownPosition = player.position();
-        int trackingDistance = Math.max(server.getPlayerList().getViewDistance(),
-                server.getPlayerList().getSimulationDistance());
-        double scopeBlocks = Math.min(RADAR_SCOPE_BLOCKS, Math.max(2, trackingDistance) * 16.0);
+        double scopeBlocks = RADAR_SCOPE_BLOCKS;
         double scopeSquared = scopeBlocks * scopeBlocks;
         for (ServerPlayer other : server.getPlayerList().getPlayers()) {
             if (other == player || other.level() != player.level() || other.isSpectator()) continue;
@@ -1338,7 +1335,8 @@ public final class FlightController {
                     other.getId(), radarName(other.getGameProfile().name()), true, airborne, other.blockPosition().getX(),
                     other.blockPosition().getZ(), (int) Math.round(other.getY() * 3.28084),
                     (int) Math.round(velocity.horizontalDistance() * FlightTuning.KNOTS_PER_BLOCK_PER_TICK),
-                    radarHeading(otherSession != null ? otherSession.headingDegrees : other.getYRot()))));
+                    radarHeading(otherSession != null ? otherSession.headingDegrees : other.getYRot()),
+                    (int) Math.round(velocity.y * 3937.0 / FlightTuning.WORLD_SPEED_SCALE))));
         }
         if (player.level() instanceof ServerLevel level) {
             for (MobFlightController.Traffic traffic : MobFlightController.aircraftIn(level)) {
@@ -1350,7 +1348,8 @@ public final class FlightController {
                         (int) Math.round(traffic.position().y * 3.28084),
                         (int) Math.round(traffic.velocity().horizontalDistance()
                                 * FlightTuning.KNOTS_PER_BLOCK_PER_TICK),
-                        radarHeading(traffic.headingDegrees()))));
+                        radarHeading(traffic.headingDegrees()),
+                        (int) Math.round(traffic.velocity().y * 3937.0 / FlightTuning.WORLD_SPEED_SCALE))));
             }
         }
         candidates.sort(Comparator.comparingDouble(RadarCandidate::distanceSquared));
@@ -1358,7 +1357,7 @@ public final class FlightController {
                 .limit(MAX_RADAR_CONTACTS).map(RadarCandidate::contact).toList();
         ServerPlayNetworking.send(player, new FlightRadarPayload(player.blockPosition().getX(),
                 player.blockPosition().getZ(), (int) Math.round(player.getY() * 3.28084),
-                (float) session.headingDegrees, contacts));
+                (float) session.headingDegrees, (int) Math.round(scopeBlocks), contacts));
     }
 
     private static String radarName(String name) {
@@ -1382,7 +1381,6 @@ public final class FlightController {
         private int gearHeatTicks;
         private int gearGroundAlarmTicks;
         private int criticalBankTicks;
-        private int windUpdateTicks;
         private int windShearTicks;
         private int engineHotTicks;
         private int engineFireTicks;

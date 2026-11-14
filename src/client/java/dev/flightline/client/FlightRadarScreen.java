@@ -135,8 +135,7 @@ public final class FlightRadarScreen extends Screen {
         int useWidth = compactLayout ? 84 : 100;
         addRenderableWidget(Button.builder(Component.literal("USE CONTACT"), button -> useSelectedContact())
                 .bounds(useX, panelTop + 26, useWidth, 18).build());
-        if (!compactLayout) {
-        } else {
+        if (compactLayout) {
             addRenderableWidget(Button.builder(rangeLabel(), button -> changeRange(1))
                     .bounds(panelLeft + panelWidth - 94, panelTop + 26, 82, 18).build());
         }

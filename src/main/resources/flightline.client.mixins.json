@@ -6,7 +6,10 @@
     "KeyboardInputMixin",
     "FlightCameraMixin",
     "FlightPoseMixin",
-    "FlightHeadLockMixin"
+    "FlightHeadLockMixin",
+    "VanillaKeybindMixin",
+    "LivingEntityRenderStateMixin",
+    "LivingEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
