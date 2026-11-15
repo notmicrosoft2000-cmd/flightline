@@ -493,7 +493,6 @@ public class AutopilotScreen extends Screen {
                             + FlightLineClient.keyName(FlightLineClient.togglePfd()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleEicas()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleNdRadar()) + "/"
-                            + FlightLineClient.keyName(FlightLineClient.toggleRadioAltimeter()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleKeybindHints()));
             drawKeyRow(graphics, left, top, scaleX, 224, "Anti-ice", FlightLineClient.keyName(FlightLineClient.antiIce()));
             graphics.centeredText(font, "FLAPS add lift and drag · SPOILERS dump lift and slow descent",

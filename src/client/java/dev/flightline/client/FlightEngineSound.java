@@ -16,8 +16,8 @@ final class FlightEngineSound extends AbstractTickableSoundInstance {
         this.looping = true;
         this.relative = true;
         this.attenuation = SoundInstance.Attenuation.NONE;
-        this.volume = cruise ? 0.9f : 0.12f;
-        this.pitch = cruise ? 0.95f : 0.85f;
+        this.volume = cruise ? 0.9f : 0.45f;
+        this.pitch = cruise ? 0.95f : 0.65f;
     }
 
     @Override
@@ -33,8 +33,15 @@ final class FlightEngineSound extends AbstractTickableSoundInstance {
         this.y = player.getY();
         this.z = player.getZ();
         float throttle = FlightHud.throttle();
-        this.volume = cruise ? 0.78f + throttle * 0.22f : 0.10f + throttle * 0.14f;
-        this.pitch = cruise ? 0.92f + throttle * 0.18f : 0.78f + throttle * 0.42f;
+        if (cruise) {
+            // High altitude / airborne high thrust jet roar
+            this.volume = 0.80f + throttle * 0.20f;
+            this.pitch = 0.92f + throttle * 0.18f;
+        } else {
+            // Distinct ground idle turbofan whine, rumble, and taxi spool-up
+            this.volume = 0.48f + throttle * 0.42f;
+            this.pitch = 0.60f + throttle * 0.38f;
+        }
     }
 
     boolean isCruise() { return cruise; }

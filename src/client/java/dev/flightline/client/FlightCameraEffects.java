@@ -21,7 +21,7 @@ public final class FlightCameraEffects {
 
     public static void updateFlightState(FlightPhase nextPhase) {
         if (phase != nextPhase) {
-            if (nextPhase == FlightPhase.ROTATE) takeoffTicks = 50;
+            if (nextPhase == FlightPhase.ROTATE) takeoffTicks = 30;
             if (nextPhase == FlightPhase.LANDING_ROLL) rolloutTicks = 35;
         }
         phase = nextPhase;
@@ -44,33 +44,66 @@ public final class FlightCameraEffects {
 
     public static Shake sample(long timeNanos) {
         float target = 0.0f;
-        if (airborne) target = Math.min(0.006f, windSpeedKnots * 0.00035f);
-        if (airborne) target = Math.max(target, turbulencePercent * 0.00014f);
-        if ((warnings & FlightWarning.WINDSHEAR) != 0) target = 0.035f;
-        if (phase == FlightPhase.TAKEOFF_ROLL || phase == FlightPhase.ROTATE) {
+        float turbSens = FlightLineClient.getAircraftType().turbulenceSensitivity();
+
+        // Subtle continuous engine hum
+        if (FlightLineClient.areEnginesActive()) {
+            target = Math.max(target, 0.0006f + FlightHud.throttle() * 0.0010f);
+        }
+        // Realistic airliner turbulence: gentle atmospheric air-pocket displacement
+        if (airborne) {
+            float turbFrac = Math.max(0.0f, Math.min(1.0f, turbulencePercent / 100.0f));
+            float windFrac = Math.max(0.0f, Math.min(1.0f, windSpeedKnots / 70.0f));
+            target = Math.max(target, turbFrac * 0.0090f * turbSens);
+            target = Math.max(target, windFrac * 0.0055f * turbSens);
+        }
+        if ((warnings & FlightWarning.WINDSHEAR) != 0) target = Math.max(target, 0.022f * turbSens);
+        if ((warnings & FlightWarning.STALL) != 0) target = Math.max(target, 0.018f);
+        if ((warnings & FlightWarning.AIRFRAME_STRESS) != 0 || (warnings & FlightWarning.OVERSPEED) != 0) {
             target = Math.max(target, 0.012f);
         }
+        if (phase == FlightPhase.TAKEOFF_ROLL || phase == FlightPhase.ROTATE) {
+            target = Math.max(target, 0.008f);
+        }
         if (takeoffTicks > 0) {
-            target = Math.max(target, 0.014f);
+            target = Math.max(target, 0.009f);
             takeoffTicks--;
         }
-        if (Math.abs(bankDegrees) > 12.0f) {
-            target = Math.max(target, Math.min(0.018f, (Math.abs(bankDegrees) - 12.0f) * 0.00028f));
+        if (Math.abs(bankDegrees) > 20.0f) {
+            target = Math.max(target, Math.min(0.006f, (Math.abs(bankDegrees) - 20.0f) * 0.00015f));
         }
-        if (airborne && radioAltitudeFeet < 120 && verticalSpeedFpm < -100) {
-            target = Math.max(target, 0.016f * (1.0f - Math.max(0, radioAltitudeFeet) / 120.0f));
+        if (airborne && radioAltitudeFeet < 100 && verticalSpeedFpm < -120) {
+            target = Math.max(target, 0.007f * (1.0f - Math.max(0, radioAltitudeFeet) / 100.0f));
         }
         if (phase == FlightPhase.LANDING_ROLL || rolloutTicks > 0) {
-            target = Math.max(target, 0.016f);
+            target = Math.max(target, 0.010f);
             if (rolloutTicks > 0) rolloutTicks--;
         }
 
-        shake += (target - shake) * 0.16f;
-        if (shake < 0.0001f) return Shake.NONE;
+        // Smoothly interpolate shake intensity to avoid harsh jerking
+        shake += (target - shake) * 0.10f;
+        if (shake < 0.00005f) return Shake.NONE;
+
         double time = timeNanos / 1_000_000_000.0;
-        return new Shake((float) Math.sin(time * 17.0) * shake,
-                (float) Math.sin(time * 23.0 + 1.4) * shake * 0.72f,
-                (float) Math.sin(time * 13.0 + 0.7) * shake * 0.45f);
+
+        // Atmospheric turbulence motion: low-frequency rolling sways and pitch bumps
+        float rollAtmosphere = (float) (Math.sin(time * 3.4) * 0.65 + Math.sin(time * 1.5 + 1.2) * 0.35);
+        float pitchAtmosphere = (float) (Math.cos(time * 2.9 + 0.5) * 0.60 + Math.sin(time * 1.2) * 0.40);
+        float yawAtmosphere = (float) (Math.sin(time * 2.2 + 2.0) * 0.70 + Math.cos(time * 0.95 + 0.4) * 0.30);
+
+        // Subtle high-frequency chatter only during stall buffeting or high-speed ground rollout
+        float buffet = 0.0f;
+        if ((warnings & FlightWarning.STALL) != 0) {
+            buffet = (float) Math.sin(time * 22.0) * 0.0035f;
+        } else if (phase == FlightPhase.LANDING_ROLL || phase == FlightPhase.TAKEOFF_ROLL) {
+            buffet = (float) Math.sin(time * 24.0) * 0.0018f;
+        }
+
+        return new Shake(
+                pitchAtmosphere * shake * 0.55f + buffet * 0.5f,
+                yawAtmosphere * shake * 0.45f,
+                rollAtmosphere * shake * 0.85f + buffet * 0.8f
+        );
     }
 
     public record Shake(float pitchRadians, float yawRadians, float rollRadians) {

@@ -1,5 +1,6 @@
 package dev.flightline;
 
+import dev.flightline.flight.AircraftType;
 import dev.flightline.flight.FlightController;
 import dev.flightline.flight.MobFlightController;
 import dev.flightline.flight.RunwayGenerator;
@@ -11,6 +12,7 @@ import dev.flightline.network.FlightInputPayload;
 import dev.flightline.network.FlightInstrumentPayload;
 import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
+import dev.flightline.network.SelectPlanePayload;
 import dev.flightline.network.StartEnginesPayload;
 import dev.flightline.network.TogglePushbackPayload;
 import dev.flightline.network.ToggleGearPayload;
@@ -45,6 +47,7 @@ import net.minecraft.world.item.component.WrittenBookContent;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.util.Prediction;
 import com.mojang.brigadier.arguments.FloatArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.commands.CommandSourceStack;
 import org.jspecify.annotations.NonNull;
@@ -93,6 +96,8 @@ public class FlightLine implements ModInitializer {
     public static final SoundEvent CALLOUT_10 = registerSound("callout_10");
     public static final SoundEvent CALLOUT_RETARD = registerSound("callout_retard");
     public static final SoundEvent CALLOUT_PLUS_100 = registerSound("callout_plus_100");
+    public static final SoundEvent CALLOUT_FLAPS = registerSound("callout_flaps");
+    public static final SoundEvent CALLOUT_GEAR = registerSound("callout_gear");
     public static final SoundEvent VOICE_APPROACHING_MINIMUMS = registerSound("voice_approaching_minimums");
     public static final SoundEvent VOICE_MINIMUMS = registerSound("voice_minimums");
     public static final SoundEvent VOICE_ADJUST_VERTICAL_SPEED = registerSound("voice_adjust_vertical_speed");
@@ -104,6 +109,47 @@ public class FlightLine implements ModInitializer {
     public static final SoundEvent VOICE_REDUCE_DESCEND = registerSound("voice_reduce_descend");
     public static final SoundEvent TCAS_TEST_PASS = registerSound("tcas_test_pass");
     public static final SoundEvent TCAS_TEST_FAIL = registerSound("tcas_test_fail");
+
+    // Gina 787 specific voice alerts and alarms
+    public static final SoundEvent GINA_CALLOUT_2500 = registerSound("gina_callout_2500");
+    public static final SoundEvent GINA_CALLOUT_1000 = registerSound("gina_callout_1000");
+    public static final SoundEvent GINA_CALLOUT_500 = registerSound("gina_callout_500");
+    public static final SoundEvent GINA_CALLOUT_400 = registerSound("gina_callout_400");
+    public static final SoundEvent GINA_CALLOUT_300 = registerSound("gina_callout_300");
+    public static final SoundEvent GINA_CALLOUT_200 = registerSound("gina_callout_200");
+    public static final SoundEvent GINA_CALLOUT_100 = registerSound("gina_callout_100");
+    public static final SoundEvent GINA_CALLOUT_40 = registerSound("gina_callout_40");
+    public static final SoundEvent GINA_CALLOUT_30 = registerSound("gina_callout_30");
+    public static final SoundEvent GINA_CALLOUT_20 = registerSound("gina_callout_20");
+    public static final SoundEvent GINA_CALLOUT_10 = registerSound("gina_callout_10");
+    public static final SoundEvent GINA_CAUTION_ALARM = registerSound("gina_caution_alarm");
+    public static final SoundEvent GINA_URGENT_ALARM = registerSound("gina_urgent_alarm");
+    public static final SoundEvent GINA_STALL_STALL = registerSound("gina_stall_stall");
+    public static final SoundEvent GINA_TAKEOFF_CONFIG_WARN = registerSound("gina_takeoff_config_warn");
+    public static final SoundEvent GINA_GPWS_BANK_ANGLE = registerSound("gina_gpws_bank_angle");
+    public static final SoundEvent GINA_GPWS_DONT_SINK = registerSound("gina_gpws_dont_sink");
+    public static final SoundEvent GINA_GPWS_GLIDESLOPE = registerSound("gina_gpws_glideslope");
+    public static final SoundEvent GINA_GPWS_PULL_UP = registerSound("gina_gpws_pull_up");
+    public static final SoundEvent GINA_GPWS_TERRAIN_PULLUP = registerSound("gina_gpws_terrain_pullup");
+    public static final SoundEvent GINA_GPWS_SINK_RATE = registerSound("gina_gpws_sink_rate");
+    public static final SoundEvent GINA_GPWS_TOO_LOW_GEAR = registerSound("gina_gpws_too_low_gear");
+    public static final SoundEvent GINA_GPWS_TOO_LOW_TERRAIN = registerSound("gina_gpws_too_low_terrain");
+    public static final SoundEvent GINA_GPWS_WINDSHEAR = registerSound("gina_gpws_windshear");
+    public static final SoundEvent GINA_GPWS_WINDSHEAR_AHEAD = registerSound("gina_gpws_windshear_ahead");
+    public static final SoundEvent GINA_TCAS_CLEAR = registerSound("gina_tcas_clear");
+    public static final SoundEvent GINA_TCAS_CLIMB = registerSound("gina_tcas_climb");
+    public static final SoundEvent GINA_TCAS_CLIMB_NOW = registerSound("gina_tcas_climb_now");
+    public static final SoundEvent GINA_TCAS_CLIMB_CROSSING = registerSound("gina_tcas_climb_crossing");
+    public static final SoundEvent GINA_TCAS_DESCEND = registerSound("gina_tcas_descend");
+    public static final SoundEvent GINA_TCAS_DESCEND_NOW = registerSound("gina_tcas_descend_now");
+    public static final SoundEvent GINA_TCAS_DESCEND_CROSSING = registerSound("gina_tcas_descend_crossing");
+    public static final SoundEvent GINA_TCAS_TRAFFIC = registerSound("gina_tcas_traffic");
+    public static final SoundEvent GINA_TCAS_TEST_PASS = registerSound("gina_tcas_test_pass");
+    public static final SoundEvent GINA_TCAS_TEST_FAIL = registerSound("gina_tcas_test_fail");
+    public static final SoundEvent GINA_VOICE_ADJUST_VERTICAL_SPEED = registerSound("gina_voice_adjust_vertical_speed");
+    public static final SoundEvent GINA_VOICE_APPROACHING_MINIMUMS = registerSound("gina_voice_approaching_minimums");
+    public static final SoundEvent GINA_VOICE_APPROACHING_DECISION_HEIGHT = registerSound("gina_voice_approaching_decision_height");
+    public static final SoundEvent GINA_VOICE_MINIMUMS = registerSound("gina_voice_minimums");
 
     @SuppressWarnings("null")
     private static SoundEvent registerSound(String path) {
@@ -130,14 +176,21 @@ public class FlightLine implements ModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(ToggleGearPayload.TYPE, ToggleGearPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(StartEnginesPayload.TYPE, StartEnginesPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(TogglePushbackPayload.TYPE, TogglePushbackPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SelectPlanePayload.TYPE, SelectPlanePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(FlightStatePayload.TYPE, FlightStatePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(FlightInstrumentPayload.TYPE, FlightInstrumentPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(FlightRadarPayload.TYPE, FlightRadarPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(AtcRadioPayload.TYPE, AtcRadioPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(OpenAtcPayload.TYPE, OpenAtcPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(SelectPlanePayload.TYPE, SelectPlanePayload.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(FlightInputPayload.TYPE, (payload, context) -> {
             FlightController.updateInput(context.player(), payload.controls());
+        });
+
+        ServerPlayNetworking.registerGlobalReceiver(SelectPlanePayload.TYPE, (payload, context) -> {
+            AircraftType type = AircraftType.fromId(payload.planeId());
+            context.server().execute(() -> FlightController.setAircraftType(context.player(), type));
         });
 
         ServerPlayNetworking.registerGlobalReceiver(ToggleGearPayload.TYPE, (payload, context) ->
@@ -188,8 +241,10 @@ public class FlightLine implements ModInitializer {
 
         ServerTickEvents.END_SERVER_TICK.register(FlightController::tick);
         ServerTickEvents.END_SERVER_TICK.register(RunwayGenerator::tick);
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
-                giveFlightGuide(handler.player));
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            giveFlightGuide(handler.player);
+            notifyAircraftSelection(handler.player);
+        });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             FlightController.remove(handler.player.getUUID(), handler.player);
             PENDING_ATC_ACKS.remove(handler.player.getUUID());
@@ -197,6 +252,7 @@ public class FlightLine implements ModInitializer {
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
             FlightController.resetAfterRespawn(oldPlayer, newPlayer);
             giveFlightGuide(newPlayer);
+            notifyAircraftSelection(newPlayer);
         });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
@@ -334,8 +390,57 @@ public class FlightLine implements ModInitializer {
         player.sendSystemMessage(Component.literal("A Flight Line pilot guide was added to your inventory."));
     }
 
+    private static void notifyAircraftSelection(ServerPlayer player) {
+        AircraftType type = FlightController.getAircraftType(player);
+        ServerPlayNetworking.send(player, new SelectPlanePayload(type.id()));
+        player.sendSystemMessage(Component.literal("§6[Flight Line] §fCurrent aircraft: §e" + type.displayName()
+                + "§f. Change aircraft with §b/plane §for click: ")
+                .append(Component.literal("§a[Kasa A380] ").withStyle(style -> style
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/plane kasa"))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(Component.literal("Select Kasa A380 (Twin-engine widebody)")))))
+                .append(Component.literal("§b[The Gina 787]").withStyle(style -> style
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/plane gina"))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(Component.literal("Select The Gina 787 (6 Giant Engines · 200-210 kt · Damped)"))))));
+    }
+
     @SuppressWarnings("null")
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal("plane")
+                .executes(context -> {
+                    ServerPlayer player = context.getSource().getPlayerOrException();
+                    AircraftType current = FlightController.getAircraftType(player);
+                    context.getSource().sendSuccess(() -> Component.literal(
+                            "§6[Flight Line] §fCurrent aircraft: §e" + current.displayName() + "§7 (" + current.description() + ")\n"
+                            + "§fClick to select: ")
+                            .append(Component.literal("§a[Kasa A380] ")
+                                    .withStyle(style -> style
+                                            .withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/plane kasa"))
+                                            .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(Component.literal("Switch to Kasa A380")))))
+                            .append(Component.literal("§b[The Gina 787]")
+                                    .withStyle(style -> style
+                                            .withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/plane gina"))
+                                            .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(Component.literal("Switch to The Gina 787 (6 Giant Engines · 200-210 kt · Damped)"))))), false);
+                    return 1;
+                })
+                .then(Commands.argument("type", StringArgumentType.greedyString())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("kasa");
+                            builder.suggest("gina");
+                            builder.suggest("a380");
+                            builder.suggest("787");
+                            return builder.buildFuture();
+                        })
+                        .executes(context -> {
+                            ServerPlayer player = context.getSource().getPlayerOrException();
+                            String arg = StringArgumentType.getString(context, "type");
+                            AircraftType selected = AircraftType.fromId(arg);
+                            FlightController.setAircraftType(player, selected);
+                            context.getSource().sendSuccess(() -> Component.literal(
+                                    "§a[Flight Line] §fAircraft switched to §e" + selected.displayName()
+                                    + "§7 (" + selected.engineCount() + " engines, " + selected.cruiseAirspeedKnots() + " kt cruise)."), false);
+                            return 1;
+                        }))
+        );
         dispatcher.register(Commands.literal("disableflight").requires(
                         (@NonNull CommandSourceStack source) -> isOperator(source))
                 .executes(context -> {

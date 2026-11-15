@@ -30,6 +30,8 @@ public final class FlightWarning {
     public static final int GEAR_SELECTED_ON_GROUND = 1 << 26;
     public static final int ICE_ACCUMULATION = 1 << 27;
     public static final int AIRFRAME_STRESS = 1 << 28;
+    public static final int HYDRAULIC_FAIL = 1 << 29;
+    public static final int PRESSURISATION = 1 << 30;
 
     private FlightWarning() {
     }

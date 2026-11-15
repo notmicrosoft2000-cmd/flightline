@@ -94,13 +94,20 @@ class FlightPhysicsTest {
 
     @Test
     void testCrashKnockbackScaling() {
+        // Low-speed impact: knockback is floored at 1.5; radius grows from base 6 blocks.
         double lowSpeedImpact = 0.4;
-        assertEquals(1.0, AircraftImpact.knockbackStrength(lowSpeedImpact), 1e-4);
-        assertEquals(4.4, AircraftImpact.impactRadius(lowSpeedImpact), 1e-4);
+        assertEquals(1.5, AircraftImpact.knockbackStrength(lowSpeedImpact), 1e-4);
+        assertEquals(9.2, AircraftImpact.impactRadius(lowSpeedImpact), 1e-4);
 
+        // High-speed impact: knockback caps at 6.5; radius caps at 24 blocks.
         double highSpeedImpact = 3.0;
-        assertEquals(3.2, AircraftImpact.knockbackStrength(highSpeedImpact), 1e-4);
-        assertEquals(7.0, AircraftImpact.impactRadius(highSpeedImpact), 1e-4);
+        assertEquals(6.5, AircraftImpact.knockbackStrength(highSpeedImpact), 1e-4);
+        assertEquals(24.0, AircraftImpact.impactRadius(highSpeedImpact), 1e-4);
+
+        // Scaling: moderate impact stays within bounds.
+        double midSpeedImpact = 1.0;
+        assertEquals(Math.max(1.5, Math.min(6.5, 1.0 * 3.6)), AircraftImpact.knockbackStrength(midSpeedImpact), 1e-4);
+        assertEquals(Math.min(24.0, 6.0 + 1.0 * 8.0), AircraftImpact.impactRadius(midSpeedImpact), 1e-4);
     }
 
     @Test
@@ -255,6 +262,43 @@ class FlightPhysicsTest {
     }
 
     @Test
+    void engineOutGlideLowersTheStallMarginInsteadOfStallingImmediately() {
+        double cleanStall = FlightTuning.icedStallSpeed(0.0, 0.0);
+        assertEquals(cleanStall, FlightTuning.engineOutStallSpeed(cleanStall, true), 1e-9);
+        double glideStall = FlightTuning.engineOutStallSpeed(cleanStall, false);
+        assertTrue(glideStall < cleanStall);
+
+        // An engine failure on approach must not instantly stall at a speed the wing can still fly.
+        double approachSpeed = glideStall * 1.02;
+        assertTrue(approachSpeed > glideStall);
+        double glideSpeed = FlightTuning.engineOutGlideSpeed(glideStall);
+        assertTrue(approachSpeed < glideSpeed);
+        assertTrue(FlightTuning.engineOutGlideAcceleration(approachSpeed, glideSpeed, false) > 0.0);
+        assertEquals(0.0,
+                FlightTuning.engineOutGlideAcceleration(glideSpeed * 1.05, glideSpeed, false), 1e-9);
+        assertEquals(0.0,
+                FlightTuning.engineOutGlideAcceleration(approachSpeed, glideSpeed, true), 1e-9);
+    }
+
+    @Test
+    void engineOutAircraftRetainsUsefulGlideTimeBeforeReachingGlideStallSpeed() {
+        assertTrue(FlightTuning.engineOutDragFactor(false)
+                < FlightTuning.engineOutDragFactor(true));
+        double stallSpeed = FlightTuning.engineOutStallSpeed(
+                FlightTuning.icedStallSpeed(0.0, 0.0), false);
+        double drag = 0.00045 / FlightTuning.WORLD_SPEED_SCALE
+                * FlightTuning.engineOutDragFactor(false);
+        double speed = FlightTuning.ROTATION_SPEED;
+        int ticks = 0;
+        while (speed > stallSpeed && ticks < 2000) {
+            speed -= speed * speed * drag;
+            ticks++;
+        }
+        assertTrue(ticks > 120,
+                "engine-out glide should give the pilot time to land, reached stall in " + ticks);
+    }
+
+    @Test
     void testWeatherSimulationIncreasesTurbulenceAndReducesVisibility() {
         WeatherSimulation.Conditions clear = WeatherSimulation.sample(false, false, 1000L, 42L);
         WeatherSimulation.Conditions rain = WeatherSimulation.sample(true, false, 1000L, 42L);
@@ -357,11 +401,55 @@ class FlightPhysicsTest {
 
     @Test
     void testPullUpWarningOnlyForAirborneLowDescendingOrTerrainThreat() {
-        assertFalse(FlightController.shouldPullUpWarning(false, 40, -1800, false));
-        assertFalse(FlightController.shouldPullUpWarning(true, 400, -1800, false));
-        assertFalse(FlightController.shouldPullUpWarning(true, 100, -500, false));
-        assertTrue(FlightController.shouldPullUpWarning(true, 100, -800, false));
-        assertTrue(FlightController.shouldPullUpWarning(true, 800, 0, true));
+        assertFalse(FlightController.shouldPullUpWarning(false, 40, -1800, false, false));
+        assertFalse(FlightController.shouldPullUpWarning(true, 400, -1800, false, false));
+        assertFalse(FlightController.shouldPullUpWarning(true, 100, -500, false, false));
+        assertTrue(FlightController.shouldPullUpWarning(true, 100, -1500, false, false));
+        assertTrue(FlightController.shouldPullUpWarning(true, 800, 0, true, true));
+    }
+
+    @Test
+    void normalLandingDoesNotTriggerGpwsSinkRateOrPullUp() {
+        for (int radioAltitude = 1000; radioAltitude >= 30; radioAltitude -= 10) {
+            assertFalse(FlightController.shouldSinkRateWarning(true, radioAltitude, -700, true),
+                    "stable approach sink rate must be silent at " + radioAltitude + " ft");
+            assertFalse(FlightController.shouldPullUpWarning(true, radioAltitude, -700, false, true),
+                    "stable approach must not command pull-up at " + radioAltitude + " ft");
+        }
+        assertFalse(FlightController.shouldSinkRateWarning(true, 0, -900, true));
+    }
+
+    @Test
+    void excessiveSinkRateStillTriggersGpws() {
+        assertTrue(FlightController.shouldSinkRateWarning(true, 500, -3000, false));
+        assertTrue(FlightController.shouldSinkRateWarning(true, 100, -2000, true));
+        assertFalse(FlightController.shouldSinkRateWarning(false, 100, -3000, false));
+        assertFalse(FlightController.shouldSinkRateWarning(true, 3000, -5000, false));
+    }
+
+    @Test
+    void flatRunwayAheadIsNotMistakenForRisingTerrain() {
+        assertFalse(FlightController.isDescendingTerrainThreat(true, -0.2, 10.0, 0, 100));
+        assertFalse(FlightController.isDescendingTerrainThreat(true, -0.2, 10.0, 20, 100));
+        assertFalse(FlightController.isDescendingTerrainThreat(true, -0.2, 10.0, 50, 100));
+        assertTrue(FlightController.isDescendingTerrainThreat(true, -0.2, 10.0, 80, 300));
+        assertFalse(FlightController.isDescendingTerrainThreat(false, -0.2, 10.0, 80, 300));
+    }
+
+    @Test
+    void takeoffAcceleratesToRotationInAGameplayFriendlyTime() {
+        double speed = 0.0;
+        double throttle = 0.0;
+        double spool = 0.0;
+        int ticks = 0;
+        while (speed < FlightTuning.ROTATION_SPEED && ticks < 200) {
+            throttle = FlightTuning.adjustThrottle(throttle, true);
+            spool = FlightTuning.updateEngineSpool(spool, 0.04 + throttle * 0.96);
+            speed = FlightTuning.advanceGroundSpeed(speed, spool, 2, 0.0);
+            ticks++;
+        }
+        assertTrue(speed >= FlightTuning.ROTATION_SPEED);
+        assertTrue(ticks <= 105, "takeoff roll should reach rotation in about five seconds, was " + ticks + " ticks");
     }
 
     @Test
@@ -373,11 +461,11 @@ class FlightPhysicsTest {
     }
 
     @Test
-    void testOverbankAllowsSteepTurnsButCrashesIfSustained() {
+    void overbankIsAerodynamicPenaltyNotAnInstantCrash() {
         assertTrue(FlightTuning.MAX_BANK_DEGREES > FlightTuning.CRITICAL_BANK_DEGREES);
-        assertFalse(FlightController.shouldCrashForOverbank(60.0, 40));
-        assertFalse(FlightController.shouldCrashForOverbank(70.0, 19));
-        assertTrue(FlightController.shouldCrashForOverbank(70.0, 20));
+        assertFalse(FlightController.isOverbank(60.0));
+        assertTrue(FlightController.isOverbank(65.0));
+        assertTrue(FlightController.isOverbank(70.0));
     }
 
     @Test
@@ -394,5 +482,42 @@ class FlightPhysicsTest {
         double levelFlightPath = 0.0;
         double stallAoa = stallPitch - levelFlightPath;
         assertTrue(stallAoa > FlightTuning.CRITICAL_ANGLE_OF_ATTACK_DEGREES);
+    }
+
+    @Test
+    void testAircraftTypeProfiles() {
+        AircraftType kasa = AircraftType.KASA_A380;
+        assertEquals(2, kasa.engineCount());
+        assertEquals(172, kasa.maxAirspeedKnots());
+        assertEquals(1.0f, kasa.turbulenceSensitivity(), 1e-4);
+
+        AircraftType gina = AircraftType.GINA_787;
+        assertEquals(6, gina.engineCount());
+        assertEquals(215, gina.maxAirspeedKnots());
+        assertEquals(205, gina.cruiseAirspeedKnots());
+        assertTrue(gina.maxAirspeedKnots() >= 210);
+        assertTrue(gina.cruiseAirspeedKnots() >= 200 && gina.cruiseAirspeedKnots() <= 210);
+        assertEquals(0.45f, gina.turbulenceSensitivity(), 1e-4);
+        assertTrue(gina.turbulenceSensitivity() < kasa.turbulenceSensitivity(), "Gina 787 should have damped turbulence");
+    }
+
+    @Test
+    void testAircraftTypeSelectionFromId() {
+        assertSame(AircraftType.KASA_A380, AircraftType.fromId("kasa"));
+        assertSame(AircraftType.KASA_A380, AircraftType.fromId("a380"));
+        assertSame(AircraftType.KASA_A380, AircraftType.fromId("Kasa A380"));
+        assertSame(AircraftType.GINA_787, AircraftType.fromId("gina"));
+        assertSame(AircraftType.GINA_787, AircraftType.fromId("787"));
+        assertSame(AircraftType.GINA_787, AircraftType.fromId("The Gina 787"));
+    }
+
+    @Test
+    void testGina787SixEngineHighSpeedPerformance() {
+        // Test ground acceleration with 6 engines for Gina vs 2 engines for Kasa
+        double kasaAcc = FlightTuning.groundAcceleration(1.0, 1.0, 2, 0.0, AircraftType.KASA_A380);
+        double ginaAcc = FlightTuning.groundAcceleration(1.0, 1.0, 6, 0.0, AircraftType.GINA_787);
+
+        assertTrue(ginaAcc > kasaAcc, "Gina 787 with 6 giant engines should produce more acceleration than Kasa");
+        assertTrue(AircraftType.GINA_787.maxAirspeedBlocksPerTick() > AircraftType.KASA_A380.maxAirspeedBlocksPerTick());
     }
 }

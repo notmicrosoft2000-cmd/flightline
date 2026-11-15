@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.world.entity.Avatar;
+import net.minecraft.world.item.Items;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -19,7 +20,8 @@ public abstract class FlightPoseMixin {
         Minecraft client = Minecraft.getInstance();
         if (avatar == client.player && FlightLineClient.isAirborne()) {
             state.isFallFlying = true;
-            state.fallFlyingTimeInTicks = Math.max(1.0f, state.fallFlyingTimeInTicks);
+            state.fallFlyingTimeInTicks = Math.max(12.0f, state.fallFlyingTimeInTicks + 1.0f);
+            state.chestEquipment = Items.ELYTRA.getDefaultInstance();
         }
     }
 }

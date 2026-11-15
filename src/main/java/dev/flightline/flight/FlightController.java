@@ -4,10 +4,13 @@ import dev.flightline.network.FlightInstrumentPayload;
 import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.damagesource.DamageSource;
@@ -43,8 +46,30 @@ public final class FlightController {
             ResourceKey.create(Registries.DAMAGE_TYPE, Identifier.fromNamespaceAndPath("flightline", "aircraft_crash"));
     private static final Map<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final Set<UUID> FLIGHT_DISABLED = new HashSet<>();
+    private static final Map<UUID, AircraftType> PLAYER_AIRCRAFT = new ConcurrentHashMap<>();
 
     private FlightController() {
+    }
+
+    public static AircraftType getAircraftType(ServerPlayer player) {
+        Session s = SESSIONS.get(player.getUUID());
+        if (s != null) return s.aircraftType;
+        return PLAYER_AIRCRAFT.getOrDefault(player.getUUID(), AircraftType.KASA_A380);
+    }
+
+    public static boolean setAircraftType(ServerPlayer player, AircraftType type) {
+        PLAYER_AIRCRAFT.put(player.getUUID(), type);
+        Session s = SESSIONS.get(player.getUUID());
+        if (s != null) {
+            s.aircraftType = type;
+            if (type == AircraftType.GINA_787 && s.autopilotAirspeedKnots == 160) {
+                s.autopilotAirspeedKnots = 205;
+            } else if (type == AircraftType.KASA_A380 && s.autopilotAirspeedKnots == 205) {
+                s.autopilotAirspeedKnots = 160;
+            }
+        }
+        ServerPlayNetworking.send(player, new dev.flightline.network.SelectPlanePayload(type.id()));
+        return true;
     }
 
     public static void enable(ServerPlayer player) {
@@ -54,6 +79,8 @@ public final class FlightController {
         }
 
         Session session = new Session(player.isNoGravity());
+        session.aircraftType = PLAYER_AIRCRAFT.getOrDefault(player.getUUID(), AircraftType.KASA_A380);
+        if (session.aircraftType == AircraftType.GINA_787) session.autopilotAirspeedKnots = 205;
         session.headingDegrees = player.getYRot();
         Vec3 velocity = player.getDeltaMovement();
         session.groundSpeed = velocity.horizontalDistance();
@@ -284,6 +311,9 @@ public final class FlightController {
         }
 
         Session session = new Session(false);
+        session.aircraftType = PLAYER_AIRCRAFT.getOrDefault(newPlayer.getUUID(),
+                PLAYER_AIRCRAFT.getOrDefault(oldPlayer.getUUID(), AircraftType.KASA_A380));
+        if (session.aircraftType == AircraftType.GINA_787) session.autopilotAirspeedKnots = 205;
         session.headingDegrees = newPlayer.getYRot();
         session.phase = FlightPhase.TAXI;
         SESSIONS.put(newPlayer.getUUID(), session);
@@ -297,7 +327,6 @@ public final class FlightController {
         session.engineStartTicks = 0;
         session.gearHeatTicks = 0;
         session.gearGroundAlarmTicks = 0;
-        session.criticalBankTicks = 0;
         session.windShearTicks = 0;
         session.engineHotTicks = 0;
         session.engineFireTicks = 0;
@@ -333,6 +362,10 @@ public final class FlightController {
         session.crashTicksRemaining = 0;
         session.impactHandled = false;
         session.engineTemperature = 20.0;
+        session.hydraulicFailTicks = 0;
+        session.hydraulicFailed = false;
+        session.cabinAltitudeFeet = 0;
+        session.pressLost = false;
         session.phase = FlightPhase.TAXI;
         player.setNoGravity(false);
         player.setDeltaMovement(Vec3.ZERO);
@@ -475,7 +508,7 @@ public final class FlightController {
         updateEngineSpool(session);
         updateWeather(player, session);
         updateFlaps(session);
-        updateEngineTemperatures(session);
+        updateEngineTemperatures(player, session);
         updateFuel(player, session);
         session.brakesActive = !session.airborne && ((session.controls & FlightControls.BRAKE) != 0
                 || session.autolandRolloutTicks > 0);
@@ -484,9 +517,11 @@ public final class FlightController {
 
         // A runway contact can be reported as a vertical collision or low-altitude horizontal collision
         // before or together with vanilla onGround. Treat surface contact as a touchdown to be assessed.
+        // Horizontal collisions only count as runway contact below 20 ft RA to avoid triggering
+        // a crash when the player clips sloped terrain during a normal approach.
         boolean runwayContact = session.airborne && session.takeoffGraceTicks == 0
                 && (onGround || player.verticalCollision
-                || (player.horizontalCollision && session.radioAltitudeFeet <= 80));
+                || (player.horizontalCollision && session.radioAltitudeFeet <= 20));
         if (runwayContact) {
             handleFallImpact(player, player.fallDistance);
             if (session.crashed) {
@@ -570,6 +605,7 @@ public final class FlightController {
         }
         updateOverspeedStress(player, session);
         updateGearHeat(session);
+        updateHydraulicsAndPressurisation(player, session);
         updateInstruments(player, session, server);
     }
 
@@ -629,6 +665,12 @@ public final class FlightController {
     }
 
     private static int runningEngines(Session session) {
+        if (session.aircraftType == AircraftType.GINA_787) {
+            boolean running = session.engine1State == ENGINE_RUNNING && session.engine2State == ENGINE_RUNNING;
+            if (running) return 6;
+            if (session.engine1State == ENGINE_RUNNING || session.engine2State == ENGINE_RUNNING) return 3;
+            return 0;
+        }
         return (session.engine1State == ENGINE_RUNNING ? 1 : 0)
                 + (session.engine2State == ENGINE_RUNNING ? 1 : 0);
     }
@@ -656,7 +698,12 @@ public final class FlightController {
         }
         if (session.turbulencePercent > 0) {
             long tick = player.level().getGameTime() + player.getUUID().getLeastSignificantBits();
-            targetBank += Math.sin(tick * 0.19) * session.turbulencePercent * 0.035;
+            targetBank += Math.sin(tick * 0.19) * session.turbulencePercent * 0.035 * session.aircraftType.turbulenceSensitivity();
+        }
+        if (session.engine1State >= ENGINE_FAILED && session.engine2State == ENGINE_RUNNING) {
+            targetBank += 4.5 * session.throttle;
+        } else if (session.engine2State >= ENGINE_FAILED && session.engine1State == ENGINE_RUNNING) {
+            targetBank -= 4.5 * session.throttle;
         }
 
         boolean pilotTurning = !session.autopilot
@@ -665,24 +712,26 @@ public final class FlightController {
                 ? FlightTuning.BANK_RESPONSE_DEGREES_PER_TICK
                 : FlightTuning.BANK_RELEASE_RESPONSE_DEGREES_PER_TICK;
         session.bankDegrees = approach(session.bankDegrees, targetBank, bankResponse);
-        if (Math.abs(session.bankDegrees) >= FlightTuning.CRITICAL_BANK_DEGREES) {
-            session.criticalBankTicks++;
-            if (shouldCrashForOverbank(session.bankDegrees, session.criticalBankTicks)) {
-                crashAircraft(player, session, session.airspeed);
-                return;
-            }
-        } else {
-            session.criticalBankTicks = 0;
-        }
+        // Exceeding the bank limit is an aerodynamic penalty, not an instant death sentence.
+        // The aircraft only crashes when it actually strikes terrain, traffic or an obstacle.
         double speed = Math.max(0.75, session.airspeed);
         // Turn rate: omega = g * tan(phi) / v
         double turnRate = FlightTuning.TURN_RATE_FACTOR * FlightTuning.WORLD_SPEED_SCALE
                 * Math.tan(Math.toRadians(session.bankDegrees)) / speed;
+        if (session.engine1State >= ENGINE_FAILED && session.engine2State == ENGINE_RUNNING) {
+            turnRate += 0.28 * session.throttle;
+        } else if (session.engine2State >= ENGINE_FAILED && session.engine1State == ENGINE_RUNNING) {
+            turnRate -= 0.28 * session.throttle;
+        }
         session.headingDegrees = wrapDegrees(session.headingDegrees + turnRate);
 
-        // Aerodynamic overbanking / nose drop: in a bank, the aircraft naturally drops its nose unless pilot pulls back
+        // Aerodynamic overbanking / nose drop: in a bank, the aircraft naturally drops its nose unless pilot pulls back.
+        // Beyond the critical bank angle the wing loses more vertical lift, which is dramatic but survivable.
         if (!session.autopilot && Math.abs(session.bankDegrees) > 2.0) {
             session.pitchDegrees -= Math.abs(session.bankDegrees) * 0.015;
+            if (isOverbank(session.bankDegrees)) {
+                session.pitchDegrees -= 0.10;
+            }
         }
 
         // Rotate velocity vector horizontally to follow the coordinated turn
@@ -792,15 +841,10 @@ public final class FlightController {
             speed = motion.speed();
             session.pushbackReversing = motion.reversing();
         } else {
-            double engineFactor = runningEngines(session) / 2.0;
-            double thrust = session.engineSpool * FlightTuning.GROUND_THRUST * engineFactor;
-            // Low rolling resistance lets a fully powered aircraft reach rotation speed,
-            // while the small per-tick thrust still takes time to build runway speed.
-            double rollingResistance = 0.0008 * FlightTuning.WORLD_SPEED_SCALE + speed * 0.0017;
-            double flapDrag = session.flapPosition * 0.0015;
-            speed = Math.max(0.0, speed + thrust - rollingResistance - flapDrag);
+            speed = FlightTuning.advanceGroundSpeed(speed, session.engineSpool,
+                    runningEngines(session), session.flapPosition, session.aircraftType);
         }
-        session.groundSpeed = Math.min(FlightTuning.MAX_AIRSPEED, speed);
+        session.groundSpeed = speed;
         session.airspeed = (float) session.groundSpeed;
 
         Vec3 heading = headingVector(session.headingDegrees);
@@ -810,7 +854,7 @@ public final class FlightController {
 
         double pitchUp = -player.getXRot();
         if (!session.pushback && !session.brakesActive && runningEngines(session) > 0
-                && session.groundSpeed >= FlightTuning.ROTATION_SPEED
+                && session.groundSpeed >= session.aircraftType.rotationSpeedBlocksPerTick()
                 && pitchUp >= FlightTuning.ROTATION_PITCH_DEGREES) {
             session.airborne = true;
             session.takeoffGraceTicks = 10;
@@ -839,6 +883,7 @@ public final class FlightController {
     }
 
     private static void simulateAirborne(ServerPlayer player, Session session) {
+        boolean powered = runningEngines(session) > 0;
         // Authoritative aircraft 3D attitude vector derived from aircraft pitch and heading
         double pitchRad = Math.toRadians(session.pitchDegrees);
         double yawRad = Math.toRadians(session.headingDegrees);
@@ -851,7 +896,8 @@ public final class FlightController {
 
         Vec3 velocity = session.airVelocity;
         Vec3 wind = new Vec3(session.windX, session.windY, session.windZ);
-        double turbulence = session.turbulencePercent / 100.0;
+        double turbSens = session.aircraftType.turbulenceSensitivity();
+        double turbulence = (session.turbulencePercent / 100.0) * turbSens;
         long turbulenceTick = player.level().getGameTime() + player.getUUID().getLeastSignificantBits();
         velocity = velocity.add(
                 Math.sin(turbulenceTick * 0.31) * turbulence * 0.003,
@@ -872,10 +918,11 @@ public final class FlightController {
         double loadFactor = 1.0 / cosBank;
         double turnInducedDrag = (loadFactor * loadFactor - 1.0) * 0.0016 / FlightTuning.WORLD_SPEED_SCALE;
         double drag = (baseDrag * (1.0 - groundEffect * 0.30)) + turnInducedDrag;
+        drag *= FlightTuning.engineOutDragFactor(powered);
         velocity = velocity.subtract(relativeAir.scale(drag * Math.max(0.15, airspeed)));
 
         // Thrust aligns strictly with the aircraft's physical attitude (decoupled from raw camera look)
-        double engineFactor = runningEngines(session) / 2.0;
+        double engineFactor = (runningEngines(session) / (double) session.aircraftType.engineCount()) * session.aircraftType.thrustMultiplier();
         velocity = velocity.add(aircraftAttitude.scale(session.engineSpool * FlightTuning.AIR_THRUST * engineFactor));
 
         // Autothrottle speed hold
@@ -895,9 +942,25 @@ public final class FlightController {
         double flightPathAngle = Math.toDegrees(Math.atan2(velocity.y, Math.max(horizontalSpeed, 1.0e-4)));
         double pitchUp = session.pitchDegrees;
         double angleOfAttack = pitchUp - flightPathAngle;
-        double stallSpeed = FlightTuning.icedStallSpeed(session.icingPercent, session.flapPosition);
+        double stallSpeed = FlightTuning.engineOutStallSpeed(
+                FlightTuning.icedStallSpeed(session.icingPercent, session.flapPosition), powered);
         boolean stalled = indicatedAirspeed < stallSpeed
                 || angleOfAttack > FlightTuning.CRITICAL_ANGLE_OF_ATTACK_DEGREES || pitchUp >= 50.0;
+
+        if (!powered && !stalled) {
+            // Glide assist: if the aircraft is slow, allow it to trade height for airspeed along
+            // its current flight path instead of bleeding straight into a stall.
+            double glideSpeed = FlightTuning.engineOutGlideSpeed(stallSpeed);
+            double glideAcceleration = FlightTuning.engineOutGlideAcceleration(
+                    indicatedAirspeed, glideSpeed, false);
+            if (glideAcceleration > 0.0 && airVelocity.lengthSqr() > 1.0e-8) {
+                velocity = velocity.add(airVelocity.normalize().scale(glideAcceleration));
+            }
+            if (indicatedAirspeed < glideSpeed) {
+                session.pitchDegrees = approach(session.pitchDegrees,
+                        FlightTuning.ENGINE_OUT_GLIDE_PITCH_DEGREES, 0.08);
+            }
+        }
 
         if (stalled) {
             // Aerodynamic stall recovery: nose naturally pitches down to regain airflow
@@ -918,11 +981,12 @@ public final class FlightController {
             lift = Math.max(lift, 0.12);
         }
         velocity = velocity.add(0.0, lift - 0.08, 0.0);
-        if (session.gearDown && session.radioAltitudeFeet < 45) {
-            // Ground-effect flare cushion: in the last few metres the wing is close
-            // enough to the runway that a normal approach should not arrive at the
+        if (session.gearDown && session.radioAltitudeFeet < 60) {
+            // Ground-effect flare cushion: in the last ~20 m the wing is close
+            // enough to the runway that a normal approach should not arrive at a
             // hard-landing sink rate simply because the pilot was a little late.
-            double maxSink = -FlightTuning.SAFE_TOUCHDOWN_SINK_SPEED * 1.15;
+            // Clamp to 1.5× the safe touchdown sink speed so a gentle flare is enough.
+            double maxSink = -FlightTuning.SAFE_TOUCHDOWN_SINK_SPEED * 1.5;
             if (velocity.y < maxSink) {
                 velocity = new Vec3(velocity.x, maxSink, velocity.z);
             }
@@ -958,7 +1022,17 @@ public final class FlightController {
     }
 
     private static void updateWeather(ServerPlayer player, Session session) {
-        if (session.windShearTicks > 0) session.windShearTicks--;
+        if (session.windShearTicks > 0) {
+            session.windShearTicks--;
+            if (session.airborne) {
+                // Continuous violent microburst downdraft, crosswind shear, and uncommanded bank
+                session.airVelocity = session.airVelocity.add(session.windX * 0.04,
+                        -0.024 * FlightTuning.WORLD_SPEED_SCALE, session.windZ * 0.04);
+                session.bankDegrees = Math.max(-55.0, Math.min(55.0,
+                        session.bankDegrees + (session.windX - session.windZ) * 2.2));
+                session.turbulencePercent = Math.max(session.turbulencePercent, 95);
+            }
+        }
         long gameTime = player.level().getGameTime();
         long seed = player.getUUID().getLeastSignificantBits();
         float biomeTemperature = player.level().getBiome(player.blockPosition()).value().getBaseTemperature();
@@ -980,27 +1054,49 @@ public final class FlightController {
         session.visibilityBlocks = conditions.visibilityBlocks();
         session.weatherCondition = conditions.condition();
         if (WeatherSimulation.isWindshearEvent(player.level().isThundering(), gameTime, seed)) {
-            session.windShearTicks = 120;
-            session.windX *= 3.0;
-            session.windZ *= 3.0;
+            session.windShearTicks = 160;
+            session.windX *= 4.0;
+            session.windZ *= 4.0;
             if (session.airborne) {
-                session.airVelocity = session.airVelocity.add(session.windX * 0.28,
-                        -0.13 * FlightTuning.WORLD_SPEED_SCALE, session.windZ * 0.28);
+                session.airVelocity = session.airVelocity.add(session.windX * 0.40,
+                        -0.32 * FlightTuning.WORLD_SPEED_SCALE, session.windZ * 0.40);
+                session.bankDegrees = Math.max(-50.0, Math.min(50.0,
+                        session.bankDegrees + (session.windX > 0 ? 32.0 : -32.0)));
             }
         }
     }
 
-    private static void updateEngineTemperatures(Session session) {
+    private static void updateEngineTemperatures(ServerPlayer player, Session session) {
         boolean highPower = session.engineSpool > 0.88;
         session.engineTemperature = approach(session.engineTemperature,
                 highPower ? 950.0 : 420.0, highPower ? 1.8 : 0.18);
         if (session.engineTemperature > 900.0) session.engineHotTicks++;
         else session.engineHotTicks = Math.max(0, session.engineHotTicks - 2);
         if (session.engineHotTicks > 1200) {
-            if (session.engine1State == ENGINE_RUNNING) session.engine1State = ENGINE_FIRE;
-            else if (session.engine2State == ENGINE_RUNNING) session.engine2State = ENGINE_FIRE;
+            boolean justFailed = false;
+            if (session.engine1State == ENGINE_RUNNING) {
+                session.engine1State = ENGINE_FIRE;
+                justFailed = true;
+            } else if (session.engine2State == ENGINE_RUNNING) {
+                session.engine2State = ENGINE_FIRE;
+                justFailed = true;
+            }
+            if (justFailed && player.level() instanceof ServerLevel serverLevel) {
+                serverLevel.playSound(null, player.blockPosition(), SoundEvents.GENERIC_EXPLODE.value(),
+                        SoundSource.PLAYERS, 3.0f, 0.85f);
+                serverLevel.sendParticles(ParticleTypes.EXPLOSION, player.getX(), player.getY() + 0.6, player.getZ(),
+                        3, 0.5, 0.5, 0.5, 0.05);
+                serverLevel.sendParticles(ParticleTypes.FLAME, player.getX(), player.getY() + 0.6, player.getZ(),
+                        32, 0.5, 0.5, 0.5, 0.12);
+            }
             if (session.engine1State == ENGINE_FIRE || session.engine2State == ENGINE_FIRE) {
                 session.engineFireTicks++;
+                if (session.engineFireTicks % 2 == 0 && player.level() instanceof ServerLevel serverLevel) {
+                    serverLevel.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, player.getX(), player.getY() + 0.4, player.getZ(),
+                            3, 0.2, 0.2, 0.2, 0.02);
+                    serverLevel.sendParticles(ParticleTypes.FLAME, player.getX(), player.getY() + 0.4, player.getZ(),
+                            2, 0.15, 0.15, 0.15, 0.02);
+                }
                 if (session.engineFireTicks > 400) {
                     if (session.engine1State == ENGINE_FIRE) session.engine1State = ENGINE_FAILED;
                     if (session.engine2State == ENGINE_FIRE) session.engine2State = ENGINE_FAILED;
@@ -1021,6 +1117,43 @@ public final class FlightController {
         }
     }
 
+    private static void updateHydraulicsAndPressurisation(ServerPlayer player, Session session) {
+        // Hydraulic failure: gear cycling at high speed while already hot causes gradual failure
+        if (!session.hydraulicFailed) {
+            boolean stressedGearCycle = session.airborne && session.gearDown
+                    && session.airspeed > 2.0f * FlightTuning.WORLD_SPEED_SCALE
+                    && session.gearHeatTicks > 200;
+            if (stressedGearCycle) {
+                session.hydraulicFailTicks++;
+                if (session.hydraulicFailTicks > 600) {
+                    session.hydraulicFailed = true;
+                    // Hydraulic failure locks flaps at current detent and stiffens controls
+                    session.flapDetent = Math.min(session.flapDetent, 2);
+                }
+            } else {
+                session.hydraulicFailTicks = Math.max(0, session.hydraulicFailTicks - 1);
+            }
+        }
+
+        // Pressurisation: cabin altitude climbs when above 15000 ft and engines are off or failed
+        int aircraftAltFeet = (int) Math.round(player.getY() * 3.28084);
+        boolean enginesRunning = runningEngines(session) > 0;
+        if (session.airborne && aircraftAltFeet > 15000 && !enginesRunning) {
+            // Cabin altitude climbs ~300 fpm without engine bleed air
+            session.cabinAltitudeFeet = Math.min(aircraftAltFeet,
+                    session.cabinAltitudeFeet + 5);
+            if (session.cabinAltitudeFeet > 10000) {
+                session.pressLost = true;
+            }
+        } else {
+            // Bleed air keeps cabin pressurised
+            session.cabinAltitudeFeet = Math.max(0, session.cabinAltitudeFeet - 10);
+            if (session.cabinAltitudeFeet < 8000) {
+                session.pressLost = false;
+            }
+        }
+    }
+
     private static void updateInstruments(ServerPlayer player, Session session, MinecraftServer server) {
         int radioAltitude = Math.max(0, (int) Math.round((player.getY()
                 - player.level().getHeight(Heightmap.Types.MOTION_BLOCKING,
@@ -1030,8 +1163,13 @@ public final class FlightController {
         int warnings = 0;
         session.airborneContacts = 0;
         session.groundContacts = 0;
+        // Gear-down flight is treated as landing configuration: normal approach sink rates must
+        // not trigger Mode 1/2 GPWS just because the runway is rising toward the aircraft.
+        boolean landingConfiguration = session.gearDown;
         if (session.phase == FlightPhase.STALL) warnings |= FlightWarning.STALL;
-        if (session.phase == FlightPhase.AIRBORNE && radioAltitude < 1000 && verticalSpeed < -1000) warnings |= FlightWarning.SINK_RATE;
+        if (shouldSinkRateWarning(session.airborne, radioAltitude, verticalSpeed, landingConfiguration)) {
+            warnings |= FlightWarning.SINK_RATE;
+        }
         if (session.airborne && session.takeoffWarningTicks > 0 && radioAltitude < 200
                 && verticalSpeed < -300) warnings |= FlightWarning.DONT_SINK;
         boolean descendingTerrainAhead = false;
@@ -1054,12 +1192,13 @@ public final class FlightController {
                 && session.gearDown && session.flapDetent == 0) {
             warnings |= FlightWarning.TOO_LOW_FLAPS;
         }
-        if (session.airborne && radioAltitude < 250 && verticalSpeed < -200
-                && !session.gearDown && session.throttle > 0.60) {
+        if (session.airborne && !landingConfiguration && radioAltitude < 250 && verticalSpeed < -500) {
             warnings |= FlightWarning.TOO_LOW_TERRAIN;
         }
 
-        // Mode 2 GPWS: Look-ahead terrain closure rate (rising mountains or hills ahead)
+        // Mode 2 GPWS: Look-ahead terrain closure rate (rising mountains or hills ahead).
+        // Flat ground ahead of a normal approach is not a terrain threat; only terrain that
+        // genuinely rises into the flight path should command a pull-up.
         if (session.airborne && session.airspeed > 0.8f) {
             Vec3 forward = session.airVelocity.horizontalDistanceSqr() > 1.0e-4
                     ? new Vec3(session.airVelocity.x, 0.0, session.airVelocity.z).normalize()
@@ -1075,14 +1214,16 @@ public final class FlightController {
             double lookAheadTicks = lookDist / horizontalSpeed;
             double projectedClearanceFeet = (player.getY() + session.airVelocity.y * lookAheadTicks - groundAhead)
                     * 3.28084;
-            descendingTerrainAhead = session.airVelocity.y < -0.02 && projectedClearanceFeet < 35.0;
+            descendingTerrainAhead = isDescendingTerrainThreat(session.airborne, session.airVelocity.y,
+                    projectedClearanceFeet, risingTerrainFeet, radioAltitude);
             if (descendingTerrainAhead) {
                 warnings |= FlightWarning.PULL_UP;
             } else if (risingTerrainFeet > 40 && radioAltitude < 600) {
                 warnings |= FlightWarning.TERRAIN;
             }
         }
-        if (shouldPullUpWarning(session.airborne, radioAltitude, verticalSpeed, descendingTerrainAhead)) {
+        if (shouldPullUpWarning(session.airborne, radioAltitude, verticalSpeed,
+                descendingTerrainAhead, landingConfiguration)) {
             warnings |= FlightWarning.PULL_UP;
         }
 
@@ -1096,6 +1237,8 @@ public final class FlightController {
         if (session.overspeedTicks >= FlightTuning.OVERSPEED_STRESS_START_TICKS) {
             warnings |= FlightWarning.AIRFRAME_STRESS;
         }
+        if (session.hydraulicFailed) warnings |= FlightWarning.HYDRAULIC_FAIL;
+        if (session.pressLost) warnings |= FlightWarning.PRESSURISATION;
         if (session.gearHeatTicks >= 100 && !session.gearFailed) warnings |= FlightWarning.GEAR_HOT;
         if (session.airborne && session.gearDown && radioAltitude < 1500 && session.airspeed > 2.5f) {
             double targetGlideFpm = -session.airspeed * FlightTuning.KNOTS_PER_BLOCK_PER_TICK * 5.3;
@@ -1200,14 +1343,35 @@ public final class FlightController {
         return ownAircraftAirborne && trafficAirborne;
     }
 
-    static boolean shouldPullUpWarning(boolean airborne, int radioAltitudeFeet, int verticalSpeedFpm,
-                                       boolean descendingTerrainAhead) {
-        return airborne && (descendingTerrainAhead
-                || (radioAltitudeFeet < 180 && verticalSpeedFpm < -700));
+    static boolean shouldSinkRateWarning(boolean airborne, int radioAltitudeFeet, int verticalSpeedFpm,
+                                         boolean landingConfiguration) {
+        if (!airborne || radioAltitudeFeet > 2450) return false;
+        int threshold = FlightTuning.sinkRateWarningThresholdFpm(radioAltitudeFeet);
+        if (landingConfiguration) threshold = Math.max(threshold, 1400);
+        return verticalSpeedFpm < -threshold;
     }
 
-    static boolean shouldCrashForOverbank(double bankDegrees, int durationTicks) {
-        return Math.abs(bankDegrees) >= FlightTuning.CRITICAL_BANK_DEGREES && durationTicks >= 20;
+    static boolean shouldPullUpWarning(boolean airborne, int radioAltitudeFeet, int verticalSpeedFpm,
+                                       boolean descendingTerrainAhead, boolean landingConfiguration) {
+        if (!airborne) return false;
+        if (descendingTerrainAhead) return true;
+        // On a gear-down approach the sink-rate envelope is the authority. Pull-up is only
+        // commanded for a genuinely hard, uncontrolled descent, never for a normal flare.
+        if (landingConfiguration && radioAltitudeFeet <= 1000) return false;
+        return radioAltitudeFeet < 180 && verticalSpeedFpm < -1400;
+    }
+
+    static boolean isDescendingTerrainThreat(boolean airborne, double verticalSpeed,
+                                             double projectedClearanceFeet, int risingTerrainFeet,
+                                             int radioAltitudeFeet) {
+        return airborne && verticalSpeed < -0.02
+                && projectedClearanceFeet < 50.0
+                && risingTerrainFeet > 60
+                && radioAltitudeFeet > 60;
+    }
+
+    static boolean isOverbank(double bankDegrees) {
+        return Math.abs(bankDegrees) >= FlightTuning.CRITICAL_BANK_DEGREES;
     }
 
     private static FlightInstrumentPayload.IlsGuidance calculateIlsGuidance(ServerPlayer player, Session session) {
@@ -1315,6 +1479,8 @@ public final class FlightController {
                                 session.visibilityBlocks, session.weatherCondition,
                                 (int) Math.round(session.icingPercent), session.antiIce, session.antiIceEffective)));
         ServerPlayNetworking.send(player, instruments);
+        ServerPlayNetworking.send(player, new dev.flightline.network.SelectPlanePayload(
+                (session != null ? session.aircraftType : getAircraftType(player)).id()));
     }
 
     private static void sendFlightRadar(ServerPlayer player, Session session, MinecraftServer server) {
@@ -1373,6 +1539,7 @@ public final class FlightController {
     }
 
     private static final class Session {
+        private AircraftType aircraftType = AircraftType.KASA_A380;
         private final boolean hadNoGravity;
         private int controls;
         private int takeoffGraceTicks;
@@ -1380,7 +1547,6 @@ public final class FlightController {
         private int engineStartTicks;
         private int gearHeatTicks;
         private int gearGroundAlarmTicks;
-        private int criticalBankTicks;
         private int windShearTicks;
         private int engineHotTicks;
         private int engineFireTicks;
@@ -1441,6 +1607,10 @@ public final class FlightController {
         private float ilsGlideSlopeDegrees = 3.0f;
         private FlightInstrumentPayload.IlsGuidance ilsGuidance = FlightInstrumentPayload.IlsGuidance.inactive();
         private double engineTemperature = 20.0;
+        private int hydraulicFailTicks;
+        private boolean hydraulicFailed;
+        private int cabinAltitudeFeet;
+        private boolean pressLost;
         private FlightPhase phase = FlightPhase.TAXI;
 
         private Session(boolean hadNoGravity) {

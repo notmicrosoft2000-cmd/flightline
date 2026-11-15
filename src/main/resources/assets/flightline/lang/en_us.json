@@ -12,7 +12,6 @@
   "key.flightline.pfd": "Toggle PFD Display",
   "key.flightline.eicas": "Toggle EICAS Display",
   "key.flightline.nd": "Toggle TCAS ND Display",
-  "key.flightline.radio_altimeter": "Toggle Radio Altimeter",
   "key.flightline.keybind_hints": "Toggle Cockpit Prompts",
   "key.flightline.controls": "Open Flight Line Controls",
   "key.flightline.atc_ack": "Acknowledge ATC Message",

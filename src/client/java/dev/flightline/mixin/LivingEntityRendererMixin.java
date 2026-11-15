@@ -3,9 +3,12 @@ package dev.flightline.mixin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.flightline.client.BankRenderState;
+import dev.flightline.client.FlightLineClient;
 import dev.flightline.client.MobBankTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,6 +23,9 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
     private void flightline$extractBank(T entity, S state, float partialTick, CallbackInfo ci) {
         if (entity instanceof Mob mob) {
             float bank = MobBankTracker.bankFor(mob.getId());
+            ((BankRenderState) state).flightline$setBank(bank);
+        } else if (entity instanceof Avatar avatar && avatar == Minecraft.getInstance().player && FlightLineClient.isAirborne()) {
+            float bank = FlightLineClient.bankDegrees();
             ((BankRenderState) state).flightline$setBank(bank);
         }
     }

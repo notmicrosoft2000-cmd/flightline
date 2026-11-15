@@ -1,5 +1,6 @@
 package dev.flightline.client;
 
+import dev.flightline.flight.AircraftType;
 import dev.flightline.flight.FlightPhase;
 import dev.flightline.flight.FlightTuning;
 import dev.flightline.flight.FlightWarning;
@@ -11,6 +12,7 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Mob;
 import org.jspecify.annotations.Nullable;
 
@@ -25,6 +27,16 @@ import java.util.Properties;
 import java.util.Deque;
 
 final class FlightHud {
+    private static final int PFD_BASE_WIDTH = 168;
+    private static final int PFD_BASE_HEIGHT = 158;
+    private static final int EICAS_WIDTH = 128;
+    private static final int EICAS_HEIGHT = 138;
+    private static final int PFD_GREEN = 0xFF55E08B;
+    private static final int PFD_CYAN = 0xFF6FE8FF;
+    private static final int PFD_WHITE = 0xFFF2F7FA;
+    private static final int PFD_AMBER = 0xFFFFC44D;
+    private static final int PFD_RED = 0xFFFF4B42;
+    private static final int PFD_MUTED = 0xFF6F8792;
     private static boolean enabled;
     private static FlightPhase phase = FlightPhase.OFF;
     private static float speed, throttle, bankDegrees, pitchDegrees, headingDegrees;
@@ -42,7 +54,6 @@ final class FlightHud {
     private static boolean showPfd = true;
     private static boolean showEicas = true;
     private static boolean showRadar = true;
-    private static boolean showRadioAltimeter = true;
     private static boolean showKeybinds = true;
     private static boolean radarDataReceived;
     private static long lastRadarUpdateNanos;
@@ -166,7 +177,6 @@ final class FlightHud {
             showPfd = readPreference(preferences, "showPfd", showPfd);
             showEicas = readPreference(preferences, "showEicas", showEicas);
             showRadar = readPreference(preferences, "showRadar", showRadar);
-            showRadioAltimeter = readPreference(preferences, "showRadioAltimeter", showRadioAltimeter);
             showKeybinds = readPreference(preferences, "showKeybinds", showKeybinds);
         } catch (IOException exception) {
             FlightLine.LOGGER.warn("Could not load Flight Line HUD preferences from {}", path, exception);
@@ -176,7 +186,6 @@ final class FlightHud {
     static void togglePfd() { showPfd = !showPfd; savePreferences(); }
     static void toggleEicas() { showEicas = !showEicas; savePreferences(); }
     static void toggleRadar() { showRadar = !showRadar; savePreferences(); }
-    static void toggleRadioAltimeter() { showRadioAltimeter = !showRadioAltimeter; savePreferences(); }
     static void toggleKeybinds() { showKeybinds = !showKeybinds; savePreferences(); }
 
     private static boolean readPreference(Properties preferences, String key, boolean defaultValue) {
@@ -194,7 +203,6 @@ final class FlightHud {
         preferences.setProperty("showPfd", Boolean.toString(showPfd));
         preferences.setProperty("showEicas", Boolean.toString(showEicas));
         preferences.setProperty("showRadar", Boolean.toString(showRadar));
-        preferences.setProperty("showRadioAltimeter", Boolean.toString(showRadioAltimeter));
         preferences.setProperty("showKeybinds", Boolean.toString(showKeybinds));
         try {
             Files.createDirectories(path.getParent());
@@ -305,276 +313,164 @@ final class FlightHud {
         int screenHeight = g.guiHeight();
         if (screenWidth < 240 || screenHeight < 184) return;
         double clock = System.nanoTime() / 1_000_000_000.0;
-        int ndY = screenWidth < 370 ? 126 : 6;
-        int lowerY = screenHeight - 72;
-        int radioPanelWidth = 148;
-        int radioPanelHeight = 52;
-        boolean lowerPanelVisible = showRadioAltimeter && screenWidth >= radioPanelWidth + 12 && lowerY >= 0
-                && lowerY + radioPanelHeight <= screenHeight
-                && (!showRadar || screenWidth >= 370 || lowerY >= ndY + 88 + 4);
+
+        float pfdScale = 1.0f;
+        int pfdDisplayWidth = 0;
+        int pfdDisplayHeight = 0;
+        if (showPfd) {
+            pfdScale = Math.min(0.85f, Math.min(
+                    (screenWidth * 0.40f) / PFD_BASE_WIDTH,
+                    (screenHeight * 0.52f) / PFD_BASE_HEIGHT));
+            pfdScale = Math.max(0.50f, pfdScale);
+            pfdDisplayWidth = Math.round(PFD_BASE_WIDTH * pfdScale);
+            pfdDisplayHeight = Math.round(PFD_BASE_HEIGHT * pfdScale);
+        }
+        int pfdLeft = 6;
+        int pfdTop = 6;
+        int pfdRight = pfdLeft + pfdDisplayWidth;
+        int pfdBottom = pfdTop + pfdDisplayHeight;
+
+        int eicasX = screenWidth - EICAS_WIDTH - 6;
+        boolean eicasVisible = showEicas && (!showPfd || eicasX >= pfdRight + 6);
+
+        int ndWidth = 104;
+        int ndHeight = 84;
+        int ndX = 0;
+        int ndY = 6;
+        boolean ndVisible = showRadar;
+        if (ndVisible) {
+            int availableLeft = showPfd ? pfdRight + 6 : 6;
+            int availableRight = eicasVisible ? eicasX - 6 : screenWidth - 6;
+            if (availableRight - availableLeft >= ndWidth) {
+                ndX = (availableLeft + availableRight - ndWidth) / 2;
+            } else {
+                ndX = availableLeft;
+                ndY = pfdBottom + 4;
+                if (ndX + ndWidth > screenWidth - 6 || ndY + ndHeight > screenHeight - 4) {
+                    ndVisible = false;
+                }
+            }
+        }
 
         if (showPfd) {
-        // Professional Glass Cockpit PFD: Attitude, Pitch Ladder, Airspeed & Altitude tapes
-        int pfdX = 6;
-        int pfdY = 6;
-        int pfdWidth = 116;
-        int pfdHeight = 100;
-        panel(g, pfdX, pfdY, pfdWidth, pfdHeight, 0xAA56B9D2);
-
-        // PFD Top Header / FMA
-        g.text(mc.font, "PFD", pfdX + 4, pfdY + 3, 0xFF72E6F5, true);
-        String flightMode = autopilotGuidance.autolandArmed() ? "AL" : autopilot ? "AP" : "FD";
-        g.text(mc.font, flightMode, pfdX + 31, pfdY + 3,
-                autopilot ? 0xFF62D89B : 0xFF70808A, true);
-        g.text(mc.font, fitText(mc.font, phase.label(), pfdWidth - 64), pfdX + 59, pfdY + 3,
-                phaseColor(), true);
-
-        // Center Artificial Horizon with dynamic pitch ladder and roll arc
-        int horizonCx = pfdX + 55;
-        int horizonCy = pfdY + 41;
-        drawArtificialHorizon(g, horizonCx, horizonCy, 58, 48, visualPitch, visualBank,
-                ilsActive, ilsLocalizerDegrees, ilsGlideslopeDegrees);
-
-        // Airspeed Tape (Left)
-        g.fill(pfdX + 3, pfdY + 15, pfdX + 24, pfdY + 70, 0xD0121A22);
-        g.outline(pfdX + 3, pfdY + 15, 21, 55, 0x8035A5B8);
-        int currentIas = knots(visualSpeed);
-        // Current speed digital readout box
-        g.fill(pfdX + 2, pfdY + 36, pfdX + 25, pfdY + 48, 0xFF0E141B);
-        g.outline(pfdX + 2, pfdY + 36, 23, 12, 0xFF72E6F5);
-        g.centeredText(mc.font, fitText(mc.font, required(String.valueOf(currentIas)), 21),
-                pfdX + 13, pfdY + 38, 0xFFFFFFFF);
-        g.text(mc.font, "IAS", pfdX + 4, pfdY + 17, 0xFF72E6F5, true);
-
-        // Altitude Tape & VSI (Right)
-        g.fill(pfdX + 86, pfdY + 15, pfdX + 107, pfdY + 70, 0xD0121A22);
-        g.outline(pfdX + 86, pfdY + 15, 21, 55, 0x8035A5B8);
-        // Current barometric altitude digital readout box
-        g.fill(pfdX + 84, pfdY + 36, pfdX + 109, pfdY + 48, 0xFF0E141B);
-        g.outline(pfdX + 84, pfdY + 36, 25, 12, 0xFF72E6F5);
-        int baroAltitudeFeet = (int) Math.round(player.getY() * 3.28084);
-        g.centeredText(mc.font, fitText(mc.font, required(String.valueOf(baroAltitudeFeet)), 23), pfdX + 96, pfdY + 38,
-                radioAltitudeFeet < 300 ? 0xFFFF5148 : 0xFFFFFFFF);
-        g.text(mc.font, "ALT", pfdX + 88, pfdY + 17, 0xFF72E6F5, true);
-
-        // PFD Bottom Pitch & Bank readouts
-        String pitchStr = String.format(Locale.ROOT, "P%+.0f°", visualPitch);
-        String bankStr = String.format(Locale.ROOT, "R%+.0f°", visualBank);
-        g.text(mc.font, fitText(mc.font, pitchStr, 38), pfdX + 27, pfdY + 72, 0xFFD5E0E8, true);
-        g.text(mc.font, fitText(mc.font, bankStr, 38), pfdX + 68, pfdY + 72, 0xFFD5E0E8, true);
-        String ilsText = ilsActive
-                ? String.format(Locale.ROOT, "LOC%+.1f GS%+.1f", ilsLocalizerDegrees, ilsGlideslopeDegrees)
-                : "ILS STBY";
-        g.text(mc.font, fitText(mc.font, ilsText, pfdWidth - 8), pfdX + 4, pfdY + 79,
-                ilsActive ? 0xFFFF6CD9 : 0xFF83959B, true);
-        if (ilsActive) {
-            String approachText = String.format(Locale.ROOT, "CRS %03.0f  %.1fNM",
-                    Math.floorMod(Math.round(ilsRunwayHeadingDegrees), 360),
-                    ilsThresholdDistanceBlocks / 1852.0f);
-            g.text(mc.font, fitText(mc.font, approachText, pfdWidth - 8), pfdX + 4, pfdY + 89,
-                    0xFF79E8FF, true);
-        }
+            var pose = g.pose();
+            pose.pushMatrix();
+            pose.translate(pfdLeft, pfdTop);
+            pose.scale(pfdScale, pfdScale);
+            drawPfd(g, mc, player);
+            pose.popMatrix();
         }
 
-        if (showRadar) {
-        // Heading-up ND with a scaled traffic scope and a rotating compass reference
-        int ndWidth = 104;
-        int ndX = (screenWidth - ndWidth) / 2;
-        panel(g, ndX, ndY, ndWidth, 84, 0xAA56B9D2);
-        int radarRangeBlocks = Math.max(16, Math.min(128, weatherGuidance.visibilityBlocks()));
-        int heading = Math.floorMod(Math.round(visualHeading), 360);
-        g.text(mc.font, fitText(mc.font, String.format(Locale.ROOT, "ND %03d° %dB", heading,
-                radarRangeBlocks), ndWidth - 8),
-                ndX + 4, ndY + 3,
-                0xFF72E6F5, true);
-        int radarCx = ndX + ndWidth / 2;
-        int radarCy = ndY + 38;
-        drawRadarGrid(g, radarCx, radarCy, 19, clock, visualHeading);
-        drawAircraftSymbol(g, radarCx, radarCy);
-        for (Mob mob : level.getEntitiesOfClass(Mob.class,
-                player.getBoundingBox().inflate(radarRangeBlocks), candidate -> candidate.isAlive())) {
-            double dx = mob.getX() - player.getX();
-            double dz = mob.getZ() - player.getZ();
-            double distance = Math.hypot(dx, dz);
-            if (distance > radarRangeBlocks) continue;
-            double relativeBearing = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
-            double scale = Math.min(1.0, distance / radarRangeBlocks);
-            drawTrafficBlip(g, radarCx, radarCy, relativeBearing, scale,
-                    mob.onGround(), false, mob.getBlockY() - player.getBlockY());
-        }
-        for (var otherPlayer : level.players()) {
-            if (otherPlayer == player || otherPlayer.isSpectator()) continue;
-            double dx = otherPlayer.getX() - player.getX();
-            double dz = otherPlayer.getZ() - player.getZ();
-            double distance = Math.hypot(dx, dz);
-            if (distance > radarRangeBlocks) continue;
-            double relativeBearing = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
-            drawTrafficBlip(g, radarCx, radarCy, relativeBearing, distance / radarRangeBlocks,
-                    otherPlayer.onGround(), true, otherPlayer.getBlockY() - player.getBlockY());
-        }
+        if (ndVisible) {
+            // Heading-up ND using authoritative TCAS radar payload contacts
+            panel(g, ndX, ndY, ndWidth, ndHeight, 0xAA56B9D2);
+            int heading = Math.floorMod(Math.round(visualHeading), 360);
+            int ndRangeBlocks = hasRadarData() ? Math.min(256, Math.max(64, radarPayload.scopeBlocks())) : 128;
+            g.text(mc.font, fitText(mc.font, String.format(Locale.ROOT, "TCAS %03d° %dB", heading,
+                    ndRangeBlocks), ndWidth - 8),
+                    ndX + 4, ndY + 3,
+                    0xFF72E6F5, true);
+            int radarCx = ndX + ndWidth / 2;
+            int radarCy = ndY + 36;
+            drawRadarGrid(g, radarCx, radarCy, 19, clock, visualHeading);
+            drawAircraftSymbol(g, radarCx, radarCy);
 
-        // Draw closest traffic contact blip on radar
-        if (trafficRangeBlocks > 0 && trafficRangeBlocks <= radarRangeBlocks) {
-            double bearing = Math.toRadians(trafficBearingDegrees);
-            double range = Math.min(1.0, trafficRangeBlocks / (double) radarRangeBlocks);
-            int targetX = radarCx - (int)Math.round(Math.sin(bearing) * 17.0 * range);
-            int targetY = radarCy - (int)Math.round(Math.cos(bearing) * 17.0 * range);
-            int targetColor = (warnings & FlightWarning.TCAS_RESOLUTION) != 0 ? 0xFFFF5148 : 0xFFFFCE52;
-            drawLine(g, targetX, targetY - 2, targetX + 2, targetY, targetColor);
-            drawLine(g, targetX + 2, targetY, targetX, targetY + 2, targetColor);
-            drawLine(g, targetX, targetY + 2, targetX - 2, targetY, targetColor);
-            drawLine(g, targetX - 2, targetY, targetX, targetY - 2, targetColor);
-        }
+            int ownAltFt = hasRadarData() ? radarPayload.ownAltitudeFeet() : (int) Math.round(player.getY() * 3.28084);
+            int ownX = hasRadarData() ? radarPayload.ownX() : player.blockPosition().getX();
+            int ownZ = hasRadarData() ? radarPayload.ownZ() : player.blockPosition().getZ();
 
-        // Clean ND footer rows - No text overflow!
-        g.text(mc.font, String.format(Locale.ROOT, "AIR %02d", trafficCounts >>> 8), ndX + 6, ndY + 63,
-                0xFF75E6A5, true);
-        g.text(mc.font, String.format(Locale.ROOT, "GND %02d", trafficCounts & 0xFF), ndX + 62, ndY + 63,
-                0xFFFFCE52, true);
+            // Threat filtering to avoid cluttered text/dots
+            List<FlightRadarPayload.Contact> allContacts = radarPayload.contacts();
+            List<FlightRadarPayload.Contact> visibleAirborne = new ArrayList<>();
+            List<FlightRadarPayload.Contact> visibleGround = new ArrayList<>();
 
-        if (trafficRangeBlocks > 0) {
-            int targetColor = (warnings & FlightWarning.TCAS_RESOLUTION) != 0 ? 0xFFFF5148 : 0xFFFFCE52;
-            String target = required(String.format(Locale.ROOT, "TGT %+dFT %dB",
-                    trafficAltitudeFeet, trafficRangeBlocks));
-            g.text(mc.font, fitText(mc.font, target, ndWidth - 12),
-                    ndX + 6, ndY + 73, targetColor, true);
-        } else {
-            g.text(mc.font, "TCAS NORM", ndX + 6, ndY + 73, 0xFF62B0A0, true);
-        }
-        }
-
-        if (showEicas) {
-        // EICAS: Engine, Fuel, Gear, Flaps and Spoilers
-        int eicasX = screenWidth - 118;
-        panel(g, eicasX, 6, 112, 117, 0xAA56B9D2);
-        int engine1 = systems & 7;
-        int engine2 = (systems >> 3) & 7;
-        int n1 = (systems >> 12) & 0x7F;
-        int flap = (systems >> 9) & 7;
-        boolean spoilers = (systems & (1 << 8)) != 0;
-        int food = player.getFoodData().getFoodLevel();
-        boolean engineFire = engine1 == 4 || engine2 == 4;
-        boolean blinkOn = ((long) (clock * 3.0) & 1L) == 0L;
-        g.fill(eicasX + 1, 7, eicasX + 111, 20, 0xFF1C2733);
-        g.text(mc.font, "EICAS", eicasX + 5, 10, 0xFF72E6F5, true);
-        g.text(mc.font, autopilotGuidance.autolandArmed() ? "A/L ON" : autopilot ? "A/P ON" : "A/P OFF",
-                eicasX + 60, 10,
-                autopilot ? 0xFF62D89B : 0xFF83959B, true);
-        drawEngineStatus(g, mc, eicasX + 4, 22, "E1", engine1, blinkOn);
-        drawEngineStatus(g, mc, eicasX + 59, 22, "E2", engine2, blinkOn);
-        g.text(mc.font, "N1", eicasX + 4, 34, 0xFFD5E0E8, true);
-        gauge(g, eicasX + 22, 36, 56, 5, n1 / 100.0f, n1 > 90 ? 0xFFFFA04A : 0xFF62D89B);
-        g.text(mc.font, String.format(Locale.ROOT, "%d%%", n1), eicasX + 82, 33,
-                n1 > 90 ? 0xFFFFA04A : 0xFFB6C8D1, true);
-        g.text(mc.font, "FUEL", eicasX + 4, 45, 0xFFD5E0E8, true);
-        gauge(g, eicasX + 30, 47, 54, 5, food / 20.0f, food <= 6 ? 0xFFFF5148 : 0xFFFFCE52);
-        g.text(mc.font, String.format(Locale.ROOT, "%d%%", food * 5), eicasX + 87, 44,
-                food <= 6 ? 0xFFFF5148 : 0xFFB6C8D1, true);
-        g.text(mc.font, gearState == 2 ? "GEAR FAIL" : gearState == 1 ? "GEAR UP" : "GEAR DN",
-                eicasX + 4, 57, gearColor(), true);
-        g.text(mc.font, spoilers ? "SP ON" : "SP OFF", eicasX + 54, 57,
-                spoilers ? 0xFFFFCE52 : 0xFFB9CDD4, true);
-        int gearLight = gearState == 2 ? 0xFFFF5148 : gearState == 0 ? 0xFF62D89B : 0xFFFFCE52;
-        for (int i = 0; i < 3; i++) {
-            g.fill(eicasX + 88 + i * 7, 58, eicasX + 93 + i * 7, 63, gearLight);
-        }
-        g.text(mc.font, "FL", eicasX + 4, 65, 0xFFD5E0E8, true);
-        for (int i = 0; i < 4; i++) {
-            g.fill(eicasX + 19 + i * 9, 66, eicasX + 25 + i * 9, 71,
-                    i < flap ? 0xFFFFCE52 : 0xFF364650);
-        }
-        g.text(mc.font, "WX " + weatherName(weatherGuidance.condition()),
-                eicasX + 4, 77, weatherColor(weatherGuidance.condition()), true);
-        String windReadout = required(String.format(Locale.ROOT, "%03d° %dKT",
-                weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots()));
-        g.text(mc.font, fitText(mc.font, windReadout, 54), eicasX + 54, 77, 0xFFB6C8D1, true);
-        String antiIceReadout = weatherGuidance.antiIceActive()
-                ? (weatherGuidance.antiIceEffective() ? "AI CLR" : "AI WAIT") : "AI OFF";
-        String weatherSeverity = required(String.format(Locale.ROOT, "ICE %d%% TURB %d%% %s",
-                weatherGuidance.icingPercent(), weatherGuidance.turbulencePercent(), antiIceReadout));
-        int turbulenceColor = weatherGuidance.turbulencePercent() >= 70 ? 0xFFFF5148
-                : weatherGuidance.turbulencePercent() >= 35 ? 0xFFFFCE52 : 0xFF62D89B;
-        int icingColor = weatherGuidance.icingPercent() >= 20 ? 0xFFFFCE52 : turbulenceColor;
-        g.text(mc.font, fitText(mc.font, weatherSeverity, 104), eicasX + 4, 89, icingColor, true);
-        if (engineFire) {
-            int fireColor = blinkOn ? 0xFFFF322D : 0xFF701B20;
-            g.fill(eicasX + 3, 101, eicasX + 109, 114, fireColor);
-            g.outline(eicasX + 3, 101, 106, 13, 0xFFFFB7A0);
-            g.centeredText(mc.font, fitText(mc.font, "ENGINE FIRE · SHUT DOWN", 100),
-                    eicasX + 56, 103, 0xFFFFFFFF);
-        } else if ((warnings & FlightWarning.ENGINE_FAILURE) != 0) {
-            g.fill(eicasX + 3, 101, eicasX + 109, 114, 0xFF70251F);
-            g.centeredText(mc.font, "ENGINE FAILURE", eicasX + 56, 103, 0xFFFFC2A8);
-        } else if ((warnings & (FlightWarning.FUEL_LOW | FlightWarning.FUEL_EMPTY)) != 0) {
-            g.fill(eicasX + 3, 101, eicasX + 109, 114, 0xFF604B16);
-            g.centeredText(mc.font, (warnings & FlightWarning.FUEL_EMPTY) != 0
-                    ? "FUEL EMPTY" : "FUEL LOW", eicasX + 56, 103, 0xFFFFE09A);
-        } else if ((warnings & FlightWarning.ICE_ACCUMULATION) != 0) {
-            g.fill(eicasX + 3, 101, eicasX + 109, 114, 0xFF34546B);
-            String iceAlert = weatherGuidance.antiIceEffective() ? "ANTI-ICE · ICE CLEARING"
-                    : weatherGuidance.antiIceActive() ? "ANTI-ICE SET · ENGINE NEEDED"
-                    : "ICE BUILDUP · ANTI-ICE OFF";
-            g.centeredText(mc.font, iceAlert,
-                    eicasX + 56, 103, 0xFFE0F3FF);
-        } else if ((engine1 == 0 || engine1 == 3) && (engine2 == 0 || engine2 == 3)
-                && !isAirbornePhase()) {
-            g.text(mc.font, "ENGINES OFF · READY", eicasX + 5, 104, 0xFFB6C8D1, true);
-        } else if (isAirbornePhase() && gearState == 1 && radioAltitudeFeet < 1000) {
-            g.text(mc.font, "GEAR UP · APPROACH", eicasX + 5, 104, 0xFFFFCE52, true);
-        } else if (isAirbornePhase() && flap == 0 && radioAltitudeFeet < 500) {
-            g.text(mc.font, "FLAPS RETRACTED", eicasX + 5, 104, 0xFFB6C8D1, true);
-        } else if (isAirbornePhase() && spoilers) {
-            g.text(mc.font, "SPOILERS EXTENDED", eicasX + 5, 104, 0xFFFFCE52, true);
-        }
-        }
-
-        if (showRadioAltimeter) {
-        // Radio altimeter with a focused low-altitude tape and vertical-speed trend readout.
-        if (lowerPanelVisible) {
-            int lowAltitudeWarnings = FlightWarning.PULL_UP | FlightWarning.TERRAIN
-                    | FlightWarning.SINK_RATE | FlightWarning.WINDSHEAR
-                    | FlightWarning.GEAR_UP | FlightWarning.TOO_LOW_FLAPS
-                    | FlightWarning.TOO_LOW_TERRAIN;
-            boolean warningBlink = (warnings & lowAltitudeWarnings) != 0
-                    && ((long)(clock * 3.0) & 1L) == 0L;
-            int panelBorder = warningBlink ? 0xFFFF5148 : 0xAA56B9D2;
-            panel(g, 6, lowerY, radioPanelWidth, radioPanelHeight, panelBorder);
-            g.fill(7, lowerY + 1, radioPanelWidth + 5, lowerY + 13,
-                    warningBlink ? 0xFF5C1F22 : 0xFF1C2733);
-            g.text(mc.font, "RAD ALT",
-                    11, lowerY + 3,
-                    warningBlink ? 0xFFFFA29C : 0xFF72E6F5, true);
-            String altitudeText = required(String.format(Locale.ROOT, "%04d", radioAltitudeFeet));
-            int altitudeColor = radioAltitudeColor(radioAltitudeFeet);
-            g.text(mc.font, altitudeText, 11, lowerY + 16, altitudeColor, true);
-            int altWidth = mc.font.width(altitudeText);
-            g.text(mc.font, "FT AGL", 11 + altWidth + 3, lowerY + 17, 0xFFB6C8D1, true);
-
-            String trendText = required(String.format(Locale.ROOT, "%s %d FPM",
-                    verticalSpeedFpm < 0 ? "▼" : "▲", Math.abs(verticalSpeedFpm)));
-            int trendColor = verticalSpeedFpm < -1000 ? 0xFFFF5148
-                    : verticalSpeedFpm < 0 ? 0xFFFFCE52 : 0xFF68E8A5;
-            int trendWidth = mc.font.width(trendText);
-            int trendX = Math.max(11 + altWidth + 3 + mc.font.width("FT AGL") + 6,
-                    radioPanelWidth + 5 - trendWidth - 6);
-            g.text(mc.font, trendText, trendX, lowerY + 17, trendColor, true);
-
-            int tapeX = 11;
-            int tapeY = lowerY + 31;
-            int tapeWidth = 124;
-            gauge(g, tapeX, tapeY, tapeWidth, 7,
-                    Math.min(1.0f, radioAltitudeFeet / 500.0f), altitudeColor);
-            for (int tickFeet : new int[]{10, 20, 50, 100, 200, 300, 400, 500}) {
-                int tickX = tapeX + Math.round(tapeWidth * tickFeet / 500.0f);
-                g.fill(tickX, tapeY - 1, tickX + 1, tapeY + (tickFeet % 100 == 0 ? 9 : 6),
-                        tickFeet <= 100 ? 0xFFE7EEF2 : 0xFF82949B);
+            for (FlightRadarPayload.Contact contact : allContacts) {
+                double distance = Math.hypot(contact.x() - ownX, contact.z() - ownZ);
+                if (distance > ndRangeBlocks) continue;
+                if (contact.airborne()) {
+                    visibleAirborne.add(contact);
+                } else {
+                    visibleGround.add(contact);
+                }
             }
-            g.text(mc.font, "0", tapeX, lowerY + 40, 0xFF9BAAB1, true);
-            for (int tickFeet : new int[]{100, 200, 300, 400, 500}) {
-                int tickX = tapeX + Math.round(tapeWidth * tickFeet / 500.0f);
-                g.centeredText(mc.font, String.valueOf(tickFeet), tickX, lowerY + 40, 0xFF9BAAB1);
+
+            // Draw up to 3 closest ground contacts as small subtle yellow dots
+            int groundCount = 0;
+            for (FlightRadarPayload.Contact contact : visibleGround) {
+                if (++groundCount > 3) break;
+                double dx = contact.x() - ownX;
+                double dz = contact.z() - ownZ;
+                double distance = Math.hypot(dx, dz);
+                double relativeBearingRad = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
+                double scale = Math.min(1.0, distance / ndRangeBlocks);
+                int px = radarCx - (int) Math.round(Math.sin(relativeBearingRad) * 17.0 * scale);
+                int py = radarCy - (int) Math.round(Math.cos(relativeBearingRad) * 17.0 * scale);
+                g.fill(px - 1, py - 1, px + 1, py + 1, 0x80C8B060);
+            }
+
+            // Draw airborne contacts (max 8 most relevant)
+            int airborneDrawn = 0;
+            for (FlightRadarPayload.Contact contact : visibleAirborne) {
+                if (++airborneDrawn > 8) break;
+                double dx = contact.x() - ownX;
+                double dz = contact.z() - ownZ;
+                double distance = Math.hypot(dx, dz);
+                double relativeBearingRad = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
+                double scale = Math.min(1.0, distance / ndRangeBlocks);
+                int px = radarCx - (int) Math.round(Math.sin(relativeBearingRad) * 17.0 * scale);
+                int py = radarCy - (int) Math.round(Math.cos(relativeBearingRad) * 17.0 * scale);
+                int relAltFt = contact.altitudeFeet() - ownAltFt;
+                int distBlocks = (int) Math.round(distance);
+
+                boolean isRa = distBlocks < 120 && Math.abs(relAltFt) < 600;
+                boolean isTa = !isRa && distBlocks < 250 && Math.abs(relAltFt) < 850;
+                boolean isProximate = !isRa && !isTa && distBlocks < 450 && Math.abs(relAltFt) < 1200;
+
+                if (isRa) {
+                    // RA: Solid red square
+                    g.fill(px - 2, py - 2, px + 3, py + 3, 0xFFFF2525);
+                    g.outline(px - 2, py - 2, 5, 5, 0xFFFFFFFF);
+                } else if (isTa) {
+                    // TA: Solid amber circle
+                    g.fill(px - 1, py - 2, px + 2, py + 3, 0xFFFFB000);
+                    g.fill(px - 2, py - 1, px + 3, py + 2, 0xFFFFB000);
+                } else if (isProximate) {
+                    // Proximate: Solid cyan diamond
+                    drawDiamond(g, px, py, 2, 0xFF00E5FF);
+                    g.fill(px, py, px + 1, py + 1, 0xFF00E5FF);
+                } else {
+                    // Other: Hollow cyan diamond
+                    drawDiamond(g, px, py, 2, contact.player() ? 0xFF6BCBFF : 0xFF75E6A5);
+                }
+
+                // Altitude tag only for RA, TA, or when <= 2 traffic in scope to keep it clean and readable
+                if (isRa || isTa || visibleAirborne.size() <= 2) {
+                    int relHundreds = Math.round(relAltFt / 100.0f);
+                    String tag = (relHundreds >= 0 ? "+" : "") + String.format(Locale.ROOT, "%02d", relHundreds);
+                    g.text(mc.font, tag, px + 4, py - 4,
+                            isRa ? 0xFFFF2525 : isTa ? 0xFFFFB000 : 0xFF86B5A4, false);
+                }
+            }
+
+            // Clean ND footer rows
+            g.text(mc.font, String.format(Locale.ROOT, "AIR %02d", trafficCounts >>> 8), ndX + 6, ndY + 63,
+                    0xFF75E6A5, true);
+            g.text(mc.font, String.format(Locale.ROOT, "GND %02d", trafficCounts & 0xFF), ndX + 62, ndY + 63,
+                    0xFFFFCE52, true);
+
+            if (trafficRangeBlocks > 0) {
+                int targetColor = (warnings & FlightWarning.TCAS_RESOLUTION) != 0 ? 0xFFFF5148 : 0xFFFFCE52;
+                String target = required(String.format(Locale.ROOT, "TGT %+dFT %dB",
+                        trafficAltitudeFeet, trafficRangeBlocks));
+                g.text(mc.font, fitText(mc.font, target, ndWidth - 12),
+                        ndX + 6, ndY + 73, targetColor, true);
+            } else {
+                g.text(mc.font, "TCAS NORM", ndX + 6, ndY + 73, 0xFF62B0A0, true);
             }
         }
+
+        if (eicasVisible) {
+            drawEicas(g, mc, player, eicasX, 6, clock);
         }
 
         updateKeybindPanelAnimation();
@@ -594,28 +490,509 @@ final class FlightHud {
 
         List<String> alerts = warningLabels();
         if (!alerts.isEmpty()) {
-            if (alerts.size() > 4) {
-                int hiddenAlerts = alerts.size() - 3;
-                alerts = new ArrayList<>(alerts.subList(0, 3));
+            int maxRows = 4;
+            if (alerts.size() > maxRows) {
+                int hiddenAlerts = alerts.size() - (maxRows - 1);
+                alerts = new ArrayList<>(alerts.subList(0, maxRows - 1));
                 alerts.add("+" + hiddenAlerts + " MORE");
             }
-            int stackHeight = alerts.size() * 12;
+            int maxTextWidth = 0;
+            for (String a : alerts) {
+                maxTextWidth = Math.max(maxTextWidth, mc.font.width(a));
+            }
+            int popupWidth = Math.max(90, Math.min(148, maxTextWidth + 20));
+            int rowHeight = 12;
+            int popupHeight = alerts.size() * rowHeight + 14;
             int alertX = 6;
-            int alertY = lowerPanelVisible ? lowerY - stackHeight - 3 : screenHeight - stackHeight - 8;
-            alertY = Math.max(ndY + 88, alertY);
-            int alertWidth = Math.min(188, screenWidth - 12);
-            int blink = ((long)(clock * 2.5) & 1L) == 0L ? 0xFFFF5148 : 0xFFD84442;
+            int alertY = screenHeight - popupHeight - 6;
+
+            int blink = ((long)(clock * 2.5) & 1L) == 0L ? 0xFFFF4B42 : 0xFFD83028;
+            int borderColor = phase == FlightPhase.CRASHED ? 0xFFFF4B42 : blink;
+
+            // Small popup card container in bottom left
+            g.fill(alertX, alertY, alertX + popupWidth, alertY + popupHeight, 0xEE120808);
+            g.outline(alertX, alertY, popupWidth, popupHeight, borderColor);
+
+            // Small popup header
+            g.fill(alertX + 1, alertY + 1, alertX + popupWidth - 1, alertY + 11, 0xDD260B0E);
+            g.text(mc.font, "▲ WARNING", alertX + 4, alertY + 2, 0xFFFF6F6F, true);
+
+            // Alert items inside the popup card
             for (int i = 0; i < alerts.size(); i++) {
-                int rowY = alertY + i * 12;
-                String alert = fitText(mc.font, alerts.get(i), alertWidth - 12);
-                g.fill(alertX, rowY, alertX + alertWidth, rowY + 11, 0xDD120808);
-                g.outline(alertX, rowY, alertWidth, 11,
-                        phase == FlightPhase.CRASHED ? 0xFFFF5148 : blink);
-                g.text(mc.font, alert, alertX + 6, rowY + 1,
-                        phase == FlightPhase.CRASHED ? 0xFFFF5148 : blink, true);
+                int rowY = alertY + 13 + i * rowHeight;
+                String alert = fitText(mc.font, alerts.get(i), popupWidth - 14);
+                // Status dot
+                g.fill(alertX + 4, rowY + 3, alertX + 7, rowY + 6, borderColor);
+                g.text(mc.font, alert, alertX + 10, rowY + 1, PFD_WHITE, true);
             }
         }
         drawBrakePopup(g, screenWidth, screenHeight);
+    }
+
+    /**
+     * Compact glass EICAS: engine N1, fuel, configuration, weather and a single alert strip.
+     * Uses the same palette and panel proportions as the PFD so both displays read as one suite.
+     */
+    private static void drawEicas(GuiGraphicsExtractor g, Minecraft mc, LocalPlayer player,
+                                  int x, int y, double clock) {
+        Font font = mc.font;
+        int e1 = systems & 7;
+        int e2 = (systems >> 3) & 7;
+        int n1 = (systems >> 12) & 0x7F;
+        int flap = (systems >> 9) & 7;
+        boolean spoilers = (systems & (1 << 8)) != 0;
+        int food = player.getFoodData().getFoodLevel();
+        boolean engineFire = e1 == 4 || e2 == 4;
+        boolean blinkOn = ((long) (clock * 3.0) & 1L) == 0L;
+        boolean bothEnginesOut = (e1 == 0 || e1 == 3) && (e2 == 0 || e2 == 3);
+
+        g.fill(x, y, x + EICAS_WIDTH, y + EICAS_HEIGHT, 0xF0060A0F);
+        g.outline(x, y, EICAS_WIDTH, EICAS_HEIGHT, 0xFF3E7D8E);
+
+        g.fill(x + 1, y + 1, x + EICAS_WIDTH - 1, y + 15, 0xDD0A1117);
+        AircraftType plane = FlightLineClient.getAircraftType();
+        String eicasTitle = plane == AircraftType.GINA_787 ? "EICAS · B787" : "EICAS · A380";
+        g.text(font, eicasTitle, x + 5, y + 4, PFD_CYAN, true);
+        String apMode = autopilotGuidance.autolandArmed() ? "A/L" : autopilot ? "A/P" : "MAN";
+        int apColor = autopilot || autopilotGuidance.autolandArmed() ? PFD_GREEN : PFD_MUTED;
+        g.text(font, apMode, x + EICAS_WIDTH - font.width(apMode) - 5, y + 4, apColor, true);
+
+        if (plane == AircraftType.GINA_787) {
+            int tileW = 38;
+            int tileH = 16;
+            for (int i = 0; i < 6; i++) {
+                int col = i % 3;
+                int row = i / 3;
+                int tx = x + 5 + col * 40;
+                int ty = y + 17 + row * 18;
+                int engState = (i % 2 == 0) ? e1 : e2;
+                drawMiniEngineTile(g, font, tx, ty, tileW, tileH, "E" + (i + 1), engState, n1, blinkOn);
+            }
+        } else {
+            drawEicasEngineTile(g, font, x + 5, y + 18, 58, "E1", e1, n1, blinkOn);
+            drawEicasEngineTile(g, font, x + 65, y + 18, 58, "E2", e2, n1, blinkOn);
+        }
+
+        int fuelColor = food <= 6 ? PFD_RED : PFD_AMBER;
+        g.text(font, "FUEL", x + 5, y + 54, PFD_MUTED, true);
+        gauge(g, x + 34, y + 56, 54, 5, food / 20.0f, fuelColor);
+        String fuelText = String.format(Locale.ROOT, "%d%%", food * 5);
+        g.text(font, fuelText, x + EICAS_WIDTH - font.width(fuelText) - 5, y + 54,
+                food <= 6 ? PFD_RED : PFD_WHITE, true);
+
+        g.text(font, "GEAR", x + 5, y + 68, PFD_MUTED, true);
+        String gearText = gearState == 2 ? "FAIL" : gearState == 1 ? "UP" : "DOWN";
+        g.text(font, gearText, x + 34, y + 68, gearColor(), true);
+        int gearLight = gearState == 2 ? PFD_RED : gearState == 0 ? PFD_GREEN : PFD_AMBER;
+        for (int i = 0; i < 3; i++) {
+            g.fill(x + 94 + i * 8, y + 69, x + 99 + i * 8, y + 74, gearLight);
+        }
+
+        g.text(font, "FLAPS", x + 5, y + 80, PFD_MUTED, true);
+        for (int i = 0; i < 4; i++) {
+            g.fill(x + 38 + i * 8, y + 80, x + 44 + i * 8, y + 85,
+                    i < flap ? PFD_AMBER : 0xFF364650);
+        }
+        g.text(font, "SPLR", x + 75, y + 80, PFD_MUTED, true);
+        g.text(font, spoilers ? "EXT" : "RET", x + 103, y + 80,
+                spoilers ? PFD_AMBER : PFD_MUTED, true);
+
+        String weather = "WX " + weatherName(weatherGuidance.condition());
+        g.text(font, fitText(font, weather, 54), x + 5, y + 92,
+                weatherColor(weatherGuidance.condition()), true);
+        String windReadout = required(String.format(Locale.ROOT, "%03d/%02d",
+                weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots()));
+        g.text(font, fitText(font, windReadout, 62), x + 61, y + 92, PFD_WHITE, true);
+
+        String antiIceReadout = weatherGuidance.antiIceActive()
+                ? (weatherGuidance.antiIceEffective() ? "AI CLR" : "AI WAIT") : "AI OFF";
+        String weatherSeverity = required(String.format(Locale.ROOT, "ICE %d%%  TURB %d%%  %s",
+                weatherGuidance.icingPercent(), weatherGuidance.turbulencePercent(), antiIceReadout));
+        int turbulenceColor = weatherGuidance.turbulencePercent() >= 70 ? PFD_RED
+                : weatherGuidance.turbulencePercent() >= 35 ? PFD_AMBER : PFD_GREEN;
+        int icingColor = weatherGuidance.icingPercent() >= 20 ? PFD_AMBER : turbulenceColor;
+        g.text(font, fitText(font, weatherSeverity, EICAS_WIDTH - 10), x + 5, y + 103,
+                icingColor, true);
+
+        String alert = null;
+        int alertColor = PFD_GREEN;
+        if (engineFire) {
+            alert = "ENGINE FIRE - SHUT DOWN";
+            alertColor = blinkOn ? PFD_WHITE : PFD_RED;
+        } else if ((warnings & FlightWarning.ENGINE_FAILURE) != 0) {
+            alert = "ENGINE FAILURE - GLIDE";
+            alertColor = PFD_AMBER;
+        } else if ((warnings & FlightWarning.FUEL_EMPTY) != 0) {
+            alert = "FUEL EMPTY - GLIDE";
+            alertColor = PFD_AMBER;
+        } else if ((warnings & FlightWarning.FUEL_LOW) != 0) {
+            alert = "LOW FUEL";
+            alertColor = PFD_AMBER;
+        } else if ((warnings & FlightWarning.ICE_ACCUMULATION) != 0) {
+            alert = weatherGuidance.antiIceEffective() ? "ICE CLEARING"
+                    : weatherGuidance.antiIceActive() ? "ANTI-ICE SET" : "ICE BUILDUP - AI OFF";
+            alertColor = PFD_CYAN;
+        } else if ((warnings & FlightWarning.HYDRAULIC_FAIL) != 0) {
+            alert = "HYD FAIL - GEAR/FLAP LIMITED";
+            alertColor = PFD_AMBER;
+        } else if ((warnings & FlightWarning.PRESSURISATION) != 0) {
+            alert = "CABIN ALT - EMERGENCY DESCENT";
+            alertColor = blinkOn ? PFD_WHITE : PFD_RED;
+        } else if (bothEnginesOut && !isAirbornePhase()) {
+            alert = "ENGINES OFF - READY";
+            alertColor = PFD_MUTED;
+        } else if (isAirbornePhase() && gearState == 1 && radioAltitudeFeet < 1000) {
+            alert = "GEAR UP - APPROACH";
+            alertColor = PFD_AMBER;
+        } else if (isAirbornePhase() && flap == 0 && radioAltitudeFeet < 500) {
+            alert = "FLAPS RETRACTED";
+            alertColor = PFD_WHITE;
+        } else if (isAirbornePhase() && spoilers) {
+            alert = "SPOILERS EXTENDED";
+            alertColor = PFD_AMBER;
+        }
+        int alertBorder = alert == null ? 0x553E7D8E : alertColor;
+        g.fill(x + 4, y + 115, x + EICAS_WIDTH - 4, y + 134,
+                alert == null ? 0xFF0B1218 : withAlpha(alertColor, 0.18f));
+        g.outline(x + 4, y + 115, EICAS_WIDTH - 8, 19, alertBorder);
+        String alertText = alert == null ? "SYSTEMS NORMAL" : alert;
+        g.centeredText(font, fitText(font, alertText, EICAS_WIDTH - 16),
+                x + EICAS_WIDTH / 2, y + 120,
+                alert == null ? PFD_MUTED : alertColor);
+    }
+
+    private static void drawEicasEngineTile(GuiGraphicsExtractor g, Font font, int x, int y, int width,
+                                            String label, int state, int n1, boolean blinkOn) {
+        if (state == 4 && blinkOn) {
+            g.fill(x, y, x + width, y + 32, 0xCC701B20);
+        } else {
+            g.fill(x, y, x + width, y + 32, 0xDD070C11);
+        }
+        g.outline(x, y, width, 32, state >= 3 ? PFD_RED : 0x553E7D8E);
+        g.text(font, label, x + 3, y + 2, PFD_CYAN, true);
+        String tag = engineTag(state);
+        g.text(font, tag, x + width - font.width(tag) - 3, y + 2,
+                state == 4 && blinkOn ? PFD_WHITE : engineColor(state), true);
+        String value = String.format(Locale.ROOT, "%d%%", n1);
+        g.text(font, value, x + 3, y + 11, n1 > 90 ? PFD_AMBER : PFD_WHITE, true);
+        gauge(g, x + 3, y + 24, width - 6, 4, n1 / 100.0f, n1 > 90 ? PFD_AMBER : PFD_GREEN);
+    }
+
+    private static void drawMiniEngineTile(GuiGraphicsExtractor g, Font font, int x, int y, int width,
+                                           int height, String label, int state, int n1, boolean blinkOn) {
+        if (state == 4 && blinkOn) {
+            g.fill(x, y, x + width, y + height, 0xCC701B20);
+        } else {
+            g.fill(x, y, x + width, y + height, 0xDD070C11);
+        }
+        g.outline(x, y, width, height, state >= 3 ? PFD_RED : 0x553E7D8E);
+        g.text(font, label, x + 2, y + 1, PFD_CYAN, false);
+        String val = String.format(Locale.ROOT, "%d%%", n1);
+        g.text(font, val, x + width - font.width(val) - 2, y + 1, n1 > 90 ? PFD_AMBER : PFD_WHITE, false);
+        gauge(g, x + 2, y + 10, width - 4, 3, n1 / 100.0f, n1 > 90 ? PFD_AMBER : PFD_GREEN);
+    }
+
+    /**
+     * Draws a compact glass-cockpit PFD in a 168x146 logical panel. The caller scales the pose to
+     * fit the screen, so every coordinate here is stable across GUI scales.
+     */
+    private static void drawPfd(GuiGraphicsExtractor g, Minecraft mc, LocalPlayer player) {
+        Font font = mc.font;
+        g.fill(0, 0, PFD_BASE_WIDTH, PFD_BASE_HEIGHT, 0xF0060A0F);
+        g.outline(0, 0, PFD_BASE_WIDTH, PFD_BASE_HEIGHT, 0xFF3E7D8E);
+
+        drawPfdFma(g, font);
+
+        int adiLeft = 29;
+        int adiTop = 16;
+        int adiWidth = 110;
+        int adiHeight = 90;
+        int adiRight = adiLeft + adiWidth;
+        int adiBottom = adiTop + adiHeight;
+        int adiCx = (adiLeft + adiRight) / 2;
+        int adiCy = (adiTop + adiBottom) / 2;
+        drawArtificialHorizon(g, adiCx, adiCy, adiWidth, adiHeight, visualPitch, visualBank,
+                ilsActive, ilsLocalizerDegrees, ilsGlideslopeDegrees);
+
+        drawSpeedTape(g, font, 1, adiTop, 26, adiHeight);
+        drawAltitudeTape(g, font, 141, adiTop, 26, adiHeight, player);
+        int lowerTop = 108;
+        int lowerHeight = 18;
+        // Only draw the standalone RA box when NOT airborne below 2500 ft — in that case
+        // the ADI already shows an integrated RA readout inside the horizon, avoiding duplication.
+        if (!isAirbornePhase() || radioAltitudeFeet >= 2500) {
+            drawRadioAltitudeBox(g, font, 1, lowerTop, 38, lowerHeight);
+        }
+        drawHeadingTape(g, font, 41, lowerTop, 126, lowerHeight);
+        drawPfdStatus(g, font);
+        drawPfdWarnings(g, font, adiCx, adiTop);
+    }
+
+    private static void drawPfdFma(GuiGraphicsExtractor g, Font font) {
+        String atMode = autopilot ? autopilotGuidance.targetAirspeedKnots() + "KT" : "---";
+        String rollMode = autopilotGuidance.autolandArmed() ? "LOC" : (autopilot ? String.format(Locale.ROOT, "HDG%03d", (int) autopilotGuidance.targetHeadingDegrees()) : "---");
+        String pitchMode = autopilotGuidance.autolandArmed() ? "GS" : (autopilot ? (autopilotGuidance.targetVerticalSpeedFpm() != 0 ? String.format(Locale.ROOT, "%+d", autopilotGuidance.targetVerticalSpeedFpm()) : "ALT") : "---");
+        int color = autopilot || autopilotGuidance.autolandArmed() ? PFD_GREEN : PFD_MUTED;
+        drawFmaCell(g, font, 2, 2, 54, "A/T", atMode, color);
+        drawFmaCell(g, font, 57, 2, 54, "ROLL", rollMode, color);
+        drawFmaCell(g, font, 112, 2, 54, "PITCH", pitchMode, color);
+    }
+
+    private static void drawFmaCell(GuiGraphicsExtractor g, Font font, int x, int y, int width,
+                                    String label, String mode, int modeColor) {
+        g.fill(x, y, x + width, y + 12, 0xDD0A1117);
+        g.outline(x, y, width, 12, 0x663E7D8E);
+        g.text(font, label, x + 3, y + 2, PFD_MUTED, false);
+        g.text(font, mode, x + width - font.width(mode) - 3, y + 2, modeColor, true);
+    }
+
+    private static void drawSpeedTape(GuiGraphicsExtractor g, Font font, int x, int y, int width, int height) {
+        g.fill(x, y, x + width, y + height, 0xDD070C11);
+        g.outline(x, y, width, height, 0x553E7D8E);
+        int current = knots(visualSpeed);
+        int centerY = y + height / 2;
+        double pixelsPerKnot = height / 160.0;
+
+        // V-speed bands (Stall band, Flap operating band, Overspeed barber pole)
+        AircraftType plane = FlightLineClient.getAircraftType();
+        int overspeedKts = plane.maxAirspeedKnots() + 20;
+        int stallKts = plane.stallSpeedKnots() - 40;
+        int flapTopKts = plane.maxAirspeedKnots() - 35;
+        int flapBotKts = plane.stallSpeedKnots() - 25;
+
+        int stallTopY = centerY - (int) Math.round((stallKts - current) * pixelsPerKnot);
+        int flapTopY = centerY - (int) Math.round((flapTopKts - current) * pixelsPerKnot);
+        int flapBottomY = centerY - (int) Math.round((flapBotKts - current) * pixelsPerKnot);
+        int overspeedBottomY = centerY - (int) Math.round((overspeedKts - current) * pixelsPerKnot);
+
+        // Low speed stall band (red)
+        int sTop = Math.max(y + 10, Math.min(y + height, stallTopY));
+        if (sTop < y + height) {
+            g.fill(x + 1, sTop, x + 3, y + height, 0xFFFF2525);
+        }
+        // Flap operating band (white)
+        int fTop = Math.max(y + 10, Math.min(y + height, flapTopY));
+        int fBot = Math.max(y + 10, Math.min(y + height, flapBottomY));
+        if (fTop < fBot) {
+            g.fill(x + 1, fTop, x + 2, fBot, 0xFFE0E0E0);
+        }
+        // High speed overspeed barber pole (red/white)
+        int oBot = Math.max(y + 10, Math.min(y + height, overspeedBottomY));
+        if (oBot > y + 10) {
+            for (int py = y + 10; py < oBot; py += 4) {
+                g.fill(x + 1, py, x + 3, Math.min(oBot, py + 2), 0xFFFF2525);
+                g.fill(x + 1, Math.min(oBot, py + 2), x + 3, Math.min(oBot, py + 4), 0xFFFFFFFF);
+            }
+        }
+
+        // Target speed readout at top when autopilot is engaged; otherwise IAS label
+        if (autopilot) {
+            int target = autopilotGuidance.targetAirspeedKnots();
+            String targetText = Integer.toString(target);
+            g.fill(x + 1, y + 1, x + width - 1, y + 9, 0xEE091924);
+            g.outline(x + 1, y + 1, width - 2, 9, PFD_CYAN);
+            g.centeredText(font, targetText, x + width / 2, y + 2, PFD_CYAN);
+        } else {
+            g.centeredText(font, "IAS", x + width / 2, y + 2, PFD_CYAN);
+        }
+
+        int firstTick = (int) (Math.floor((current - 80) / 10.0) * 10);
+        for (int value = firstTick; value <= current + 80; value += 10) {
+            int tickY = centerY - (int) Math.round((value - current) * pixelsPerKnot);
+            if (tickY < y + 10 || tickY > y + height - 2) continue;
+            boolean major = Math.floorMod(value, 20) == 0;
+            String label = Integer.toString(value);
+            boolean showLabel = major && Math.abs(value - current) > 12;
+            if (!showLabel) {
+                g.fill(x + width - (major ? 8 : 5), tickY, x + width, tickY + 1, 0xFF9FB3BD);
+            } else {
+                g.text(font, label, x + width - 2 - font.width(label), tickY - 4, PFD_WHITE, false);
+            }
+        }
+
+        // Speed bug
+        if (autopilot) {
+            int target = autopilotGuidance.targetAirspeedKnots();
+            int bugY = centerY - (int) Math.round((target - current) * pixelsPerKnot);
+            if (bugY > y + 8 && bugY < y + height - 3) {
+                g.fill(x + width - 7, bugY, x + width, bugY + 2, PFD_CYAN);
+                g.fill(x + width - 4, bugY - 1, x + width, bugY + 3, PFD_CYAN);
+            }
+        }
+
+        // Speed trend vector (projected speed in 6 seconds based on acceleration)
+        double speedAcc = (speed - visualSpeed) * 30.0;
+        int trendY = centerY - (int) Math.round(speedAcc * pixelsPerKnot);
+        trendY = Math.max(y + 10, Math.min(y + height - 2, trendY));
+        if (Math.abs(trendY - centerY) > 3) {
+            g.fill(x + width - 2, Math.min(centerY, trendY), x + width, Math.max(centerY, trendY), PFD_GREEN);
+            int arrowY = trendY < centerY ? trendY : trendY - 2;
+            g.fill(x + width - 4, arrowY, x + width, arrowY + 2, PFD_GREEN);
+        }
+
+        // Center rolling drum readout box
+        g.fill(x + 1, centerY - 7, x + width - 1, centerY + 7, 0xFF070C11);
+        g.outline(x + 1, centerY - 7, width - 2, 14, PFD_WHITE);
+        g.centeredText(font, Integer.toString(current), x + width / 2, centerY - 4, PFD_WHITE);
+    }
+
+    private static void drawAltitudeTape(GuiGraphicsExtractor g, Font font, int x, int y, int width,
+                                         int height, LocalPlayer player) {
+        g.fill(x, y, x + width, y + height, 0xDD070C11);
+        g.outline(x, y, width, height, 0x553E7D8E);
+        int current = (int) Math.round(player.getY() * 3.28084);
+        int centerY = y + height / 2;
+        double pixelsPerFoot = height / 1200.0;
+        // Target altitude readout at top when autopilot is engaged; otherwise ALT label
+        if (autopilot) {
+            int selected = autopilotGuidance.targetAltitudeFeet();
+            String targetText = (selected >= 10000 && selected % 1000 == 0)
+                    ? (selected / 1000) + "K"
+                    : Integer.toString(selected);
+            g.fill(x + 1, y + 1, x + width - 1, y + 9, 0xEE091924);
+            g.outline(x + 1, y + 1, width - 2, 9, PFD_CYAN);
+            g.centeredText(font, targetText, x + width / 2, y + 2, PFD_CYAN);
+        } else {
+            g.centeredText(font, "ALT", x + width / 2, y + 2, PFD_CYAN);
+        }
+
+        int firstTick = (int) (Math.floor((current - 600) / 100.0) * 100);
+        for (int value = firstTick; value <= current + 600; value += 100) {
+            int tickY = centerY - (int) Math.round((value - current) * pixelsPerFoot);
+            if (tickY < y + 10 || tickY > y + height - 2) continue;
+            boolean major = Math.floorMod(value, 200) == 0;
+            String label = Integer.toString(value);
+            boolean showLabel = major && Math.abs(value - current) > 90;
+            if (!showLabel) {
+                g.fill(x, tickY, x + (major ? 8 : 5), tickY + 1, 0xFF9FB3BD);
+            } else {
+                g.text(font, label, x + width - 2 - font.width(label), tickY - 4, PFD_WHITE, false);
+            }
+        }
+
+        if (autopilot) {
+            int selected = autopilotGuidance.targetAltitudeFeet();
+            int bugY = centerY - (int) Math.round((selected - current) * pixelsPerFoot);
+            if (bugY > y + 8 && bugY < y + height - 3) {
+                g.fill(x, bugY, x + 6, bugY + 2, PFD_CYAN);
+                g.fill(x, bugY - 1, x + 3, bugY + 3, PFD_CYAN);
+            }
+        }
+
+        // VSI indicator tape and pointer on the right edge
+        int vsOffset = Math.max(-28, Math.min(28, (int) Math.round(verticalSpeedFpm / 100.0)));
+        int vsY = centerY - vsOffset;
+        g.fill(x + width - 2, Math.min(centerY, vsY), x + width, Math.max(centerY, vsY),
+                verticalSpeedFpm < 0 ? PFD_AMBER : PFD_GREEN);
+        g.fill(x + width - 4, vsY - 1, x + width, vsY + 1,
+                verticalSpeedFpm < 0 ? PFD_AMBER : PFD_GREEN);
+
+        // Center rolling drum readout box
+        g.fill(x + 1, centerY - 7, x + width - 1, centerY + 7, 0xFF070C11);
+        g.outline(x + 1, centerY - 7, width - 2, 14, PFD_WHITE);
+        g.centeredText(font, Integer.toString(current), x + width / 2, centerY - 4, PFD_WHITE);
+    }
+
+    private static void drawRadioAltitudeBox(GuiGraphicsExtractor g, Font font, int x, int y,
+                                             int width, int height) {
+        g.fill(x, y, x + width, y + height, 0xDD070C11);
+        g.outline(x, y, width, height, radioAltitudeFeet < 500 ? PFD_AMBER : 0x553E7D8E);
+        g.text(font, "RA", x + 3, y + 2, PFD_CYAN, true);
+        String text = radioAltitudeFeet < 2500
+                ? String.format(Locale.ROOT, "%04d", radioAltitudeFeet) : "----";
+        g.text(font, fitText(font, text, width - 6), x + 3, y + 9,
+                radioAltitudeFeet < 500 ? PFD_AMBER : PFD_GREEN, true);
+    }
+
+    private static void drawHeadingTape(GuiGraphicsExtractor g, Font font, int x, int y, int width,
+                                        int height) {
+        g.fill(x, y, x + width, y + height, 0xDD070C11);
+        g.outline(x, y, width, height, 0x553E7D8E);
+        int centerX = x + width / 2;
+        double pixelsPerDegree = 1.6;
+        for (int heading = 0; heading < 360; heading += 10) {
+            double relative = wrapDegrees(heading - visualHeading);
+            int tickX = centerX + (int) Math.round(relative * pixelsPerDegree);
+            if (tickX < x + 2 || tickX > x + width - 2) continue;
+            boolean major = heading % 30 == 0;
+            g.fill(tickX, y + 2, tickX + 1, y + (major ? 7 : 5), 0xFF9FB3BD);
+            if (major) {
+                String label = cardinalHeadingOrHeading(heading);
+                // Keep the centre readout box clear: it covers +/-18 px around the centre.
+                if (Math.abs(tickX - centerX) > 19 + font.width(label) / 2) {
+                    g.centeredText(font, label, tickX, y + 8, PFD_WHITE);
+                }
+            }
+        }
+        if (autopilot || autopilotGuidance.autolandArmed()) {
+            double relative = wrapDegrees(autopilotGuidance.targetHeadingDegrees() - visualHeading);
+            int bugX = centerX + (int) Math.round(relative * pixelsPerDegree);
+            if (bugX > x + 3 && bugX < x + width - 3) {
+                g.fill(bugX, y + 1, bugX + 2, y + 4, PFD_CYAN);
+            }
+            String tgtText = String.format(Locale.ROOT, "H%03d", (int) autopilotGuidance.targetHeadingDegrees());
+            g.text(font, tgtText, x + 3, y + 2, PFD_CYAN, false);
+        }
+        g.fill(centerX, y + 1, centerX + 1, y + 5, PFD_WHITE);
+        int heading = Math.floorMod(Math.round(visualHeading), 360);
+        g.fill(centerX - 17, y + 7, centerX + 17, y + height - 1, 0xFF070C11);
+        g.outline(centerX - 17, y + 7, 34, height - 8, PFD_WHITE);
+        g.centeredText(font, String.format(Locale.ROOT, "%03d", heading), centerX, y + 8, PFD_WHITE);
+    }
+
+    private static String cardinalHeadingOrHeading(int heading) {
+        return switch (Math.floorMod(heading, 360)) {
+            case 0 -> "N";
+            case 90 -> "E";
+            case 180 -> "S";
+            case 270 -> "W";
+            default -> String.format(Locale.ROOT, "%03d", heading);
+        };
+    }
+
+    private static void drawPfdStatus(GuiGraphicsExtractor g, Font font) {
+        int statusTop = 128;
+        int statusBottom = PFD_BASE_HEIGHT - 2;
+        g.fill(1, statusTop, PFD_BASE_WIDTH - 1, statusBottom, 0xDD070C11);
+        g.outline(1, statusTop, PFD_BASE_WIDTH - 2, statusBottom - statusTop, 0x553E7D8E);
+        // Row 1: Wind | Attitude or ILS | VS
+        String wind = String.format(Locale.ROOT, "W%03d/%02d",
+                weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots());
+        String lateral = ilsActive
+                ? String.format(Locale.ROOT, "LOC%+.1f GS%+.1f", ilsLocalizerDegrees, ilsGlideslopeDegrees)
+                : String.format(Locale.ROOT, "P%+.0f° B%+.0f°", visualPitch, visualBank);
+        String vs = String.format(Locale.ROOT, "VS%+d", verticalSpeedFpm);
+        g.text(font, fitText(font, wind, 52), 4, statusTop + 2, PFD_MUTED, true);
+        g.text(font, fitText(font, lateral, 62), 58, statusTop + 2, ilsActive ? PFD_CYAN : PFD_WHITE, true);
+        g.text(font, fitText(font, vs, 42), 122, statusTop + 2,
+                verticalSpeedFpm < -1500 ? PFD_AMBER : PFD_WHITE, true);
+        // Row 2: SAT/TAT | DME distance | QNH (standard for Minecraft altitude)
+        int satC = weatherGuidance.condition() == 2 ? -40 : weatherGuidance.condition() == 1 ? 5 : 15;
+        int tatC = satC + Math.max(0, (int) Math.round(knots(visualSpeed) * 0.0017));
+        String tempStr = String.format(Locale.ROOT, "TAT%+d°", tatC);
+        String dmeStr = ilsActive
+                ? String.format(Locale.ROOT, "DME %.1fNM", ilsThresholdDistanceBlocks * 0.054f)
+                : "DME ----";
+        String qnhStr = "STD 1013";
+        g.text(font, fitText(font, tempStr, 48), 4, statusTop + 14, PFD_MUTED, true);
+        g.text(font, fitText(font, dmeStr, 64), 56, statusTop + 14, ilsActive ? PFD_GREEN : PFD_MUTED, true);
+        g.text(font, fitText(font, qnhStr, 42), 122, statusTop + 14, PFD_MUTED, true);
+    }
+
+    private static void drawPfdWarnings(GuiGraphicsExtractor g, Font font, int centerX, int top) {
+        String warning = null;
+        if ((warnings & FlightWarning.STALL) != 0) warning = "STALL";
+        else if ((warnings & FlightWarning.PULL_UP) != 0) warning = "PULL UP";
+        else if ((warnings & FlightWarning.WINDSHEAR) != 0) warning = "WINDSHEAR";
+        else if ((warnings & FlightWarning.OVERSPEED) != 0) warning = "OVERSPEED";
+        else if ((warnings & FlightWarning.BANK_ANGLE) != 0) warning = "BANK ANGLE";
+        if (warning == null) return;
+        int width = font.width(warning);
+        int x = centerX - width / 2;
+        int y = top + 4;
+        g.fill(x - 3, y - 2, x + width + 3, y + 10, 0xE0140505);
+        g.outline(x - 3, y - 2, width + 6, 12, PFD_RED);
+        g.text(font, warning, x, y, PFD_RED, true);
     }
 
     private static void drawKeybindList(GuiGraphicsExtractor graphics, Minecraft mc,
@@ -676,6 +1053,10 @@ final class FlightHud {
     private static String pairBinding(net.minecraft.client.KeyMapping first,
                                       net.minecraft.client.KeyMapping second, String label) {
         return FlightLineClient.keyName(first) + "/" + FlightLineClient.keyName(second) + " - " + label;
+    }
+
+    static boolean shouldHideVanillaHud() {
+        return enabled && (isAirbornePhase() || (FlightLineClient.areEnginesActive() && speed > 0.35f * (float) FlightTuning.WORLD_SPEED_SCALE));
     }
 
     private static boolean isAirbornePhase() {
@@ -770,6 +1151,13 @@ final class FlightHud {
         }
     }
 
+    private static void drawDiamond(GuiGraphicsExtractor g, int cx, int cy, int size, int color) {
+        drawLine(g, cx, cy - size, cx + size, cy, color);
+        drawLine(g, cx + size, cy, cx, cy + size, color);
+        drawLine(g, cx, cy + size, cx - size, cy, color);
+        drawLine(g, cx - size, cy, cx, cy - size, color);
+    }
+
     private static void drawAircraftSymbol(GuiGraphicsExtractor g, int cx, int cy) {
         g.fill(cx, cy - 4, cx + 1, cy + 4, 0xFF76E8B0);
         g.fill(cx - 4, cy, cx + 5, cy + 1, 0xFF76E8B0);
@@ -803,6 +1191,7 @@ final class FlightHud {
     private static void drawArtificialHorizon(GuiGraphicsExtractor g, int cx, int cy, int width, int height,
                                                float pitch, float bank, boolean showIls,
                                                float localizerDegrees, float glideslopeDegrees) {
+        Font font = Minecraft.getInstance().font;
         int left = cx - width / 2;
         int right = cx + width / 2;
         int top = cy - height / 2;
@@ -812,68 +1201,135 @@ final class FlightHud {
         double slope = Math.tan(bankRad);
         double cosBank = Math.cos(bankRad);
         double sinBank = Math.sin(bankRad);
-        int pitchOffset = Math.round(Math.max(-45.0f, Math.min(45.0f, pitch)) * 0.40f);
+        double pitchScale = height / 60.0;
+        int pitchOffset = (int) Math.round(Math.max(-40.0f, Math.min(40.0f, pitch)) * pitchScale);
 
-        // Sky and ground fill
+        // Sky and ground fill, banked around the aircraft reference point.
         for (int px = left; px < right; px += 2) {
             int dx = px - cx;
             int horizon = Math.max(top, Math.min(bottom,
-                    cy + pitchOffset + (int)Math.round(dx * slope)));
-            g.fill(px, top, px + 2, horizon, 0xFF1D6792); // Sky blue
-            g.fill(px, horizon, px + 2, bottom, 0xFF6A4A28); // Earth brown
+                    cy + pitchOffset + (int) Math.round(dx * slope)));
+            g.fill(px, top, px + 2, horizon, 0xFF0C6FA8);
+            g.fill(px, horizon, px + 2, bottom, 0xFF6B4A28);
             g.fill(px, Math.max(top, horizon - 1), px + 2, Math.min(bottom, horizon + 1),
-                    0xFFFFFFFF); // White horizon line
+                    0xFFF2F7FA);
         }
 
-        // Five-degree pitch ladder; ten-degree bars are longer for quick attitude reads.
-        for (int ladderPitch = -25; ladderPitch <= 25; ladderPitch += 5) {
+        // Five-degree pitch ladder; ten-degree bars are longer and labelled.
+        for (int ladderPitch = -35; ladderPitch <= 35; ladderPitch += 5) {
             if (ladderPitch == 0) continue;
-            double dp = (pitch - ladderPitch) * 0.40;
-            int rungCenterX = cx - (int)Math.round(dp * sinBank);
-            int rungCenterY = cy + (int)Math.round(dp * cosBank);
-            if (rungCenterY >= top + 4 && rungCenterY <= bottom - 4) {
-                int rungHalfWidth = Math.abs(ladderPitch) % 10 == 0 ? 10 : 5;
-                int rx1 = rungCenterX - (int)Math.round(rungHalfWidth * cosBank);
-                int ry1 = rungCenterY - (int)Math.round(rungHalfWidth * sinBank);
-                int rx2 = rungCenterX + (int)Math.round(rungHalfWidth * cosBank);
-                int ry2 = rungCenterY + (int)Math.round(rungHalfWidth * sinBank);
-                drawLineClipped(g, rx1, ry1, rx2, ry2, left, top, right, bottom,
-                        ladderPitch > 0 ? 0xFFFFFFFF : 0xFFD0D0D0);
+            double dp = (pitch - ladderPitch) * pitchScale;
+            int rungCenterX = cx - (int) Math.round(dp * sinBank);
+            int rungCenterY = cy + (int) Math.round(dp * cosBank);
+            if (rungCenterY < top + 4 || rungCenterY > bottom - 4) continue;
+            boolean major = Math.floorMod(ladderPitch, 10) == 0;
+            int rungHalfWidth = major ? 20 : 12;
+            int rx1 = rungCenterX - (int) Math.round(rungHalfWidth * cosBank);
+            int ry1 = rungCenterY - (int) Math.round(rungHalfWidth * sinBank);
+            int rx2 = rungCenterX + (int) Math.round(rungHalfWidth * cosBank);
+            int ry2 = rungCenterY + (int) Math.round(rungHalfWidth * sinBank);
+            drawLineClipped(g, rx1, ry1, rx2, ry2, left, top, right, bottom,
+                    ladderPitch > 0 ? 0xFFF2F7FA : 0xFFD0D0D0);
+            if (major) {
+                String label = Integer.toString(Math.abs(ladderPitch));
+                int labelX = rungCenterX + (int) Math.round((rungHalfWidth + 2) * cosBank);
+                int labelY = rungCenterY - 4;
+                if (labelX > left + 2 && labelX + font.width(label) < right - 2
+                        && labelY > top + 1 && labelY + 8 < bottom) {
+                    g.text(font, label, labelX, labelY, 0xFFDDE8EC, false);
+                }
             }
         }
 
-        for (int bankMark = -60; bankMark <= 60; bankMark += 15) {
-            int markX = cx + (int)Math.round(Math.sin(Math.toRadians(bankMark)) * (height / 2 - 2));
-            int markY = cy - (int)Math.round(Math.cos(Math.toRadians(bankMark)) * (height / 2 - 2));
-            int innerX = cx + (int)Math.round(Math.sin(Math.toRadians(bankMark)) * (height / 2 - 5));
-            int innerY = cy - (int)Math.round(Math.cos(Math.toRadians(bankMark)) * (height / 2 - 5));
-            drawLineClipped(g, markX, markY, innerX, innerY, left, top, right, bottom, 0xFFD9E5E8);
+        // Bank scale across the top arc with fixed marks and a moving roll pointer.
+        int radius = Math.min(width, height) / 2 - 2;
+        for (int mark : new int[]{0, 10, 20, 30, 45, 60}) {
+            for (int sign = -1; sign <= 1; sign += 2) {
+                if (mark == 0 && sign < 0) continue;
+                double radians = Math.toRadians(mark * sign);
+                int outerX = cx + (int) Math.round(Math.sin(radians) * radius);
+                int outerY = cy - (int) Math.round(Math.cos(radians) * radius);
+                int innerRadius = radius - (mark == 0 || mark == 30 || mark == 60 ? 5 : 3);
+                int innerX = cx + (int) Math.round(Math.sin(radians) * innerRadius);
+                int innerY = cy - (int) Math.round(Math.cos(radians) * innerRadius);
+                drawLineClipped(g, outerX, outerY, innerX, innerY, left, top, right, bottom, 0xFFE8F1F4);
+            }
         }
+        int rollPointerX = cx + (int) Math.round(Math.sin(bankRad) * (radius - 8));
+        int rollPointerY = cy - (int) Math.round(Math.cos(bankRad) * (radius - 8));
+        g.fill(rollPointerX - 1, rollPointerY - 1, rollPointerX + 2, rollPointerY + 3, PFD_AMBER);
 
         if (showIls) {
-            int localizerOffset = Math.max(-width / 2 + 3,
-                    Math.min(width / 2 - 3, Math.round(localizerDegrees * 5.0f)));
-            int glideslopeOffset = Math.max(-height / 2 + 3,
-                    Math.min(height / 2 - 3, -Math.round(glideslopeDegrees * 7.0f)));
-            drawLineClipped(g, cx + localizerOffset, cy - 15, cx + localizerOffset, cy + 15,
+            int localizerOffset = Math.max(-width / 2 + 4,
+                    Math.min(width / 2 - 4, Math.round(localizerDegrees * 6.0f)));
+            int glideslopeOffset = Math.max(-height / 2 + 4,
+                    Math.min(height / 2 - 4, -Math.round(glideslopeDegrees * 6.0f)));
+            drawLineClipped(g, cx + localizerOffset, cy - 18, cx + localizerOffset, cy + 18,
                     left, top, right, bottom, 0xFFFF6CD9);
-            drawLineClipped(g, cx - 15, cy + glideslopeOffset, cx + 15, cy + glideslopeOffset,
+            drawLineClipped(g, cx - 18, cy + glideslopeOffset, cx + 18, cy + glideslopeOffset,
                     left, top, right, bottom, 0xFF79E8FF);
             g.fill(cx + localizerOffset - 2, cy - 1, cx + localizerOffset + 3, cy + 2, 0xFFFF6CD9);
             g.fill(cx - 1, cy + glideslopeOffset - 2, cx + 2, cy + glideslopeOffset + 3, 0xFF79E8FF);
+            for (int dot = -2; dot <= 2; dot++) {
+                int x = cx + dot * 10;
+                g.fill(x, bottom - 6, x + 1, bottom - 3, 0xFFB04A93);
+                int y = cy + dot * 10;
+                g.fill(right - 6, y, right - 3, y + 1, 0xFF4A93B0);
+            }
         }
 
-        // Fixed Aircraft Reference Symbol (Gull Wings & Center Pip)
-        g.fill(cx - 1, cy - 1, cx + 2, cy + 2, 0xFFFFCE52);
-        g.fill(cx - 14, cy - 1, cx - 4, cy + 1, 0xFFFFCE52);
-        g.fill(cx - 5, cy + 1, cx - 3, cy + 3, 0xFFFFCE52);
-        g.fill(cx + 4, cy - 1, cx + 14, cy + 1, 0xFFFFCE52);
-        g.fill(cx + 3, cy + 1, cx + 5, cy + 3, 0xFFFFCE52);
+        // Flight Director crossbars (magenta) when autopilot is engaged
+        if (autopilot) {
+            double targetPitch = ilsActive
+                    ? Math.max(-10.0, Math.min(15.0, -glideslopeDegrees * 2.8))
+                    : Math.max(-12.0, Math.min(18.0, verticalSpeedFpm / 140.0));
+            double targetBankHdg = ilsActive
+                    ? Math.max(-25.0, Math.min(25.0, localizerDegrees * 3.2))
+                    : Math.max(-25.0, Math.min(25.0, wrapDegrees(autopilotGuidance.targetHeadingDegrees() - visualHeading)));
+            int fdY = cy + (int) Math.round((pitch - targetPitch) * pitchScale);
+            int fdX = cx + (int) Math.round((targetBankHdg - visualBank) * 1.5);
+            fdY = Math.max(top + 8, Math.min(bottom - 8, fdY));
+            fdX = Math.max(left + 12, Math.min(right - 12, fdX));
+            g.fill(fdX - 20, fdY - 1, fdX + 20, fdY + 1, 0xFFFF33D4);
+            g.fill(fdX - 1, fdY - 15, fdX + 1, fdY + 15, 0xFFFF33D4);
+        }
 
-        // Roll Pointer on top
-        int rollPointerX = cx - (int)Math.round(Math.sin(bankRad) * (height / 2 - 2));
-        int rollPointerY = top + 2;
-        g.fill(rollPointerX - 1, rollPointerY, rollPointerX + 2, rollPointerY + 3, 0xFFFFCE52);
+        // Flight path vector: where the aircraft is actually going versus where the nose points.
+        double iasKnots = Math.max(20.0, knots(visualSpeed));
+        double flightPathDegrees = Math.toDegrees(Math.atan2(verticalSpeedFpm, iasKnots * 101.27));
+        if (isAirbornePhase() && Math.abs(pitch - flightPathDegrees) > 1.0) {
+            int fpvY = cy + (int) Math.round(Math.max(-height / 2.0 + 8,
+                    Math.min(height / 2.0 - 8, (pitch - flightPathDegrees) * pitchScale)));
+            g.fill(cx - 2, fpvY - 3, cx + 3, fpvY - 2, PFD_GREEN);
+            g.fill(cx - 2, fpvY + 2, cx + 3, fpvY + 3, PFD_GREEN);
+            g.fill(cx - 3, fpvY - 2, cx - 2, fpvY + 2, PFD_GREEN);
+            g.fill(cx + 2, fpvY - 2, cx + 3, fpvY + 2, PFD_GREEN);
+        }
+
+        // Slip/skid indicator beneath the fixed aircraft symbol.
+        g.fill(cx - 4, cy + 7, cx - 3, cy + 10, 0xFFE8F1F4);
+        g.fill(cx + 3, cy + 7, cx + 4, cy + 10, 0xFFE8F1F4);
+        g.fill(cx - 1, cy + 8, cx + 1, cy + 10, 0xFFE8F1F4);
+
+        // Fixed Aircraft Reference Symbol (gull wings and centre pip).
+        g.fill(cx - 1, cy - 1, cx + 2, cy + 2, PFD_AMBER);
+        g.fill(cx - 16, cy, cx - 4, cy + 2, PFD_AMBER);
+        g.fill(cx - 6, cy + 2, cx - 4, cy + 4, PFD_AMBER);
+        g.fill(cx + 3, cy, cx + 15, cy + 2, PFD_AMBER);
+        g.fill(cx + 3, cy + 2, cx + 5, cy + 4, PFD_AMBER);
+
+        // Digital Radio Altitude readout integrated at bottom of horizon when < 2500 ft AGL
+        if (radioAltitudeFeet < 2500 && isAirbornePhase()) {
+            int raBoxWidth = 36;
+            int raBoxHeight = 11;
+            int raBoxX = cx - raBoxWidth / 2;
+            int raBoxY = bottom - 14;
+            g.fill(raBoxX, raBoxY, raBoxX + raBoxWidth, raBoxY + raBoxHeight, 0xEE080D12);
+            g.outline(raBoxX, raBoxY, raBoxWidth, raBoxHeight, radioAltitudeFeet < 500 ? PFD_AMBER : 0xFF3E7D8E);
+            String raText = Integer.toString(radioAltitudeFeet);
+            int color = radioAltitudeFeet < 200 ? 0xFFFF3B30 : radioAltitudeFeet < 500 ? PFD_AMBER : PFD_GREEN;
+            g.centeredText(font, raText, cx, raBoxY + 2, color);
+        }
     }
 
     private static void drawLineClipped(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1,
@@ -917,30 +1373,12 @@ final class FlightHud {
         g.outline(x, y, width, height, borderColor);
     }
 
-    private static int phaseColor() {
-        return phase == FlightPhase.STALL || phase == FlightPhase.CRASHED ? 0xFFFF5148 : 0xFF72E6F5;
-    }
-
     private static int gearColor() {
         return gearState == 2 ? 0xFFFF5148 : gearState == 1 ? 0xFFFFCE52 : 0xFF62D89B;
     }
 
-    private static int radioAltitudeColor(int altitudeFeet) {
-        return altitudeFeet < 100 ? 0xFFFF5148
-                : altitudeFeet < 500 ? 0xFFFFCE52 : 0xFF62D89B;
-    }
-
     private static int engineColor(int state) {
         return state >= 3 ? 0xFFFF5148 : state == 0 ? 0xFF83959B : 0xFF62D89B;
-    }
-
-    private static void drawEngineStatus(GuiGraphicsExtractor graphics, Minecraft client, int x, int y,
-                                         String label, int state, boolean blinkOn) {
-        if (state == 4) {
-            graphics.fill(x - 1, y - 1, x + 53, y + 10, blinkOn ? 0xFFFF322D : 0xFF701B20);
-        }
-        graphics.text(client.font, label + " " + engineTag(state), x, y,
-                state == 4 && blinkOn ? 0xFFFFFFFF : engineColor(state), true);
     }
 
     private static String weatherName(int condition) {
@@ -1008,6 +1446,8 @@ final class FlightHud {
         if ((warnings & FlightWarning.TAKEOFF_CONFIG) != 0) labels.add("TAKEOFF CONFIG");
         if ((warnings & FlightWarning.AIRFRAME_STRESS) != 0) labels.add("AIRFRAME STRESS");
         if ((warnings & FlightWarning.OVERSPEED) != 0) labels.add("OVERSPEED");
+        if ((warnings & FlightWarning.HYDRAULIC_FAIL) != 0) labels.add("HYD FAIL - GEAR/FLAP LOCKED");
+        if ((warnings & FlightWarning.PRESSURISATION) != 0) labels.add("CABIN ALTITUDE - DESCEND");
         return labels;
     }
 }

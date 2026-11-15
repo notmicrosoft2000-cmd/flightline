@@ -7,9 +7,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Estimates a visual roll angle for nearby mob aircraft from their heading changes.
- * The server still owns the authoritative flight path; this only makes the model
- * lean into turns instead of sliding around the sky perfectly upright.
+ * Estimates a visual roll angle and dynamic flight buffeting for nearby mob aircraft from their heading changes.
+ * The server still owns the authoritative flight path; this makes the model
+ * lean into turns and visually wobble in the air instead of sliding around perfectly upright.
  */
 public final class MobBankTracker {
     private static final Map<Integer, BankState> STATES = new HashMap<>();
@@ -23,6 +23,7 @@ public final class MobBankTracker {
             return;
         }
         Map<Integer, BankState> next = new HashMap<>();
+        double time = System.currentTimeMillis() / 1000.0;
         for (Mob mob : client.level.getEntitiesOfClass(Mob.class,
                 client.player.getBoundingBox().inflate(256.0), Mob::isAlive)) {
             int id = mob.getId();
@@ -36,6 +37,11 @@ public final class MobBankTracker {
             float target = mob.onGround() ? 0.0f : (float) Math.max(-35.0, Math.min(35.0, delta * 16.0));
             float response = Math.abs(target) > 0.5f ? 0.25f : 0.12f;
             state.bank += (target - state.bank) * response;
+            if (!mob.onGround()) {
+                state.wobble = (float) (Math.sin(time * 9.0 + id * 1.7) * 2.2);
+            } else {
+                state.wobble = 0.0f;
+            }
             next.put(id, state);
         }
         STATES.clear();
@@ -44,7 +50,7 @@ public final class MobBankTracker {
 
     public static float bankFor(int entityId) {
         BankState state = STATES.get(entityId);
-        return state == null ? 0.0f : state.bank;
+        return state == null ? 0.0f : (state.bank + state.wobble);
     }
 
     public static void clear() {
@@ -61,10 +67,12 @@ public final class MobBankTracker {
     private static final class BankState {
         private double lastYaw;
         private float bank;
+        private float wobble;
 
         private BankState(double lastYaw, float bank) {
             this.lastYaw = lastYaw;
             this.bank = bank;
+            this.wobble = 0.0f;
         }
     }
 }

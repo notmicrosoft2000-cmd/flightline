@@ -57,6 +57,7 @@ public final class FlightRadarScreen extends Screen {
     private int scopeHeight;
     private boolean compactLayout;
     private final boolean atcSelectionMode;
+    private boolean headingUp;
 
     public FlightRadarScreen() {
         this(false);
@@ -127,19 +128,25 @@ public final class FlightRadarScreen extends Screen {
         int setButtonWidth = compactLayout ? 56 : Math.max(58, panelWidth - 324);
         addRenderableWidget(Button.builder(Component.literal("SET ILS"), button -> setIls())
                 .bounds(setButtonX, fieldY, setButtonWidth, 20).build());
-        int pickButtonX = compactLayout ? panelLeft + 12 : panelLeft + panelWidth - 222;
-        int pickButtonWidth = compactLayout ? 86 : 104;
-        addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
-                .bounds(pickButtonX, panelTop + 26, pickButtonWidth, 18).build());
-        int useX = compactLayout ? panelLeft + 102 : panelLeft + panelWidth - 112;
-        int useWidth = compactLayout ? 84 : 100;
-        addRenderableWidget(Button.builder(Component.literal("USE CONTACT"), button -> useSelectedContact())
-                .bounds(useX, panelTop + 26, useWidth, 18).build());
         if (compactLayout) {
+            int buttonGap = 3;
+            int btnWidth = Math.max(48, (panelWidth - 24 - buttonGap * 3) / 4);
+            int btnY = panelTop + 26;
+            addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
+                    .bounds(panelLeft + 12, btnY, btnWidth, 18).build());
+            addRenderableWidget(Button.builder(Component.literal("USE"), button -> useSelectedContact())
+                    .bounds(panelLeft + 12 + btnWidth + buttonGap, btnY, btnWidth, 18).build());
+            addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG" : "NORTH"),
+                    button -> toggleOrientation(button)).bounds(panelLeft + 12 + (btnWidth + buttonGap) * 2, btnY, btnWidth, 18).build());
             addRenderableWidget(Button.builder(rangeLabel(), button -> changeRange(1))
-                    .bounds(panelLeft + panelWidth - 94, panelTop + 26, 82, 18).build());
-        }
-        if (!compactLayout) {
+                    .bounds(panelLeft + 12 + (btnWidth + buttonGap) * 3, btnY, btnWidth, 18).build());
+        } else {
+            addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
+                    .bounds(panelLeft + panelWidth - 222, panelTop + 26, 104, 18).build());
+            addRenderableWidget(Button.builder(Component.literal("USE CONTACT"), button -> useSelectedContact())
+                    .bounds(panelLeft + panelWidth - 112, panelTop + 26, 100, 18).build());
+            addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG UP" : "NORTH UP"),
+                    button -> toggleOrientation(button)).bounds(panelLeft + 12, panelTop + 26, 78, 18).build());
             addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
                     .bounds(panelLeft + panelWidth - 72, fieldY, 60, 20).build());
             addRenderableWidget(Button.builder(Component.literal("RANGE -"), button -> changeRange(-1))
@@ -186,6 +193,7 @@ public final class FlightRadarScreen extends Screen {
         for (int ring = 1; ring <= 3; ring++) {
             int r = radius * ring / 3;
             drawCircle(graphics, cx, cy, r, 0xFF315E50);
+            graphics.text(font, (RANGES[rangeIndex] * ring / 3) + "B", cx + 2, cy - r - 4, 0x9956B9D2, false);
         }
         double scanRadians = Math.toRadians(scanAngle);
         int scanX = cx + (int) Math.round(Math.sin(scanRadians) * radius);
@@ -197,7 +205,15 @@ public final class FlightRadarScreen extends Screen {
             drawLine(graphics, cx, cy, trailX, trailY, trail <= 2 ? 0x604EA87B : 0x304EA87B);
         }
         drawLine(graphics, cx, cy, scanX, scanY, 0xFF65F2A5);
-        graphics.text(font, "N", cx - 2, scopeTop + 3, 0xFFB6C8D1, true);
+
+        if (headingUp) {
+            graphics.text(font, "HDG UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
+            graphics.text(font, String.format(Locale.ROOT, "%03.0f°", FlightHud.radarOwnHeadingDegrees()),
+                    cx - 10, scopeTop + 3, 0xFFB6C8D1, true);
+        } else {
+            graphics.text(font, "NORTH UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
+            graphics.text(font, "N", cx - 2, scopeTop + 3, 0xFFB6C8D1, true);
+        }
         graphics.text(font, "R " + RANGES[rangeIndex] + "B", scopeLeft + 4,
                 scopeTop + scopeHeight - 11, 0xFF86B5A4, true);
 
@@ -205,15 +221,35 @@ public final class FlightRadarScreen extends Screen {
         for (FlightRadarPayload.Contact contact : contacts) {
             int[] point = contactPoint(contact, cx, cy, radius);
             if (point == null) continue;
-            int color = contact.player() ? 0xFF6BCBFF : contact.airborne() ? 0xFF75E6A5 : 0xFFFFCE52;
             if (contact.entityId() == selectedContactId) {
-                color = 0xFFFF8B52;
-                int pulse = 2 + (int) Math.round((Math.sin(System.nanoTime() / 150_000_000.0) + 1.0) * 1.5);
+                int pulse = 4 + (int) Math.round((Math.sin(System.nanoTime() / 150_000_000.0) + 1.0) * 2.0);
                 drawCircle(graphics, point[0], point[1], pulse, 0xFFFF8B52);
             }
-            drawContact(graphics, point[0], point[1], contact, color);
+            drawContact(graphics, point[0], point[1], contact);
         }
-        graphics.fill(cx - 2, cy - 2, cx + 3, cy + 3, 0xFFFFFFFF);
+
+        // Own aircraft chevron
+        if (headingUp) {
+            drawLine(graphics, cx, cy - 5, cx - 4, cy + 4, 0xFFFFFFFF);
+            drawLine(graphics, cx, cy - 5, cx + 4, cy + 4, 0xFFFFFFFF);
+            drawLine(graphics, cx - 4, cy + 4, cx, cy + 2, 0xFFFFFFFF);
+            drawLine(graphics, cx + 4, cy + 4, cx, cy + 2, 0xFFFFFFFF);
+        } else {
+            double hdgRad = Math.toRadians(FlightHud.radarOwnHeadingDegrees());
+            int tipX = cx + (int) Math.round(Math.sin(hdgRad) * 5);
+            int tipY = cy - (int) Math.round(Math.cos(hdgRad) * 5);
+            double leftRad = hdgRad + 2.5;
+            double rightRad = hdgRad - 2.5;
+            int lx = cx + (int) Math.round(Math.sin(leftRad) * 5);
+            int ly = cy - (int) Math.round(Math.cos(leftRad) * 5);
+            int rx = cx + (int) Math.round(Math.sin(rightRad) * 5);
+            int ry = cy - (int) Math.round(Math.cos(rightRad) * 5);
+            drawLine(graphics, tipX, tipY, lx, ly, 0xFFFFFFFF);
+            drawLine(graphics, tipX, tipY, rx, ry, 0xFFFFFFFF);
+            drawLine(graphics, lx, ly, cx, cy, 0xFFFFFFFF);
+            drawLine(graphics, rx, ry, cx, cy, 0xFFFFFFFF);
+        }
+
         int[] selectedPoint = worldPoint(selectedX, selectedZ, cx, cy, radius);
         if (Math.hypot(selectedPoint[0] - cx, selectedPoint[1] - cy) <= radius) {
             graphics.outline(selectedPoint[0] - 4, selectedPoint[1] - 4, 8, 8,
@@ -330,10 +366,19 @@ public final class FlightRadarScreen extends Screen {
                 selectContact(bestContact);
             } else if (thresholdPickMode) {
                 selectedContactId = -1;
-                double worldX = ownX()
-                        + (mouseX - cx) / radius * RANGES[rangeIndex];
-                double worldZ = ownZ()
-                        + (mouseY - cy) / radius * RANGES[rangeIndex];
+                double screenDx = (mouseX - cx) / (double) radius * RANGES[rangeIndex];
+                double screenDz = (mouseY - cy) / (double) radius * RANGES[rangeIndex];
+                if (headingUp) {
+                    double angleRad = Math.toRadians(FlightHud.radarOwnHeadingDegrees());
+                    double cos = Math.cos(angleRad);
+                    double sin = Math.sin(angleRad);
+                    double rx = screenDx * cos - screenDz * sin;
+                    double rz = screenDx * sin + screenDz * cos;
+                    screenDx = rx;
+                    screenDz = rz;
+                }
+                double worldX = ownX() + screenDx;
+                double worldZ = ownZ() + screenDz;
                 selectedX = (int) Math.round(worldX);
                 selectedZ = (int) Math.round(worldZ);
                 xInput().setValue(String.valueOf(selectedX));
@@ -433,16 +478,32 @@ public final class FlightRadarScreen extends Screen {
         AnimatedContact motion = animatedContacts.get(contact.entityId());
         double x = motion == null ? contact.x() : motion.x;
         double z = motion == null ? contact.z() : motion.z;
-        int dx = (int) Math.round(x - ownX());
-        int dz = (int) Math.round(z - ownZ());
+        double dx = x - ownX();
+        double dz = z - ownZ();
         double distance = Math.hypot(dx, dz);
         if (distance > RANGES[rangeIndex]) return null;
+
+        if (headingUp) {
+            double angleRad = Math.toRadians(-FlightHud.radarOwnHeadingDegrees());
+            double cos = Math.cos(angleRad);
+            double sin = Math.sin(angleRad);
+            double rx = dx * cos - dz * sin;
+            double rz = dx * sin + dz * cos;
+            dx = rx;
+            dz = rz;
+        }
+
         double scale = radius / (double) RANGES[rangeIndex];
         return new int[]{cx + (int) Math.round(dx * scale), cy + (int) Math.round(dz * scale)};
     }
 
     private int contactRange(FlightRadarPayload.Contact contact) {
         return (int) Math.round(Math.hypot(contact.x() - ownX(), contact.z() - ownZ()));
+    }
+
+    private void toggleOrientation(Button button) {
+        headingUp = !headingUp;
+        button.setMessage(Component.literal(headingUp ? "HDG UP" : "NORTH UP"));
     }
 
     private void animateRadar() {
@@ -463,7 +524,8 @@ public final class FlightRadarScreen extends Screen {
     }
 
     private void drawRunwayPreview(GuiGraphicsExtractor graphics, int thresholdX, int thresholdY, int radius) {
-        double runway = Math.toRadians(selectedHeading);
+        double heading = headingUp ? (selectedHeading - FlightHud.radarOwnHeadingDegrees()) : selectedHeading;
+        double runway = Math.toRadians(heading);
         double approach = runway + Math.PI;
         int runwayX = thresholdX + (int) Math.round(-Math.sin(runway) * 14);
         int runwayY = thresholdY + (int) Math.round(Math.cos(runway) * 14);
@@ -594,25 +656,89 @@ public final class FlightRadarScreen extends Screen {
     }
 
     private int[] worldPoint(int x, int z, int cx, int cy, int radius) {
+        double dx = x - ownX();
+        double dz = z - ownZ();
+        if (headingUp) {
+            double angleRad = Math.toRadians(-FlightHud.radarOwnHeadingDegrees());
+            double cos = Math.cos(angleRad);
+            double sin = Math.sin(angleRad);
+            double rx = dx * cos - dz * sin;
+            double rz = dx * sin + dz * cos;
+            dx = rx;
+            dz = rz;
+        }
         double scale = radius / (double) RANGES[rangeIndex];
-        int px = cx + (int) Math.round((x - ownX()) * scale);
-        int py = cy + (int) Math.round((z - ownZ()) * scale);
+        int px = cx + (int) Math.round(dx * scale);
+        int py = cy + (int) Math.round(dz * scale);
         return new int[]{px, py};
     }
 
     private void drawContact(GuiGraphicsExtractor graphics, int x, int y,
-                             FlightRadarPayload.Contact contact, int color) {
-        if (!contact.airborne()) {
-            graphics.fill(x, y, x + 2, y + 2, color);
-        } else if (contact.player()) {
-            drawLine(graphics, x, y - 2, x + 2, y, color);
-            drawLine(graphics, x + 2, y, x, y + 2, color);
-            drawLine(graphics, x, y + 2, x - 2, y, color);
-            drawLine(graphics, x - 2, y, x, y - 2, color);
+                             FlightRadarPayload.Contact contact) {
+        int ownAlt = FlightHud.radarOwnAltitudeFeet();
+        int relAlt = contact.altitudeFeet() - ownAlt;
+        int relAltHundreds = Math.round(relAlt / 100.0f);
+        int dist = contactRange(contact);
+
+        boolean isRa = contact.airborne() && dist < 120 && Math.abs(relAlt) < 600;
+        boolean isTa = !isRa && contact.airborne() && dist < 250 && Math.abs(relAlt) < 850;
+        boolean isProximate = !isRa && !isTa && contact.airborne() && dist < 450 && Math.abs(relAlt) < 1200;
+
+        if (isRa) {
+            // Resolution Advisory (RA): Red solid square
+            graphics.fill(x - 3, y - 3, x + 4, y + 4, 0xFFFF2525);
+            graphics.outline(x - 4, y - 4, 8, 8, 0xFFFFFFFF);
+        } else if (isTa) {
+            // Traffic Advisory (TA): Amber solid circle
+            drawFilledCircle(graphics, x, y, 3, 0xFFFFB000);
+            drawCircle(graphics, x, y, 4, 0xFFFFFFFF);
+        } else if (isProximate) {
+            // Proximate Traffic: Solid cyan diamond
+            drawFilledDiamond(graphics, x, y, 3, 0xFF00E5FF);
+        } else if (contact.airborne()) {
+            // Other Airborne Traffic: Hollow cyan diamond
+            drawDiamond(graphics, x, y, 3, 0xFF40C4FF);
         } else {
-            drawLine(graphics, x, y - 2, x + 1, y + 1, color);
-            drawLine(graphics, x + 1, y + 1, x - 1, y + 1, color);
-            drawLine(graphics, x - 1, y + 1, x, y - 2, color);
+            // Ground Traffic: Small hollow square
+            graphics.outline(x - 2, y - 2, 5, 5, 0xFF9E8A68);
+        }
+
+        // Velocity leader line pointing along heading track
+        double hdg = headingUp ? (contact.headingDegrees() - FlightHud.radarOwnHeadingDegrees()) : contact.headingDegrees();
+        double rad = Math.toRadians(hdg);
+        int leaderLen = Math.max(4, Math.min(12, contact.speedKnots() / 15));
+        int lx = x + (int) Math.round(Math.sin(rad) * leaderLen);
+        int ly = y - (int) Math.round(Math.cos(rad) * leaderLen);
+        drawLine(graphics, x, y, lx, ly, isRa ? 0xFFFF2525 : isTa ? 0xFFFFB000 : 0xFF75E6A5);
+
+        // Relative altitude tag and vertical speed trend arrow
+        if (contact.airborne()) {
+            String altTag = (relAltHundreds >= 0 ? "+" : "") + String.format(Locale.ROOT, "%02d", relAltHundreds);
+            String arrow = contact.verticalSpeedFpm() > 100 ? "▲" : contact.verticalSpeedFpm() < -100 ? "▼" : "";
+            String fullTag = altTag + arrow;
+            int tagColor = isRa ? 0xFFFF2525 : isTa ? 0xFFFFB000 : 0xFF86B5A4;
+            graphics.text(font, fullTag, x + 5, y - 4, tagColor, false);
+        }
+    }
+
+    private void drawDiamond(GuiGraphicsExtractor graphics, int cx, int cy, int size, int color) {
+        drawLine(graphics, cx, cy - size, cx + size, cy, color);
+        drawLine(graphics, cx + size, cy, cx, cy + size, color);
+        drawLine(graphics, cx, cy + size, cx - size, cy, color);
+        drawLine(graphics, cx - size, cy, cx, cy - size, color);
+    }
+
+    private void drawFilledDiamond(GuiGraphicsExtractor graphics, int cx, int cy, int size, int color) {
+        for (int dy = -size; dy <= size; dy++) {
+            int width = size - Math.abs(dy);
+            graphics.fill(cx - width, cy + dy, cx + width + 1, cy + dy + 1, color);
+        }
+    }
+
+    private void drawFilledCircle(GuiGraphicsExtractor graphics, int cx, int cy, int radius, int color) {
+        for (int dy = -radius; dy <= radius; dy++) {
+            int dx = (int) Math.round(Math.sqrt(Math.max(0, radius * radius - dy * dy)));
+            graphics.fill(cx - dx, cy + dy, cx + dx + 1, cy + dy + 1, color);
         }
     }
 
