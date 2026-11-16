@@ -42,6 +42,8 @@ final class FlightHud {
     private static float speed, throttle, bankDegrees, pitchDegrees, headingDegrees;
     private static float visualSpeed, visualBank, visualPitch, visualHeading;
     private static int radioAltitudeFeet, verticalSpeedFpm, gearState, systems, warnings;
+    private static int fuelPercent;
+    private static boolean airbrakes;
     private static boolean autopilot;
     private static FlightInstrumentPayload.AutopilotGuidance autopilotGuidance =
             FlightInstrumentPayload.AutopilotGuidance.defaults();
@@ -104,6 +106,14 @@ final class FlightHud {
 
     static boolean spoilersDeployed() {
         return (systems & (1 << 8)) != 0;
+    }
+
+    static boolean airbrakesDeployed() {
+        return airbrakes;
+    }
+
+    static int fuelPercent() {
+        return fuelPercent;
     }
 
     static boolean isCrashed() {
@@ -259,6 +269,8 @@ final class FlightHud {
         systems = instruments.systems();
         if ((systems & (1 << 6)) != 0) brakePopupExpiresNanos = System.nanoTime() + 700_000_000L;
         warnings = instruments.warnings();
+        fuelPercent = instruments.fuelPercent();
+        airbrakes = instruments.airbrakes();
         autopilot = instruments.autopilot();
         autopilotGuidance = instruments.autopilotGuidance();
         weatherGuidance = instruments.cockpitGuidance().weatherGuidance();
@@ -280,6 +292,8 @@ final class FlightHud {
         speed = throttle = bankDegrees = pitchDegrees = headingDegrees = 0;
         visualSpeed = visualBank = visualPitch = visualHeading = 0;
         radioAltitudeFeet = verticalSpeedFpm = gearState = systems = warnings = 0;
+        fuelPercent = 0;
+        airbrakes = false;
         autopilot = false;
         autopilotGuidance = FlightInstrumentPayload.AutopilotGuidance.defaults();
         weatherGuidance = FlightInstrumentPayload.WeatherGuidance.defaults();
@@ -541,7 +555,6 @@ final class FlightHud {
         int n1 = (systems >> 12) & 0x7F;
         int flap = (systems >> 9) & 7;
         boolean spoilers = (systems & (1 << 8)) != 0;
-        int food = player.getFoodData().getFoodLevel();
         boolean engineFire = e1 == 4 || e2 == 4;
         boolean blinkOn = ((long) (clock * 3.0) & 1L) == 0L;
         boolean bothEnginesOut = (e1 == 0 || e1 == 3) && (e2 == 0 || e2 == 3);
@@ -573,20 +586,21 @@ final class FlightHud {
             drawEicasEngineTile(g, font, x + 65, y + 18, 58, "E2", e2, n1, blinkOn);
         }
 
-        int fuelColor = food <= 6 ? PFD_RED : PFD_AMBER;
+        int fuelColor = fuelPercent <= 15 ? PFD_RED : fuelPercent <= 30 ? PFD_AMBER : PFD_GREEN;
         g.text(font, "FUEL", x + 5, y + 54, PFD_MUTED, true);
-        gauge(g, x + 34, y + 56, 54, 5, food / 20.0f, fuelColor);
-        String fuelText = String.format(Locale.ROOT, "%d%%", food * 5);
+        gauge(g, x + 34, y + 56, 54, 5, fuelPercent / 100.0f, fuelColor);
+        String fuelText = String.format(Locale.ROOT, "%d%%", fuelPercent);
         g.text(font, fuelText, x + EICAS_WIDTH - font.width(fuelText) - 5, y + 54,
-                food <= 6 ? PFD_RED : PFD_WHITE, true);
+                fuelPercent <= 15 ? PFD_RED : PFD_WHITE, true);
 
         g.text(font, "GEAR", x + 5, y + 68, PFD_MUTED, true);
         String gearText = gearState == 2 ? "FAIL" : gearState == 1 ? "UP" : "DOWN";
         g.text(font, gearText, x + 34, y + 68, gearColor(), true);
         int gearLight = gearState == 2 ? PFD_RED : gearState == 0 ? PFD_GREEN : PFD_AMBER;
         for (int i = 0; i < 3; i++) {
-            g.fill(x + 94 + i * 8, y + 69, x + 99 + i * 8, y + 74, gearLight);
+            g.fill(x + 68 + i * 8, y + 69, x + 73 + i * 8, y + 74, gearLight);
         }
+        g.text(font, "ABRK", x + 94, y + 68, airbrakes ? PFD_AMBER : PFD_MUTED, true);
 
         g.text(font, "FLAPS", x + 5, y + 80, PFD_MUTED, true);
         for (int i = 0; i < 4; i++) {
@@ -600,8 +614,12 @@ final class FlightHud {
         String weather = "WX " + weatherName(weatherGuidance.condition());
         g.text(font, fitText(font, weather, 54), x + 5, y + 92,
                 weatherColor(weatherGuidance.condition()), true);
-        String windReadout = required(String.format(Locale.ROOT, "%03d/%02d",
-                weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots()));
+        String windReadout = weatherGuidance.gustKnots() > weatherGuidance.windSpeedKnots() + 3
+                ? required(String.format(Locale.ROOT, "%03d/%02dG%02d",
+                        weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots(),
+                        weatherGuidance.gustKnots()))
+                : required(String.format(Locale.ROOT, "%03d/%02d",
+                        weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots()));
         g.text(font, fitText(font, windReadout, 62), x + 61, y + 92, PFD_WHITE, true);
 
         String antiIceReadout = weatherGuidance.antiIceActive()
@@ -649,6 +667,9 @@ final class FlightHud {
             alertColor = PFD_WHITE;
         } else if (isAirbornePhase() && spoilers) {
             alert = "SPOILERS EXTENDED";
+            alertColor = PFD_AMBER;
+        } else if (isAirbornePhase() && airbrakes) {
+            alert = "AIRBRAKES EXTENDED";
             alertColor = PFD_AMBER;
         }
         int alertBorder = alert == null ? 0x553E7D8E : alertColor;
@@ -1009,6 +1030,7 @@ final class FlightHud {
                     pairBinding(FlightLineClient.flapsIncrease(), FlightLineClient.flapsDecrease(),
                             "FLAPS (+ / -)"),
                     binding(FlightLineClient.spoilersToggle(), "SPOILERS"),
+                    binding(FlightLineClient.airbrakeToggle(), "AIRBRAKES"),
                     binding(FlightLineClient.toggleGear(), "LANDING GEAR"),
                     binding(FlightLineClient.antiIce(), "ANTI-ICE")));
         } else {

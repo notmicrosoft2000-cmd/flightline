@@ -11,6 +11,10 @@ public final class FlightTuning {
     public static final double CRITICAL_ANGLE_OF_ATTACK_DEGREES = 18.0;
     public static final double MAX_NOSE_UP_PITCH_DEGREES = 30.0;
     public static final double MAX_NOSE_DOWN_PITCH_DEGREES = -20.0;
+    /**
+     * Legacy safety reference, kept for generic checks and backwards compatibility.
+     * Aircraft-specific limits come from {@link AircraftType#maxAirspeedBlocksPerTick()}.
+     */
     public static final double MAX_AIRSPEED = 4.3 * WORLD_SPEED_SCALE;
     public static final double OVERSPEED_WARNING_THRESHOLD = MAX_AIRSPEED * 0.99;
     static final int OVERSPEED_STRESS_START_TICKS = 80;
@@ -27,6 +31,20 @@ public final class FlightTuning {
     public static final double ENGINE_SPOOL_DOWN_RATE = 0.02;
     public static final double GROUND_THRUST = 0.060 * WORLD_SPEED_SCALE;
     public static final double AIR_THRUST = 0.02 * WORLD_SPEED_SCALE;
+    /** Extra parasite drag coefficient from the airbrakes, applied as drag * airspeed. */
+    public static final double AIRBRAKE_DRAG = 0.0034;
+    /** Airbrakes add drag without destroying the wing's lift like spoilers do. */
+    public static final double AIRBRAKE_LIFT_FACTOR = 0.92;
+    /**
+     * Fuel drained per tick at full throttle per engine, scaled by aircraft fuelConsumptionRate.
+     * Tuned so a full Kasa tank lasts roughly four hours and a full Gina tank roughly fifty
+     * minutes: long enough for a normal session, short enough that range still matters.
+     */
+    public static final double FUEL_DRAIN_PER_ENGINE_PER_TICK = 0.00018;
+    /** Fuel threshold (percent) at which the FUEL_LOW warning fires. */
+    public static final int FUEL_LOW_PERCENT = 15;
+    /** Fuel threshold (percent) at which the FUEL_EMPTY warning fires and engines flame out. */
+    public static final int FUEL_EMPTY_PERCENT = 0;
     /** An unpowered aircraft glides: less drag, a lower effective stall speed and a shallow sink. */
     static final double ENGINE_OUT_STALL_SPEED_FACTOR = 0.72;
     static final double ENGINE_OUT_DRAG_FACTOR = 0.55;
@@ -64,8 +82,7 @@ public final class FlightTuning {
 
     public static double groundAcceleration(double speed, double engineSpool, int runningEngines,
                                             double flapPosition, AircraftType aircraftType) {
-        double maxEngines = aircraftType.engineCount();
-        double engineFactor = (Math.max(0, Math.min(maxEngines, runningEngines)) / maxEngines) * aircraftType.thrustMultiplier();
+        double engineFactor = thrustFactor(aircraftType, runningEngines);
         double thrust = Math.max(0.0, engineSpool) * GROUND_THRUST * engineFactor;
         double rollingResistance = GROUND_ROLLING_RESISTANCE
                 + Math.max(0.0, speed) * GROUND_ROLLING_DRAG_PER_SPEED;
@@ -101,6 +118,19 @@ public final class FlightTuning {
 
     static boolean isOverspeed(double airspeed) {
         return airspeed > OVERSPEED_WARNING_THRESHOLD;
+    }
+
+    /** Overspeed is measured against the selected airframe's own VMO/MMO, not a shared limit. */
+    static boolean isOverspeed(double airspeed, AircraftType aircraftType) {
+        return airspeed > aircraftType.maxAirspeedBlocksPerTick() * 0.99;
+    }
+
+    /** Effective thrust-to-weight factor for an airframe. Heavy aircraft accelerate and climb slower. */
+    public static double thrustFactor(AircraftType aircraftType, int runningEngines) {
+        double engines = Math.max(0, Math.min(aircraftType.engineCount(), runningEngines));
+        double engineFraction = engines / (double) aircraftType.engineCount();
+        double weight = Math.max(0.25, aircraftType.weight());
+        return engineFraction * aircraftType.thrustMultiplier() / weight;
     }
 
     static int advanceOverspeedStressTicks(int ticks, boolean overspeed) {

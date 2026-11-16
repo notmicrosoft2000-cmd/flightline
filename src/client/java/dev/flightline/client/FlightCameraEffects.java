@@ -12,6 +12,8 @@ public final class FlightCameraEffects {
     private static int verticalSpeedFpm;
     private static int windSpeedKnots;
     private static int turbulencePercent;
+    private static int gustKnots;
+    private static int weatherCondition;
     private static int takeoffTicks;
     private static int rolloutTicks;
     private static float shake;
@@ -32,13 +34,16 @@ public final class FlightCameraEffects {
     }
 
     public static void updateInstruments(float bank, int activeWarnings, int radioAltitude,
-                                         int verticalSpeed, int windSpeed, int turbulence) {
+                                         int verticalSpeed, int windSpeed, int turbulence,
+                                         int gust, int condition) {
         bankDegrees = bank;
         warnings = activeWarnings;
         radioAltitudeFeet = radioAltitude;
         verticalSpeedFpm = verticalSpeed;
         windSpeedKnots = windSpeed;
         turbulencePercent = turbulence;
+        gustKnots = gust;
+        weatherCondition = condition;
         airborne = FlightLineClient.isAirborne();
     }
 
@@ -54,8 +59,17 @@ public final class FlightCameraEffects {
         if (airborne) {
             float turbFrac = Math.max(0.0f, Math.min(1.0f, turbulencePercent / 100.0f));
             float windFrac = Math.max(0.0f, Math.min(1.0f, windSpeedKnots / 70.0f));
+            float gustFrac = Math.max(0.0f, Math.min(1.0f, gustKnots / 70.0f));
             target = Math.max(target, turbFrac * 0.0090f * turbSens);
             target = Math.max(target, windFrac * 0.0055f * turbSens);
+            target = Math.max(target, gustFrac * 0.0080f * turbSens);
+            // Storms are felt in the airframe, not just read on the weather page.
+            if (weatherCondition >= 1) {
+                target = Math.max(target, 0.006f * turbSens);
+            }
+            if (weatherCondition >= 2) {
+                target = Math.max(target, 0.020f * turbSens);
+            }
         }
         if ((warnings & FlightWarning.WINDSHEAR) != 0) target = Math.max(target, 0.022f * turbSens);
         if ((warnings & FlightWarning.STALL) != 0) target = Math.max(target, 0.018f);

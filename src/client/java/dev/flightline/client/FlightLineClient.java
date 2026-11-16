@@ -14,6 +14,7 @@ import dev.flightline.network.FlightStatePayload;
 import dev.flightline.network.SelectPlanePayload;
 import dev.flightline.network.StartEnginesPayload;
 import dev.flightline.network.ShutdownEnginesPayload;
+import dev.flightline.network.ToggleAirbrakePayload;
 import dev.flightline.network.ToggleGearPayload;
 import dev.flightline.network.TogglePushbackPayload;
 import dev.flightline.network.ToggleSpoilersPayload;
@@ -41,7 +42,9 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.PriorityQueue;
 
 public class FlightLineClient implements ClientModInitializer {
@@ -56,6 +59,7 @@ public class FlightLineClient implements ClientModInitializer {
     private static final KeyMapping FLAPS_INCREASE = key("key.flightline.flaps_increase", InputConstants.KEY_C);
     private static final KeyMapping FLAPS_DECREASE = key("key.flightline.flaps_decrease", InputConstants.KEY_V);
     private static final KeyMapping TOGGLE_SPOILERS = key("key.flightline.spoilers_toggle", InputConstants.KEY_X);
+    private static final KeyMapping TOGGLE_AIRBRAKE = key("key.flightline.airbrake_toggle", InputConstants.KEY_N);
     private static final KeyMapping TOGGLE_AUTOPILOT = key("key.flightline.autopilot", InputConstants.KEY_H);
     private static final KeyMapping OPEN_FLIGHT_RADAR = key("key.flightline.radar", InputConstants.KEY_R);
     private static final KeyMapping TOGGLE_PFD = key("key.flightline.pfd", InputConstants.KEY_U);
@@ -67,7 +71,7 @@ public class FlightLineClient implements ClientModInitializer {
     private static final KeyMapping TOGGLE_ANTI_ICE = key("key.flightline.anti_ice", InputConstants.KEY_F8);
     private static final List<KeyMapping> FLIGHTLINE_BINDINGS = List.of(
             TOGGLE_GEAR, SHUTDOWN_ENGINES, TOGGLE_PUSHBACK, BRAKES,
-            FLAPS_INCREASE, FLAPS_DECREASE, TOGGLE_SPOILERS, TOGGLE_AUTOPILOT,
+            FLAPS_INCREASE, FLAPS_DECREASE, TOGGLE_SPOILERS, TOGGLE_AIRBRAKE, TOGGLE_AUTOPILOT,
             OPEN_FLIGHT_RADAR, TOGGLE_PFD, TOGGLE_EICAS, TOGGLE_ND_RADAR,
             TOGGLE_KEYBIND_HINTS, OPEN_CONTROLS, ACK_ATC, TOGGLE_ANTI_ICE);
     private static volatile boolean flightEnabled;
@@ -81,14 +85,18 @@ public class FlightLineClient implements ClientModInitializer {
     private static int engineStartRequestTicks;
     private int lastSentControls = -1;
     private static int lastWarningCallout;
-    private static int warningRepeatCooldown;
     private static int activeAlertId;
+    /**
+     * Cockpit callouts (altitude, configuration, autopilot modes) are spoken one at a time so they
+     * stay intelligible. Alarms never enter this queue: each alarm gets its own playback timer so
+     * one alarm can overlap another without silencing it.
+     */
     private static final PriorityQueue<QueuedVoice> VOICE_QUEUE = new PriorityQueue<>(
             Comparator.comparingInt(QueuedVoice::priority).reversed()
                     .thenComparingLong(QueuedVoice::sequence));
+    private static final Map<Integer, Long> ALERT_NEXT_PLAY_TICK = new HashMap<>();
     private static @Nullable SoundInstance activeVoice;
-    private static int activeVoicePriority = -1;
-    private static int activeVoiceWarningId;
+    private static long clientTicks;
     private static long nextVoiceSequence;
     private static boolean groundGearWarningWasActive;
     private static int previousRadioAltitude = -1;
@@ -129,7 +137,10 @@ public class FlightLineClient implements ClientModInitializer {
     public static KeyMapping openControls() { return OPEN_CONTROLS; }
 
     public static void playTcasTest(Minecraft client) {
-        SoundEvent result = FlightHud.hasRadarData() ? FlightLine.TCAS_TEST_PASS : FlightLine.TCAS_TEST_FAIL;
+        boolean gina = currentAircraft == AircraftType.GINA_787;
+        SoundEvent result = FlightHud.hasRadarData()
+                ? (gina ? FlightLine.GINA_TCAS_TEST_PASS : FlightLine.TCAS_TEST_PASS)
+                : (gina ? FlightLine.GINA_TCAS_TEST_FAIL : FlightLine.TCAS_TEST_FAIL);
         client.getSoundManager().play(SimpleSoundInstance.forUI(result, VOICE_PITCH, VOICE_VOLUME));
     }
 
@@ -166,7 +177,9 @@ public class FlightLineClient implements ClientModInitializer {
             FlightHud.updateInstruments(payload);
             FlightCameraEffects.updateInstruments(payload.bankDegrees(), payload.warnings(),
                     payload.radioAltitudeFeet(), payload.verticalSpeedFpm(), (payload.systems() >> 19) & 0x7F,
-                    payload.cockpitGuidance().weatherGuidance().turbulencePercent());
+                    payload.cockpitGuidance().weatherGuidance().turbulencePercent(),
+                    payload.cockpitGuidance().weatherGuidance().gustKnots(),
+                    payload.cockpitGuidance().weatherGuidance().condition());
             playCockpitAlerts(context.client(), payload.warnings(), payload.radioAltitudeFeet(), payload.verticalSpeedFpm());
             playSystemCallouts(payload);
         });
@@ -180,7 +193,11 @@ public class FlightLineClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(OpenAtcPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> context.client().gui.setScreen(new AtcScreen())));
         ClientPlayNetworking.registerGlobalReceiver(SelectPlanePayload.TYPE, (payload, context) -> {
-            currentAircraft = AircraftType.fromId(payload.planeId());
+            AircraftType type = AircraftType.fromId(payload.planeId());
+            if (type != currentAircraft) {
+                currentAircraft = type;
+                resetCockpitAudio(context.client());
+            }
         });
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
                 FlightLine.id("flight_status"), FlightHud::render);
@@ -225,6 +242,7 @@ public class FlightLineClient implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            clientTicks++;
             updateViewBobbing(client);
             updateEngineSound(client);
             var player = client.player;
@@ -284,6 +302,9 @@ public class FlightLineClient implements ClientModInitializer {
             if (TOGGLE_SPOILERS.consumeClick()) {
                 ClientPlayNetworking.send(new ToggleSpoilersPayload(!FlightHud.spoilersDeployed()));
             }
+            if (TOGGLE_AIRBRAKE.consumeClick()) {
+                ClientPlayNetworking.send(new ToggleAirbrakePayload(!FlightHud.airbrakesDeployed()));
+            }
 
             int controls = 0;
             if (client.options.keyUp.isDown()) controls |= FlightControls.FORWARD;
@@ -302,36 +323,14 @@ public class FlightLineClient implements ClientModInitializer {
             bankDegrees = 0.0f;
             airborne = false;
             FlightCameraEffects.updateFlightState(FlightPhase.OFF);
-            FlightCameraEffects.updateInstruments(0.0f, 0, 0, 0, 0, 0);
+            FlightCameraEffects.updateInstruments(0.0f, 0, 0, 0, 0, 0, 0, 0);
             enginesActive = false;
             enginesStarting = false;
             enginesRunning = false;
             engineStartRequestTicks = 0;
-            lastWarningCallout = 0;
-            warningRepeatCooldown = 0;
-            activeAlertId = 0;
-            VOICE_QUEUE.clear();
-            if (activeVoice != null) {
-                client.getSoundManager().stop(activeVoice);
-                activeVoice = null;
-            }
-            activeVoicePriority = -1;
-            activeVoiceWarningId = 0;
+            resetCockpitAudio(client);
+            clientTicks = 0;
             nextVoiceSequence = 0;
-            groundGearWarningWasActive = false;
-            previousRadioAltitude = -1;
-            armedCallouts = 0;
-            retardFired = false;
-            approachingMinimumsFired = false;
-            minimumsFired = false;
-            previousAircraftAltitudeFeet = -1;
-            lastVerticalVoiceId = 0;
-            verticalVoiceCooldown = 0;
-            lastFlapDetent = -1;
-            lastGearState = -1;
-            lastAutopilotState = false;
-            autopilotStateKnown = false;
-            warningRepeatCooldown = 0;
             lastSentControls = -1;
             if (engineSound != null) {
                 engineSound.stopLoop();
@@ -383,13 +382,18 @@ public class FlightLineClient implements ClientModInitializer {
 
     /** Cockpit callouts for configuration changes: flaps, gear and autopilot mode changes. */
     private static void playSystemCallouts(FlightInstrumentPayload payload) {
+        boolean gina = currentAircraft == AircraftType.GINA_787;
+        // The Gina sound set has no flap/gear recordings, so use its neutral chime instead of
+        // borrowing the Kasa voice.
+        SoundEvent flapsSound = gina ? FlightLine.CALLOUT_DING : FlightLine.CALLOUT_FLAPS;
+        SoundEvent gearSound = gina ? FlightLine.CALLOUT_DING : FlightLine.CALLOUT_GEAR;
         int flapDetent = (payload.systems() >> 9) & 7;
         int gear = payload.gearState();
         if (lastFlapDetent >= 0 && flapDetent != lastFlapDetent) {
-            enqueueCalloutVoice(FlightLine.CALLOUT_FLAPS);
+            enqueueCalloutVoice(flapsSound);
         }
         if (lastGearState >= 0 && gear != lastGearState && gear != 2) {
-            enqueueCalloutVoice(FlightLine.CALLOUT_GEAR);
+            enqueueCalloutVoice(gearSound);
         }
         if (autopilotStateKnown && payload.autopilot() != lastAutopilotState) {
             enqueueCalloutVoice(FlightLine.CALLOUT_DING);
@@ -406,6 +410,11 @@ public class FlightLineClient implements ClientModInitializer {
         SoundEvent[] phrase = null;
         int repeatInterval = 40;
         boolean gina = currentAircraft == AircraftType.GINA_787;
+        // Repeat intervals track the actual clip length. Gina's urgent alarm is a short chirp
+        // (0.51 s) while its caution alarm is a 3.17 s tone, so a single shared interval would
+        // either retrigger the chirp on top of itself or leave the long tone almost silent.
+        int urgentInterval = gina ? 14 : 30;
+        int cautionInterval = gina ? 70 : 30;
 
         if ((warnings & FlightWarning.WINDSHEAR) != 0) {
             alertId = 10;
@@ -419,11 +428,11 @@ public class FlightLineClient implements ClientModInitializer {
                 phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN,
                         FlightLine.GPWS_PULL_UP};
             }
-            repeatInterval = 30;
+            repeatInterval = gina ? 60 : 30;
         } else if ((warnings & FlightWarning.TOO_LOW_TERRAIN) != 0) {
             alertId = 15;
             sound = gina ? FlightLine.GINA_GPWS_TOO_LOW_TERRAIN : FlightLine.GPWS_TOO_LOW_TERRAIN;
-            repeatInterval = 40;
+            repeatInterval = gina ? 45 : 40;
         } else if ((warnings & FlightWarning.TERRAIN) != 0) {
             alertId = 12;
             if (gina) {
@@ -431,7 +440,7 @@ public class FlightLineClient implements ClientModInitializer {
             } else {
                 phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN};
             }
-            repeatInterval = 35;
+            repeatInterval = gina ? 60 : 35;
         } else if ((warnings & FlightWarning.TCAS_RESOLUTION) != 0) {
             boolean climb = (warnings & FlightWarning.TCAS_CLIMB) != 0;
             boolean crossing = (warnings & FlightWarning.TCAS_CROSSING) != 0;
@@ -442,11 +451,11 @@ public class FlightLineClient implements ClientModInitializer {
                 case 4 -> gina ? FlightLine.GINA_TCAS_DESCEND_NOW : FlightLine.TCAS_DESCEND;
                 default -> gina ? FlightLine.GINA_TCAS_DESCEND_CROSSING : FlightLine.TCAS_DESCEND_CROSSING;
             };
-            repeatInterval = 50;
+            repeatInterval = gina ? 55 : 50;
         } else if ((warnings & FlightWarning.TCAS_CLEAR) != 0) {
             alertId = 6;
             sound = gina ? FlightLine.GINA_TCAS_CLEAR : FlightLine.TCAS_CLEAR;
-            repeatInterval = 200;
+            repeatInterval = gina ? 120 : 200;
         } else if ((warnings & FlightWarning.SINK_RATE) != 0) {
             alertId = 13;
             sound = gina ? FlightLine.GINA_GPWS_SINK_RATE : FlightLine.GPWS_SINK_RATE;
@@ -458,11 +467,11 @@ public class FlightLineClient implements ClientModInitializer {
         } else if ((warnings & FlightWarning.GEAR_UP) != 0) {
             alertId = 16;
             sound = gina ? FlightLine.GINA_GPWS_TOO_LOW_GEAR : FlightLine.GPWS_TOO_LOW_GEAR;
-            repeatInterval = 40;
+            repeatInterval = gina ? 70 : 40;
         } else if ((warnings & FlightWarning.TOO_LOW_FLAPS) != 0) {
             alertId = 17;
             sound = gina ? FlightLine.GINA_GPWS_TOO_LOW_TERRAIN : FlightLine.GPWS_TOO_LOW_FLAPS;
-            repeatInterval = 40;
+            repeatInterval = gina ? 45 : 40;
         } else if ((warnings & FlightWarning.TCAS_TRAFFIC) != 0) {
             alertId = 1;
             sound = gina ? FlightLine.GINA_TCAS_TRAFFIC : FlightLine.TCAS_TRAFFIC;
@@ -478,68 +487,71 @@ public class FlightLineClient implements ClientModInitializer {
         } else if ((warnings & FlightWarning.STALL) != 0) {
             alertId = 20;
             sound = gina ? FlightLine.GINA_STALL_STALL : FlightLine.CAUTION_ALARM;
-            repeatInterval = 40;
+            repeatInterval = gina ? 45 : 40;
         } else if ((warnings & FlightWarning.TAKEOFF_CONFIG) != 0) {
             alertId = 27;
             sound = gina ? FlightLine.GINA_TAKEOFF_CONFIG_WARN : FlightLine.CAUTION_ALARM;
-            repeatInterval = 50;
+            repeatInterval = gina ? 50 : 50;
         } else if ((warnings & FlightWarning.ENGINE_FIRE) != 0) {
             alertId = 21;
             sound = gina ? FlightLine.GINA_URGENT_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 40;
+            repeatInterval = urgentInterval;
         } else if ((warnings & FlightWarning.ENGINE_FAILURE) != 0) {
             alertId = 22;
             sound = gina ? FlightLine.GINA_CAUTION_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 45;
+            repeatInterval = cautionInterval;
         } else if ((warnings & FlightWarning.FUEL_EMPTY) != 0) {
             alertId = 23;
             sound = gina ? FlightLine.GINA_URGENT_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 60;
+            repeatInterval = urgentInterval;
         } else if ((warnings & FlightWarning.FUEL_LOW) != 0) {
             alertId = 24;
             sound = gina ? FlightLine.GINA_CAUTION_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 60;
+            repeatInterval = cautionInterval;
         } else if ((warnings & FlightWarning.GEAR_FAILED) != 0) {
             alertId = 25;
             sound = gina ? FlightLine.GINA_CAUTION_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 60;
+            repeatInterval = cautionInterval;
         } else if ((warnings & FlightWarning.GEAR_HOT) != 0) {
             alertId = 26;
             sound = gina ? FlightLine.GINA_CAUTION_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 60;
+            repeatInterval = cautionInterval;
         } else if ((warnings & FlightWarning.AIRFRAME_STRESS) != 0) {
             alertId = 29;
             sound = gina ? FlightLine.GINA_URGENT_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 45;
+            repeatInterval = urgentInterval;
         } else if ((warnings & FlightWarning.OVERSPEED) != 0) {
             alertId = 28;
             sound = gina ? FlightLine.GINA_URGENT_ALARM : FlightLine.CAUTION_ALARM;
-            repeatInterval = 45;
+            repeatInterval = urgentInterval;
         }
 
+        int previousAlert = lastWarningCallout;
         activeAlertId = alertId;
+        lastWarningCallout = alertId;
         if (alertId == 0) {
-            lastWarningCallout = 0;
-            warningRepeatCooldown = 0;
-        } else if (alertId != lastWarningCallout) {
-            lastWarningCallout = alertId;
-            preemptLowerPriorityVoice(client, alertId, alertPriority(alertId));
-            if (phrase != null) enqueueVoiceSequence(alertId, phrase);
-            else enqueueVoice(sound, alertId);
-            warningRepeatCooldown = repeatInterval;
-        } else if (alertId != 1 && --warningRepeatCooldown <= 0) {
-            if (activeVoice == null && VOICE_QUEUE.isEmpty()) {
-                if (phrase != null) enqueueVoiceSequence(alertId, phrase);
-                else enqueueVoice(sound, alertId);
-                warningRepeatCooldown = repeatInterval;
-            } else {
-                warningRepeatCooldown = 10;
+            ALERT_NEXT_PLAY_TICK.clear();
+        } else {
+            // Every alarm keeps its own timer. A new alarm is never blocked by, and never stops,
+            // an alarm that is still sounding, so simultaneous failures stay audible.
+            boolean due = repeatInterval <= 0
+                    ? alertId != previousAlert
+                    : clientTicks >= ALERT_NEXT_PLAY_TICK.getOrDefault(alertId, Long.MIN_VALUE);
+            if (due) {
+                if (sound != null) {
+                    playAlertSound(client, sound);
+                } else if (phrase != null) {
+                    for (SoundEvent part : phrase) enqueueCalloutVoice(part, 4);
+                }
+                if (repeatInterval > 0) {
+                    ALERT_NEXT_PLAY_TICK.put(alertId, clientTicks + repeatInterval);
+                }
             }
         }
 
         boolean groundGearWarningActive = (warnings & FlightWarning.GEAR_SELECTED_ON_GROUND) != 0;
         if (groundGearWarningActive && !groundGearWarningWasActive) {
-            enqueueCalloutVoice(FlightLine.CAUTION_ALARM);
+            playAlertSound(client, gina ? FlightLine.GINA_CAUTION_ALARM : FlightLine.CAUTION_ALARM);
         }
         groundGearWarningWasActive = groundGearWarningActive;
 
@@ -555,7 +567,7 @@ public class FlightLineClient implements ClientModInitializer {
                     checkAltimeterCallout(200, 1 << 11, FlightLine.GINA_CALLOUT_200, radioAlt);
                 }
                 checkAltimeterCallout(100, 1 << 1, gina ? FlightLine.GINA_CALLOUT_100 : FlightLine.CALLOUT_100, radioAlt);
-                checkAltimeterCallout(50, 1 << 2, FlightLine.CALLOUT_50, radioAlt);
+                checkAltimeterCallout(50, 1 << 2, gina ? null : FlightLine.CALLOUT_50, radioAlt);
                 checkAltimeterCallout(40, 1 << 3, gina ? FlightLine.GINA_CALLOUT_40 : FlightLine.CALLOUT_40, radioAlt);
                 checkAltimeterCallout(30, 1 << 4, gina ? FlightLine.GINA_CALLOUT_30 : FlightLine.CALLOUT_30, radioAlt);
                 checkAltimeterCallout(20, 1 << 5, gina ? FlightLine.GINA_CALLOUT_20 : FlightLine.CALLOUT_20, radioAlt);
@@ -564,7 +576,7 @@ public class FlightLineClient implements ClientModInitializer {
 
             if (radioAlt <= 20 && radioAlt > 2 && FlightHud.throttle() > 0.05f && !retardFired) {
                 retardFired = true;
-                enqueueCalloutVoice(FlightLine.CALLOUT_RETARD);
+                if (!gina) enqueueCalloutVoice(FlightLine.CALLOUT_RETARD);
             }
             if (FlightHud.isIlsActive() && !approachingMinimumsFired
                     && previousRadioAltitude > 200 && radioAlt <= 200) {
@@ -586,7 +598,36 @@ public class FlightLineClient implements ClientModInitializer {
         }
         playAltitudeAndVerticalGuidance(client, verticalSpeed);
         previousRadioAltitude = radioAlt;
-        startNextVoice(client);
+        startNextCallout(client);
+    }
+
+    /** Plays an alarm immediately. Other alarms already sounding are intentionally left alone. */
+    private static void playAlertSound(Minecraft client, SoundEvent sound) {
+        client.getSoundManager().play(SimpleSoundInstance.forUI(sound, VOICE_PITCH, VOICE_VOLUME));
+    }
+
+    private static void resetCockpitAudio(Minecraft client) {
+        VOICE_QUEUE.clear();
+        ALERT_NEXT_PLAY_TICK.clear();
+        if (activeVoice != null) {
+            client.getSoundManager().stop(activeVoice);
+            activeVoice = null;
+        }
+        lastWarningCallout = 0;
+        activeAlertId = 0;
+        groundGearWarningWasActive = false;
+        previousRadioAltitude = -1;
+        armedCallouts = 0;
+        retardFired = false;
+        approachingMinimumsFired = false;
+        minimumsFired = false;
+        previousAircraftAltitudeFeet = -1;
+        lastVerticalVoiceId = 0;
+        verticalVoiceCooldown = 0;
+        lastFlapDetent = -1;
+        lastGearState = -1;
+        lastAutopilotState = false;
+        autopilotStateKnown = false;
     }
 
     public static boolean isVanillaKeySuppressed(@Nullable KeyMapping mapping) {
@@ -630,12 +671,12 @@ public class FlightLineClient implements ClientModInitializer {
         while (Minecraft.getInstance().options.keyInventory.consumeClick()) { }
     }
 
-    private static void checkAltimeterCallout(int threshold, int mask, SoundEvent sound, int currentAlt) {
+    private static void checkAltimeterCallout(int threshold, int mask, @Nullable SoundEvent sound, int currentAlt) {
         if (currentAlt > threshold + 50) {
             armedCallouts |= mask;
         } else if ((armedCallouts & mask) != 0 && previousRadioAltitude >= threshold && currentAlt < threshold) {
             armedCallouts &= ~mask;
-            enqueueCalloutVoice(sound);
+            if (sound != null) enqueueCalloutVoice(sound);
         }
     }
 
@@ -644,35 +685,37 @@ public class FlightLineClient implements ClientModInitializer {
         if (player == null) return;
         int currentAltitudeFeet = (int) Math.round(player.getY() * 3.28084);
         var guidance = FlightHud.autopilotGuidance();
+        boolean gina = currentAircraft == AircraftType.GINA_787;
         if (FlightHud.isAutopilotEngaged()) {
             int plus100Altitude = guidance.targetAltitudeFeet() + 100;
             if (previousAircraftAltitudeFeet >= 0
                     && ((previousAircraftAltitudeFeet < plus100Altitude && currentAltitudeFeet >= plus100Altitude)
                     || (previousAircraftAltitudeFeet > plus100Altitude && currentAltitudeFeet <= plus100Altitude))) {
-                enqueueCalloutVoice(FlightLine.CALLOUT_PLUS_100);
+                enqueueCalloutVoice(gina ? FlightLine.CALLOUT_DING : FlightLine.CALLOUT_PLUS_100);
             }
             int error = guidance.targetVerticalSpeedFpm() - verticalSpeed;
             int voiceId;
             SoundEvent voice;
             if (Math.abs(error) > 800) {
                 voiceId = 7;
-                voice = currentAircraft == AircraftType.GINA_787
-                        ? FlightLine.GINA_VOICE_ADJUST_VERTICAL_SPEED
+                voice = gina ? FlightLine.GINA_VOICE_ADJUST_VERTICAL_SPEED
                         : FlightLine.VOICE_ADJUST_VERTICAL_SPEED;
             } else if (Math.abs(error) <= 150) {
                 voiceId = 1;
-                voice = FlightLine.VOICE_MAINTAIN_VERTICAL_SPEED;
+                voice = gina ? null : FlightLine.VOICE_MAINTAIN_VERTICAL_SPEED;
             } else if (guidance.targetVerticalSpeedFpm() > 0) {
                 voiceId = error > 0 ? 2 : 3;
-                voice = error > 0 ? FlightLine.VOICE_INCREASE_CLIMB : FlightLine.VOICE_REDUCE_CLIMB;
+                voice = gina ? FlightLine.GINA_VOICE_ADJUST_VERTICAL_SPEED
+                        : (error > 0 ? FlightLine.VOICE_INCREASE_CLIMB : FlightLine.VOICE_REDUCE_CLIMB);
             } else if (guidance.targetVerticalSpeedFpm() < 0) {
                 voiceId = error > 0 ? 4 : 5;
-                voice = error > 0 ? FlightLine.VOICE_INCREASE_DESCEND : FlightLine.VOICE_REDUCE_DESCEND;
+                voice = gina ? FlightLine.GINA_VOICE_ADJUST_VERTICAL_SPEED
+                        : (error > 0 ? FlightLine.VOICE_INCREASE_DESCEND : FlightLine.VOICE_REDUCE_DESCEND);
             } else {
                 voiceId = 6;
-                voice = FlightLine.VOICE_MONITOR_VERTICAL_SPEED;
+                voice = gina ? null : FlightLine.VOICE_MONITOR_VERTICAL_SPEED;
             }
-            if (voiceId != lastVerticalVoiceId && verticalVoiceCooldown <= 0) {
+            if (voice != null && voiceId != lastVerticalVoiceId && verticalVoiceCooldown <= 0) {
                 enqueueGuidanceVoice(voice);
                 lastVerticalVoiceId = voiceId;
                 verticalVoiceCooldown = 100;
@@ -686,62 +729,32 @@ public class FlightLineClient implements ClientModInitializer {
     }
 
     private static void enqueueGuidanceVoice(SoundEvent sound) {
-        enqueueVoice(sound, 0);
-    }
-
-    private static void enqueueVoice(@Nullable SoundEvent sound, int warningId) {
-        if (sound != null) {
-            VOICE_QUEUE.add(new QueuedVoice(sound, warningId,
-                    warningId == 0 ? 0 : alertPriority(warningId), nextVoiceSequence++));
-        }
+        enqueueCalloutVoice(sound, 0);
     }
 
     private static void enqueueCalloutVoice(SoundEvent sound) {
-        VOICE_QUEUE.add(new QueuedVoice(sound, 0, 2, nextVoiceSequence++));
+        enqueueCalloutVoice(sound, 2);
     }
 
-    private static int alertPriority(int warningId) {
-        return switch (warningId) {
-            case 2, 3, 4, 5, 10, 11, 12, 13, 15, 16, 17, 29 -> 4;
-            default -> 3;
-        };
+    private static void enqueueCalloutVoice(SoundEvent sound, int priority) {
+        VOICE_QUEUE.add(new QueuedVoice(sound, priority, nextVoiceSequence++));
     }
 
-    private static void preemptLowerPriorityVoice(Minecraft client, int warningId, int priority) {
-        VOICE_QUEUE.removeIf(voice -> voice.priority() < priority
-                || voice.warningId() != 0 && voice.warningId() != warningId);
-        if (activeVoice != null && activeVoiceWarningId != warningId
-                && activeVoicePriority <= priority) {
-            client.getSoundManager().stop(activeVoice);
-            activeVoice = null;
-            activeVoicePriority = -1;
-            activeVoiceWarningId = 0;
-        }
-    }
-
-    private static void enqueueVoiceSequence(int warningId, SoundEvent... sounds) {
-        for (SoundEvent sound : sounds) enqueueVoice(sound, warningId);
-    }
-
-    private static void startNextVoice(Minecraft client) {
-        var soundManager = client.getSoundManager();
-        if (activeVoice != null && soundManager.isActive(activeVoice)) return;
+    /**
+     * Speaks one queued callout at a time. Alarms bypass this queue entirely, so a running alarm
+     * can never delay or mute altitude and configuration callouts.
+     */
+    private static void startNextCallout(Minecraft client) {
+        if (activeVoice != null && client.getSoundManager().isActive(activeVoice)) return;
         activeVoice = null;
-        activeVoicePriority = -1;
-        activeVoiceWarningId = 0;
-        while (!VOICE_QUEUE.isEmpty()) {
-            QueuedVoice next = VOICE_QUEUE.remove();
-            if (next.warningId() != 0 && next.warningId() != activeAlertId) continue;
-            SoundInstance instance = SimpleSoundInstance.forUI(next.sound(), VOICE_PITCH, VOICE_VOLUME);
-            soundManager.play(instance);
-            activeVoice = instance;
-            activeVoicePriority = next.priority();
-            activeVoiceWarningId = next.warningId();
-            return;
-        }
+        if (VOICE_QUEUE.isEmpty()) return;
+        QueuedVoice next = VOICE_QUEUE.remove();
+        SoundInstance instance = SimpleSoundInstance.forUI(next.sound(), VOICE_PITCH, VOICE_VOLUME);
+        client.getSoundManager().play(instance);
+        activeVoice = instance;
     }
 
-    private record QueuedVoice(SoundEvent sound, int warningId, int priority, long sequence) {
+    private record QueuedVoice(SoundEvent sound, int priority, long sequence) {
     }
 
     private void updateViewBobbing(Minecraft client) {
@@ -876,6 +889,7 @@ public class FlightLineClient implements ClientModInitializer {
     static KeyMapping flapsIncrease() { return FLAPS_INCREASE; }
     static KeyMapping flapsDecrease() { return FLAPS_DECREASE; }
     static KeyMapping spoilersToggle() { return TOGGLE_SPOILERS; }
+    static KeyMapping airbrakeToggle() { return TOGGLE_AIRBRAKE; }
     static KeyMapping pushback() { return TOGGLE_PUSHBACK; }
     static KeyMapping brakes() { return BRAKES; }
     static KeyMapping antiIce() { return TOGGLE_ANTI_ICE; }

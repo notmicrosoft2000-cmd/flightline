@@ -489,16 +489,57 @@ class FlightPhysicsTest {
         AircraftType kasa = AircraftType.KASA_A380;
         assertEquals(2, kasa.engineCount());
         assertEquals(172, kasa.maxAirspeedKnots());
+        assertEquals(140, kasa.cruiseAirspeedKnots());
         assertEquals(1.0f, kasa.turbulenceSensitivity(), 1e-4);
+        assertEquals(100.0, kasa.fuelCapacityPercent(), 1e-4);
 
         AircraftType gina = AircraftType.GINA_787;
         assertEquals(6, gina.engineCount());
-        assertEquals(215, gina.maxAirspeedKnots());
-        assertEquals(205, gina.cruiseAirspeedKnots());
-        assertTrue(gina.maxAirspeedKnots() >= 210);
-        assertTrue(gina.cruiseAirspeedKnots() >= 200 && gina.cruiseAirspeedKnots() <= 210);
-        assertEquals(0.45f, gina.turbulenceSensitivity(), 1e-4);
+        assertEquals(280, gina.maxAirspeedKnots());
+        assertEquals(245, gina.cruiseAirspeedKnots());
+        assertTrue(gina.maxAirspeedKnots() > 250, "Gina must be able to operate above 250 kt");
+        assertTrue(gina.cruiseAirspeedKnots() > 240);
+        assertEquals(0.55f, gina.turbulenceSensitivity(), 1e-4);
         assertTrue(gina.turbulenceSensitivity() < kasa.turbulenceSensitivity(), "Gina 787 should have damped turbulence");
+        assertTrue(gina.weight() > kasa.weight(), "Gina is the heavier airframe");
+        assertTrue(gina.fuelConsumptionRate() > kasa.fuelConsumptionRate(), "Gina burns more fuel");
+        assertTrue(gina.maxAirspeedBlocksPerTick() > kasa.maxAirspeedBlocksPerTick());
+    }
+
+    @Test
+    void overspeedUsesEachAircraftsOwnLimit() {
+        double ginaCruise = AircraftType.GINA_787.cruiseAirspeedKnots()
+                / FlightTuning.KNOTS_PER_BLOCK_PER_TICK;
+        assertFalse(FlightTuning.isOverspeed(ginaCruise, AircraftType.GINA_787));
+        assertTrue(FlightTuning.isOverspeed(AircraftType.GINA_787.maxAirspeedBlocksPerTick() * 1.01,
+                AircraftType.GINA_787));
+        // 245 kt is far above the Kasa limit, so the same speed must trip the smaller airframe.
+        assertTrue(FlightTuning.isOverspeed(ginaCruise, AircraftType.KASA_A380));
+    }
+
+    @Test
+    void airbrakesAddDragButPreserveMostLift() {
+        assertTrue(FlightTuning.AIRBRAKE_DRAG > 0.0);
+        assertTrue(FlightTuning.AIRBRAKE_LIFT_FACTOR > FlightTuning.spoilerLiftFactor(true),
+                "Airbrakes should keep far more lift than spoilers");
+        assertTrue(FlightTuning.AIRBRAKE_LIFT_FACTOR < 1.0);
+    }
+
+    @Test
+    void fuelCapacityAndBurnScaleWithAirframe() {
+        assertTrue(FlightTuning.FUEL_DRAIN_PER_ENGINE_PER_TICK > 0.0);
+        assertTrue(FlightTuning.FUEL_LOW_PERCENT > FlightTuning.FUEL_EMPTY_PERCENT);
+        assertEquals(85.0, AircraftType.GINA_787.fuelCapacityPercent(), 1e-4);
+    }
+
+    @Test
+    void thunderstormGustsExceedCalmConditions() {
+        WeatherSimulation.Conditions calm = WeatherSimulation.sample(false, false, 0.8f, 1000L, 7L);
+        WeatherSimulation.Conditions storm = WeatherSimulation.sample(false, true, 0.8f, 1000L, 7L);
+        assertTrue(storm.gustKnots() > calm.gustKnots());
+        assertTrue(storm.windSpeedKnots() >= calm.windSpeedKnots());
+        assertTrue(storm.gustKnots() >= storm.windSpeedKnots());
+        assertTrue(storm.turbulencePercent() > calm.turbulencePercent());
     }
 
     @Test

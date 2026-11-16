@@ -4,9 +4,10 @@ import java.util.Locale;
 
 public enum AircraftType {
     KASA_A380("kasa", "Kasa A380", "Twin-engine widebody airliner. Agile handling, standard cruise.",
-            2, 172, 140, 124, 98, 1.0f, 1.0),
-    GINA_787("gina", "The Gina 787", "Mega airliner with 6 giant high-bypass turbofans. High-speed cruiser (200-210 kt) with advanced turbulence damping.",
-            6, 215, 205, 135, 105, 0.45f, 1.45);
+            2, 172, 140, 124, 98, 1.0f, 1.0, 1.0f, 100.0, 1.0),
+    GINA_787("gina", "The Gina 787", "Mega airliner with 6 giant high-bypass turbofans. Fast cruiser "
+            + "(245 kt cruise, 280 kt maximum) with damped turbulence and airbrakes.",
+            6, 280, 245, 140, 112, 0.55f, 1.7, 1.55f, 85.0, 1.2);
 
     private final String id;
     private final String displayName;
@@ -18,10 +19,14 @@ public enum AircraftType {
     private final int stallSpeedKnots;
     private final float turbulenceSensitivity;
     private final double thrustMultiplier;
+    private final float weight;
+    private final double fuelCapacityPercent;
+    private final double fuelConsumptionRate;
 
     AircraftType(String id, String displayName, String description, int engineCount,
                  int maxAirspeedKnots, int cruiseAirspeedKnots, int rotationSpeedKnots,
-                 int stallSpeedKnots, float turbulenceSensitivity, double thrustMultiplier) {
+                 int stallSpeedKnots, float turbulenceSensitivity, double thrustMultiplier,
+                 float weight, double fuelCapacityPercent, double fuelConsumptionRate) {
         this.id = id;
         this.displayName = displayName;
         this.description = description;
@@ -32,6 +37,9 @@ public enum AircraftType {
         this.stallSpeedKnots = stallSpeedKnots;
         this.turbulenceSensitivity = turbulenceSensitivity;
         this.thrustMultiplier = thrustMultiplier;
+        this.weight = weight;
+        this.fuelCapacityPercent = fuelCapacityPercent;
+        this.fuelConsumptionRate = fuelConsumptionRate;
     }
 
     public String id() {
@@ -72,6 +80,18 @@ public enum AircraftType {
 
     public double thrustMultiplier() {
         return thrustMultiplier;
+    }
+
+    public float weight() {
+        return weight;
+    }
+
+    public double fuelCapacityPercent() {
+        return fuelCapacityPercent;
+    }
+
+    public double fuelConsumptionRate() {
+        return fuelConsumptionRate;
     }
 
     public double maxAirspeedBlocksPerTick() {

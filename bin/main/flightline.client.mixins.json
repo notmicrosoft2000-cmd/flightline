@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "package": "dev.flightline.mixin",
+  "client": [
+    "ClientInputAccessor",
+    "KeyboardInputMixin",
+    "FlightCameraMixin",
+    "FlightPoseMixin",
+    "FlightHeadLockMixin",
+    "VanillaKeybindMixin",
+    "LivingEntityRenderStateMixin",
+    "LivingEntityRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

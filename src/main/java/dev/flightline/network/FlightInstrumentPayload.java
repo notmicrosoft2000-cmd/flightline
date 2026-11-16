@@ -8,9 +8,8 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFpm, float bankDegrees,
                                       float pitchDegrees, float headingDegrees, int gearState, int systems,
-                                      boolean autopilot, int warnings,
-                                      float trafficBearingDegrees, int trafficRangeBlocks, int trafficAltitudeFeet,
-                                      int trafficCounts, CockpitGuidance cockpitGuidance)
+                                      boolean autopilot, int warnings, AirframeStatus airframe,
+                                      TrafficGuidance traffic, CockpitGuidance cockpitGuidance)
         implements CustomPacketPayload {
     public static final Type<FlightInstrumentPayload> TYPE = new Type<>(FlightLine.id("flight_instruments"));
     @SuppressWarnings("null")
@@ -24,13 +23,35 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
             ByteBufCodecs.VAR_INT, payload -> payload.systems(),
             ByteBufCodecs.BOOL, payload -> payload.autopilot(),
             ByteBufCodecs.VAR_INT, payload -> payload.warnings(),
-            ByteBufCodecs.FLOAT, payload -> payload.trafficBearingDegrees(),
-            ByteBufCodecs.VAR_INT, payload -> payload.trafficRangeBlocks(),
-            ByteBufCodecs.VAR_INT, payload -> payload.trafficAltitudeFeet(),
-            ByteBufCodecs.VAR_INT, payload -> payload.trafficCounts(),
+            AirframeStatus.CODEC, payload -> payload.airframe(),
+            TrafficGuidance.CODEC, payload -> payload.traffic(),
             CockpitGuidance.CODEC, payload -> payload.cockpitGuidance(),
             FlightInstrumentPayload::new
     );
+
+    public int fuelPercent() {
+        return airframe.fuelPercent();
+    }
+
+    public boolean airbrakes() {
+        return airframe.airbrakes();
+    }
+
+    public float trafficBearingDegrees() {
+        return traffic.bearingDegrees();
+    }
+
+    public int trafficRangeBlocks() {
+        return traffic.rangeBlocks();
+    }
+
+    public int trafficAltitudeFeet() {
+        return traffic.altitudeFeet();
+    }
+
+    public int trafficCounts() {
+        return traffic.counts();
+    }
 
     public IlsGuidance ilsGuidance() {
         return cockpitGuidance.ilsGuidance();
@@ -38,6 +59,32 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
 
     public AutopilotGuidance autopilotGuidance() {
         return cockpitGuidance.autopilotGuidance();
+    }
+
+    /** Airframe state that is not packed into the systems bitfield. */
+    public record AirframeStatus(int fuelPercent, boolean airbrakes) {
+        @SuppressWarnings("null")
+        public static final StreamCodec<RegistryFriendlyByteBuf, AirframeStatus> CODEC = StreamCodec.composite(
+                ByteBufCodecs.VAR_INT, status -> status.fuelPercent(),
+                ByteBufCodecs.BOOL, status -> status.airbrakes(),
+                AirframeStatus::new
+        );
+    }
+
+    /** Nearest-traffic summary rendered by the TCAS display. */
+    public record TrafficGuidance(float bearingDegrees, int rangeBlocks, int altitudeFeet, int counts) {
+        @SuppressWarnings("null")
+        public static final StreamCodec<RegistryFriendlyByteBuf, TrafficGuidance> CODEC = StreamCodec.composite(
+                ByteBufCodecs.FLOAT, traffic -> traffic.bearingDegrees(),
+                ByteBufCodecs.VAR_INT, traffic -> traffic.rangeBlocks(),
+                ByteBufCodecs.VAR_INT, traffic -> traffic.altitudeFeet(),
+                ByteBufCodecs.VAR_INT, traffic -> traffic.counts(),
+                TrafficGuidance::new
+        );
+
+        public static TrafficGuidance none() {
+            return new TrafficGuidance(0.0f, 0, 0, 0);
+        }
     }
 
     public record CockpitGuidance(IlsGuidance ilsGuidance, AutopilotGuidance autopilotGuidance,
@@ -53,7 +100,7 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
 
     public record WeatherGuidance(int windSpeedKnots, int windDirectionDegrees, int turbulencePercent,
                                   int visibilityBlocks, int condition, int icingPercent, boolean antiIceActive,
-                                  boolean antiIceEffective) {
+                                  boolean antiIceEffective, int gustKnots) {
         @SuppressWarnings("null")
         public static final StreamCodec<RegistryFriendlyByteBuf, WeatherGuidance> CODEC = StreamCodec.composite(
                 ByteBufCodecs.VAR_INT, guidance -> guidance.windSpeedKnots(),
@@ -64,11 +111,12 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
                 ByteBufCodecs.VAR_INT, guidance -> guidance.icingPercent(),
                 ByteBufCodecs.BOOL, guidance -> guidance.antiIceActive(),
                 ByteBufCodecs.BOOL, guidance -> guidance.antiIceEffective(),
+                ByteBufCodecs.VAR_INT, guidance -> guidance.gustKnots(),
                 WeatherGuidance::new
         );
 
         public static WeatherGuidance defaults() {
-            return new WeatherGuidance(0, 0, 0, 320, 0, 0, false, false);
+            return new WeatherGuidance(0, 0, 0, 320, 0, 0, false, false, 0);
         }
     }
 

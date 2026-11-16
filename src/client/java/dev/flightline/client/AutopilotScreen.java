@@ -483,8 +483,9 @@ public class AutopilotScreen extends Screen {
             drawKeyRow(graphics, left, top, scaleX, 154, "Flaps",
                     FlightLineClient.keyName(FlightLineClient.flapsIncrease()) + " / "
                             + FlightLineClient.keyName(FlightLineClient.flapsDecrease()));
-            drawKeyRow(graphics, left, top, scaleX, 174, "Spoilers",
-                    FlightLineClient.keyName(FlightLineClient.spoilersToggle()));
+            drawKeyRow(graphics, left, top, scaleX, 174, "Spoilers / airbrakes",
+                    FlightLineClient.keyName(FlightLineClient.spoilersToggle()) + " / "
+                            + FlightLineClient.keyName(FlightLineClient.airbrakeToggle()));
             drawKeyRow(graphics, left, top, scaleX, 194, "Pushback / brakes",
                     FlightLineClient.keyName(FlightLineClient.pushback()) + " / "
                             + FlightLineClient.keyName(FlightLineClient.brakes()));
@@ -495,7 +496,7 @@ public class AutopilotScreen extends Screen {
                             + FlightLineClient.keyName(FlightLineClient.toggleNdRadar()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleKeybindHints()));
             drawKeyRow(graphics, left, top, scaleX, 224, "Anti-ice", FlightLineClient.keyName(FlightLineClient.antiIce()));
-            graphics.centeredText(font, "FLAPS add lift and drag · SPOILERS dump lift and slow descent",
+            graphics.centeredText(font, "FLAPS add lift and drag · SPOILERS dump lift · AIRBRAKES add drag",
                     width / 2, place(top, 239, panelHeight() / 250.0), 0xFF83959B);
         }
 

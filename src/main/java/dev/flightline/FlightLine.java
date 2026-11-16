@@ -17,6 +17,7 @@ import dev.flightline.network.StartEnginesPayload;
 import dev.flightline.network.TogglePushbackPayload;
 import dev.flightline.network.ToggleGearPayload;
 import dev.flightline.network.AdjustFlapsPayload;
+import dev.flightline.network.ToggleAirbrakePayload;
 import dev.flightline.network.ToggleSpoilersPayload;
 import dev.flightline.network.ShutdownEnginesPayload;
 import dev.flightline.network.ToggleAutopilotPayload;
@@ -164,6 +165,7 @@ public class FlightLine implements ModInitializer {
     public void onInitialize() {
         PayloadTypeRegistry.serverboundPlay().register(AdjustFlapsPayload.TYPE, AdjustFlapsPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ToggleSpoilersPayload.TYPE, ToggleSpoilersPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(ToggleAirbrakePayload.TYPE, ToggleAirbrakePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ToggleAutopilotPayload.TYPE, ToggleAutopilotPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ConfigureAutopilotPayload.TYPE, ConfigureAutopilotPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ConfigureIlsPayload.TYPE, ConfigureIlsPayload.CODEC);
@@ -203,6 +205,8 @@ public class FlightLine implements ModInitializer {
                 FlightController.adjustFlaps(context.player(), payload.delta()));
         ServerPlayNetworking.registerGlobalReceiver(ToggleSpoilersPayload.TYPE, (payload, context) ->
                 FlightController.setSpoilers(context.player(), payload.deployed()));
+        ServerPlayNetworking.registerGlobalReceiver(ToggleAirbrakePayload.TYPE, (payload, context) ->
+                FlightController.setAirbrake(context.player(), payload.deployed()));
         ServerPlayNetworking.registerGlobalReceiver(ShutdownEnginesPayload.TYPE, (payload, context) ->
                 FlightController.shutdownEngines(context.player()));
         ServerPlayNetworking.registerGlobalReceiver(ToggleAutopilotPayload.TYPE, (payload, context) ->
@@ -375,7 +379,7 @@ public class FlightLine implements ModInitializer {
                 "FIRST FLIGHT · 4\nTo set an ILS with /flightline ils set, stand at the runway threshold facing down the runway; or configure its threshold and heading in the flight radar. Align with the runway, descend on the glide path, lower gear and add flaps. Keep spoilers retracted until touchdown; use brakes during rollout.",
                 "STARTUP & TAXI\nUse pushback if needed, then release brakes and taxi carefully. Flight Line creates 400-block concrete runways on safe flat Overworld sites as you explore; nearby pilots are told when one is built. Build speed for takeoff only on a clear runway. Avoid obstacles.",
                 "FLIGHT CONTROLS\nForward/reverse increases/decreases throttle. Look up/down to change pitch; left/right banks the aircraft. Shallow banks preserve lift and speed. High angle of attack or low airspeed can cause a stall. Recover by easing the nose down and adding power.",
-                "FLAPS & SPOILERS\nFlaps increase lift and drag, helping takeoff and approach at lower speeds. Retract them gradually after climb. Spoilers reduce lift and add drag; use them to descend or slow after touchdown, then retract for a go-around.",
+                "FLAPS & SPOILERS\nFlaps increase lift and drag, helping takeoff and approach at lower speeds. Retract them gradually after climb. Spoilers reduce lift and add drag; use them to descend or slow after touchdown, then retract for a go-around. Airbrakes add drag with only a small lift penalty, so they are the better choice for slowing in cruise or on a steep approach.",
                 "GEAR & LANDING\nLower the landing gear before approach. Aim for a shallow, stable descent with modest bank and a safe airspeed. Flaps help approach; spoilers should be retracted before landing. Avoid high sink rate and excessive touchdown speed.",
                 "ILS & AUTOLAND\nSet an ILS runway threshold and heading from the flight radar or autopilot panel. Intercept the localizer and glide slope. Arm autoland only when airborne, engines are running, airspeed is safe, and ILS guidance is valid. Monitor the approach; it is not a substitute for a safe runway.",
                 "WEATHER & ANTI-ICE\nRain or storms in cold biomes can build airframe ice while airborne. Ice reduces lift and raises stall speed. Toggle anti-ice with its listed key. It clears ice only while at least one engine is running and engine spool is above 35%. It cannot prevent all ice buildup instantly; start it early and keep airspeed margin.",
