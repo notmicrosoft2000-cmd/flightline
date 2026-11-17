@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Controls — Flight Line</title>
+    <meta name="description" content="Complete Flight Line keybind reference, flight deck guide, ILS setup and special key behavior.">
+    <meta name="theme-color" content="#111417">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Controls — Flight Line">
+    <meta property="og:description" content="From engine start to ILS autoland: the complete Flight Line control reference.">
+    <meta property="og:image" content="https://notmicrosoft2000-cmd.github.io/flightline/og-image.png">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="controls">
+    <div data-site-header></div>
+    <div data-flight-ticker></div>
+    <noscript><div class="container" style="padding-top:18px"><p class="callout warn">JavaScript is required for site navigation and live release data.</p></div></noscript>
+
+    <main>
+        <section class="container page-title">
+            <span class="page-kicker">PILOT GUIDE / 02</span>
+            <h1>Controls</h1>
+            <p>Every binding is rebindable in Minecraft. These are the defaults, plus the few keys with special Flight Line behavior.</p>
+        </section>
+
+        <section class="container section">
+            <div class="callout info pixel-box">
+                <h3>First flight in six steps</h3>
+                <ol class="priority-list">
+                    <li>Press <code>E</code> to start engines while flight is active.</li>
+                    <li>Use <code>W</code> / <code>S</code> for throttle and look up or down to pitch.</li>
+                    <li>Use <code>A</code> / <code>D</code> for rudder and bank, then rotate at the airframe's rotate speed.</li>
+                    <li>Raise gear with <code>G</code> and step flaps in with <code>C</code> / <code>V</code>.</li>
+                    <li>Open the flight deck with <code>H</code> to set heading, altitude, vertical speed and IAS.</li>
+                    <li>On approach, use <code>X</code> spoilers, <code>N</code> airbrakes and <code>M</code> wheel brakes.</li>
+                </ol>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Flight controls</h2>
+                <p>Vanilla movement keys are reused for throttle, rudder and pitch.</p>
+            </div>
+            <div class="content-panel pixel-box table-wrap">
+                <table class="key-table">
+                    <thead><tr><th>Key</th><th>Action</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        <tr><td><kbd>W</kbd> / <kbd>S</kbd></td><td>Throttle up / down</td><td>Vanilla forward / back inputs.</td></tr>
+                        <tr><td><kbd>A</kbd> / <kbd>D</kbd></td><td>Left / right</td><td>Rudder on the ground, bank in the air.</td></tr>
+                        <tr><td>Mouse</td><td>Pitch</td><td>Look up to climb, down to descend.</td></tr>
+                        <tr><td><kbd>E</kbd></td><td>Start engines / reset</td><td>Opens inventory once engines are running.</td></tr>
+                        <tr><td><kbd>G</kbd></td><td>Landing gear</td><td>Vanilla quick actions are suppressed in flight.</td></tr>
+                        <tr><td><kbd>C</kbd> / <kbd>V</kbd></td><td>Flaps increase / decrease</td><td>Adjusts flap detent.</td></tr>
+                        <tr><td><kbd>X</kbd></td><td>Toggle spoilers</td><td>Dumps lift and adds drag.</td></tr>
+                        <tr><td><kbd>N</kbd></td><td>Toggle airbrakes</td><td>Extra drag with a small lift penalty. Gina only.</td></tr>
+                        <tr><td><kbd>M</kbd></td><td>Wheel brakes</td><td>Hold to brake on the ground.</td></tr>
+                        <tr><td><kbd>K</kbd></td><td>Pushback</td><td>Toggles pushback before departure.</td></tr>
+                        <tr><td><kbd>J</kbd></td><td>Shut down engines</td><td>Sends a shutdown request to the server.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Flight deck & displays</h2>
+                <p>The cockpit is built from toggleable, server-fed instruments.</p>
+            </div>
+            <div class="content-panel pixel-box table-wrap">
+                <table class="key-table">
+                    <thead><tr><th>Key</th><th>Action</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        <tr><td><kbd>H</kbd></td><td>Flight deck / autopilot</td><td>Opens MCP, NAV/ILS, WX and KEYS pages.</td></tr>
+                        <tr><td><kbd>R</kbd></td><td>Flight radar</td><td>Traffic scope with authoritative contacts.</td></tr>
+                        <tr><td><kbd>U</kbd></td><td>Primary flight display</td><td>Toggles the PFD.</td></tr>
+                        <tr><td><kbd>I</kbd></td><td>EICAS</td><td>Engine and aircraft status.</td></tr>
+                        <tr><td><kbd>B</kbd></td><td>Navigation / TCAS display</td><td>Toggles the ND overlay.</td></tr>
+                        <tr><td><kbd>F9</kbd></td><td>Cockpit prompts</td><td>Shows or hides bottom-right key hints.</td></tr>
+                        <tr><td><kbd>F10</kbd></td><td>Flight Line controls</td><td>Opens the rebindable controls screen.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Emergencies & ATC</h2>
+                <p>These keys stay readable even when the cockpit is busy.</p>
+            </div>
+            <div class="content-panel pixel-box table-wrap">
+                <table class="key-table">
+                    <thead><tr><th>Key</th><th>Action</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        <tr><td><kbd>O</kbd></td><td>Emergency checklist</td><td>Opens or closes the interactive checklist.</td></tr>
+                        <tr><td><kbd>T</kbd></td><td>Run recommended fix</td><td>Executes the checklist's current recommendation.</td></tr>
+                        <tr><td><kbd>F7</kbd></td><td>Acknowledge ATC / release</td><td>Releases your aircraft if an operator has control.</td></tr>
+                        <tr><td><kbd>F8</kbd></td><td>Anti-ice</td><td>Clears ice only with a running, spooled engine.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Special key behavior</h2>
+                <p>A few keys intentionally do more than one thing.</p>
+            </div>
+            <div class="checklist-grid">
+                <article class="check-card pixel-box">
+                    <h3>E — engine start</h3>
+                    <ul>
+                        <li>While engines are off, <code>E</code> starts them instead of opening your inventory.</li>
+                        <li>Inventory is blocked during the start sequence.</li>
+                        <li>Once engines are running, <code>E</code> behaves normally.</li>
+                        <li>After a crash, <code>E</code> resets the aircraft.</li>
+                    </ul>
+                </article>
+                <article class="check-card pixel-box">
+                    <h3>G — landing gear</h3>
+                    <ul>
+                        <li>Vanilla quick actions are drained while flight is active.</li>
+                        <li>The client mixin also suppresses conflicting vanilla keys in flight.</li>
+                        <li>Gear state is authoritative on the server.</li>
+                    </ul>
+                </article>
+                <article class="check-card pixel-box">
+                    <h3>F7 — ATC release</h3>
+                    <ul>
+                        <li>If you are under that controller's command, <code>F7</code> is a release request.</li>
+                        <li>Otherwise it acknowledges a pending ATC message.</li>
+                        <li>Manual throttle or bank input also releases control.</li>
+                    </ul>
+                </article>
+                <article class="check-card pixel-box">
+                    <h3>O & T — checklists</h3>
+                    <ul>
+                        <li><code>O</code> opens the situation and procedure panels.</li>
+                        <li><code>T</code> runs the highlighted recommendation.</li>
+                        <li>The server revalidates every action before applying it.</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="content-panel pixel-box">
+                <h2>Flight deck and ILS autoland</h2>
+                <p>Press <code>H</code> for the four-page flight deck. The MCP holds heading, altitude, vertical speed and IAS targets, with SYNC and LEVEL shortcuts. The NAV/ILS page configures approaches; WX shows weather; KEYS repeats your bindings.</p>
+                <ul class="command-list" style="margin-top:16px">
+                    <li><code>/flightline ils set 1-6</code> — set glide slope, default <code>3.0</code></li>
+                    <li><code>/flightline ils clear</code> — remove the localizer</li>
+                    <li><code>H → NAV/ILS → AUTOLAND</code> — engage the approach</li>
+                </ul>
+                <p style="margin-top:16px;color:var(--muted)">Autoland needs airborne flight, valid same-dimension ILS coverage, serviceable gear, a running engine and enough airspeed margin. It targets 130 kt, manages gear and flaps, and drops ATC control before taking over. Normal or emergency autoland also releases operator control.</p>
+            </div>
+        </section>
+
+        <section class="container section">
+            <a class="btn primary" href="emergencies.html">EMERGENCY PROCEDURES</a>
+            <a class="btn" href="atc.html">ATC GUIDE</a>
+        </section>
+    </main>
+
+    <div data-site-footer></div>
+    <script src="site.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

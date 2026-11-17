@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Aircraft — Flight Line</title>
+    <meta name="description" content="Compare the Kasa A380 and The Gina 787 in Flight Line: engines, speed, fuel, handling and airbrakes.">
+    <meta name="theme-color" content="#111417">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Aircraft — Flight Line">
+    <meta property="og:description" content="Two airframes, two very different flying jobs. Compare the Kasa A380 and The Gina 787.">
+    <meta property="og:image" content="https://notmicrosoft2000-cmd.github.io/flightline/og-image.png">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="aircraft">
+    <div data-site-header></div>
+    <div data-flight-ticker></div>
+    <noscript><div class="container" style="padding-top:18px"><p class="callout warn">JavaScript is required for site navigation and live release data.</p></div></noscript>
+
+    <main>
+        <section class="container page-title">
+            <span class="page-kicker">HANGAR / 01</span>
+            <h1>Aircraft</h1>
+            <p>Two airframes, two very different jobs. Both are flown as the player or an AI mob — no separate plane entities are spawned.</p>
+        </section>
+
+        <section class="container section">
+            <div class="airframe-grid">
+                <article class="airframe-card kasa pixel-box">
+                    <div class="airframe-head">
+                        <div><span class="tag cyan">STANDARD WIDEBODY</span><h3 style="margin-top:12px">Kasa A380</h3></div>
+                        <div class="feature-icon" aria-hidden="true">K</div>
+                    </div>
+                    <p>Agile twin-engine handling with a standard cruise envelope. A good first airframe for learning traffic patterns and short-field technique.</p>
+                    <ul class="airframe-specs">
+                        <li><span>Engines</span><b>2 independent</b></li>
+                        <li><span>Cruise / max</span><b>140 / 172 kt</b></li>
+                        <li><span>Rotate / stall</span><b>124 / 98 kt</b></li>
+                        <li><span>Fuel capacity</span><b>100% · about 4 hours</b></li>
+                        <li><span>Turbulence response</span><b>Standard</b></li>
+                    </ul>
+                </article>
+
+                <article class="airframe-card gina pixel-box">
+                    <div class="airframe-head">
+                        <div><span class="tag">MEGA AIRLINER</span><h3 style="margin-top:12px">The Gina 787</h3></div>
+                        <div class="feature-icon" aria-hidden="true">G</div>
+                    </div>
+                    <p>Six giant high-bypass turbofans, a fast cruise and damped turbulence. Built for long, heavy legs above 250 kt with dedicated airbrakes.</p>
+                    <ul class="airframe-specs">
+                        <li><span>Engines</span><b>6, in 2 emergency groups</b></li>
+                        <li><span>Cruise / max</span><b>245 / 280 kt</b></li>
+                        <li><span>Rotate / stall</span><b>140 / 112 kt</b></li>
+                        <li><span>Fuel capacity</span><b>85% · about 50 minutes</b></li>
+                        <li><span>Extra systems</span><b>Airbrakes, damped turbulence</b></li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Side by side</h2>
+                <p>Numbers are taken directly from the flight tuning in the mod.</p>
+            </div>
+            <div class="content-panel pixel-box table-wrap">
+                <table class="spec-table">
+                    <thead>
+                        <tr>
+                            <th>Spec</th>
+                            <th>Kasa A380</th>
+                            <th>The Gina 787</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Engine count</td><td>2</td><td>6 (2 control groups)</td></tr>
+                        <tr><td>Maximum speed</td><td>172 kt</td><td>280 kt</td></tr>
+                        <tr><td>Cruise speed</td><td>140 kt</td><td>245 kt</td></tr>
+                        <tr><td>Rotate speed</td><td>124 kt</td><td>140 kt</td></tr>
+                        <tr><td>Stall speed</td><td>98 kt</td><td>112 kt</td></tr>
+                        <tr><td>Thrust / weight factor</td><td>1.0 / 1.0</td><td>1.7 / 1.55</td></tr>
+                        <tr><td>Fuel capacity / burn</td><td>100% / 1.0</td><td>85% / 1.2</td></tr>
+                        <tr><td>Turbulence response</td><td>1.0</td><td>0.55</td></tr>
+                        <tr><td>Airbrakes</td><td>No</td><td>Yes</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="container section two-col">
+            <div class="content-panel pixel-box">
+                <h2>Selecting your aircraft</h2>
+                <ul class="command-list">
+                    <li><code>/plane</code> — show the current aircraft</li>
+                    <li><code>/plane kasa</code> or <code>/plane a380</code> — Kasa A380</li>
+                    <li><code>/plane gina</code> or <code>/plane 787</code> — The Gina 787</li>
+                </ul>
+                <p style="margin-top:16px;color:var(--muted)">The aircraft type follows the player across respawns and is stored in flight state, not in a separate vehicle entity.</p>
+            </div>
+            <div class="callout info pixel-box">
+                <h3>Gina engine groups</h3>
+                <p>The Gina has six engines but only two state slots for emergencies. Target <code>1</code> covers one group of three, target <code>2</code> covers the other. A fire or failure on one group never silently takes out all six.</p>
+                <p>Both groups running counts as six engines; one group running counts as three.</p>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="callout pixel-box">
+                <h3>Where you fly from</h3>
+                <p>World generation surveys safe Overworld terrain and lays out <strong>400 × 28 block runways</strong>. The server announces them when they are created, so you can navigate to one with the radar or follow ATC vectors.</p>
+            </div>
+        </section>
+
+        <section class="container section">
+            <a class="btn primary" href="controls.html">LEARN THE CONTROLS</a>
+            <a class="btn" href="download.html">DOWNLOAD</a>
+        </section>
+    </main>
+
+    <div data-site-footer></div>
+    <script src="site.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

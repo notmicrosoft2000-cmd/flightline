@@ -3,6 +3,7 @@
   "id": "flightline",
   "version": "${version}",
   "name": "Flight Line",
+  "icon": "assets/flightline/icon.png",
   "description": "Flight physics and aircraft systems for the player: flight, GPWS/EGPWS, TCAS, cockpit alarms and radio.",
   "authors": [
     "Flight Line Crew"

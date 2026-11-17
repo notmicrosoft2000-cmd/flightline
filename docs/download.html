@@ -5,28 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Download Flight Line</title>
     <meta name="description" content="Download official Flight Line releases from GitHub Releases.">
+    <meta name="theme-color" content="#111417">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Download Flight Line">
+    <meta property="og:description" content="Official Flight Line jars, published on GitHub Releases.">
+    <meta property="og:image" content="https://notmicrosoft2000-cmd.github.io/flightline/og-image.png">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <header class="site-header">
-        <div class="container header-inner">
-            <a class="brand" href="index.html" aria-label="Flight Line home">
-                <span class="brand-mark" aria-hidden="true"></span>
-                <span>
-                    <span class="brand-name">FLIGHT LINE</span>
-                    <span class="brand-sub">MINECRAFT FABRIC MOD</span>
-                </span>
-            </a>
-            <nav class="nav" aria-label="Main navigation">
-                <a class="nav-link" href="index.html">HOME</a>
-                <a class="nav-link active" href="download.html">DOWNLOAD</a>
-                <a class="nav-link github" href="https://github.com/notmicrosoft2000-cmd/flightline" target="_blank" rel="noreferrer">GITHUB</a>
-            </nav>
-        </div>
-    </header>
+<body data-page="download">
+    <div data-site-header></div>
+    <div data-flight-ticker></div>
+    <noscript><div class="container" style="padding-top:18px"><p class="callout warn">JavaScript is required to load release data. Visit <a href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">GitHub Releases</a> directly.</p></div></noscript>
 
     <main>
         <section class="container page-title">
+            <span class="page-kicker">OFFICIAL BUILDS / 06</span>
             <h1>Download</h1>
             <p>Official builds are published as GitHub Releases. Pick the newest stable jar below, or browse every tagged version.</p>
         </section>
@@ -40,27 +35,36 @@
                 <div class="release-list" id="release-list" aria-label="Previous releases"></div>
             </div>
 
-            <aside class="side-card pixel-box">
-                <h3>Before you fly</h3>
-                <ul>
-                    <li>Minecraft <strong>26.3</strong></li>
-                    <li>Fabric Loader</li>
-                    <li>Fabric API</li>
-                    <li>Java <strong>25</strong></li>
-                </ul>
-                <p>Place the <code>.jar</code> in your <code>mods</code> folder. Do not unzip the release archive.</p>
-                <a class="btn" href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">ALL RELEASES</a>
+            <aside>
+                <div class="side-card pixel-box">
+                    <h3>Before you fly</h3>
+                    <ul>
+                        <li>Minecraft <strong>26.3</strong></li>
+                        <li>Fabric Loader <strong>0.20.1+</strong></li>
+                        <li>Fabric API <strong>0.165.2+26.3</strong></li>
+                        <li>Java <strong>25</strong></li>
+                    </ul>
+                    <p>Place the plain <code>.jar</code> in your <code>mods</code> folder. Do not unzip it. The <code>-sources.jar</code> is optional and only for developers.</p>
+                    <a class="btn" href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">ALL RELEASES</a>
+                </div>
+
+                <div class="callout info pixel-box" style="margin-top:18px">
+                    <h3>What changed?</h3>
+                    <p>Release notes live on the <a href="updates.html">Updates page</a> and come straight from GitHub.</p>
+                </div>
             </aside>
+        </section>
+
+        <section class="container section">
+            <div class="callout warn pixel-box">
+                <h3>Official downloads only</h3>
+                <p>Flight Line jars are only published through this site's GitHub Releases links and the repository's Releases page. If a download asks you to install an extra launcher or disables your antivirus, it is not an official build.</p>
+            </div>
         </section>
     </main>
 
-    <footer class="site-footer">
-        <div class="container">
-            <span>FLIGHT LINE · OFFICIAL BUILDS</span>
-            <span><a href="index.html">HOME</a> · <a href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">RELEASES</a></span>
-        </div>
-    </footer>
-
+    <div data-site-footer></div>
+    <script src="site.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

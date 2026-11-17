@@ -160,6 +160,37 @@
         });
     }
 
+    function renderChangelog(releases) {
+        var container = document.querySelector("[data-changelog]");
+        if (!container) return;
+        container.textContent = "";
+
+        if (!releases.length) {
+            container.appendChild(element("p", "release-meta", "No published releases are available yet."));
+            return;
+        }
+
+        releases.forEach(function (release, index) {
+            var item = element("article", "timeline-item pixel-box");
+            var top = element("div", "release-item-top");
+            top.appendChild(element("h3", "", (index === 0 ? "LATEST · " : "") + (release.name || release.tag_name)));
+            if (release.prerelease) top.appendChild(element("span", "tag prerelease", "PRE-RELEASE"));
+            else top.appendChild(element("span", "tag", "PUBLISHED"));
+            item.appendChild(top);
+
+            item.appendChild(element("p", "release-meta",
+                "TAG " + release.tag_name + " · " + formatDate(stableDate(release))));
+            item.appendChild(element("p", "release-notes release-notes-tall", shortNotes(release.body, 1400)));
+
+            var actions = element("div", "release-actions");
+            actions.appendChild(linkButton("RELEASE NOTES", releaseUrl(release)));
+            var jar = primaryJar(release);
+            if (jar) actions.appendChild(linkButton("DOWNLOAD JAR", jar.browser_download_url, "primary"));
+            item.appendChild(actions);
+            container.appendChild(item);
+        });
+    }
+
     function stableDate(release) {
         return release.published_at || release.created_at;
     }
@@ -183,6 +214,7 @@
             updateHomeBadge(releases);
             renderLatest(releases);
             renderList(releases);
+            renderChangelog(releases);
         }).catch(renderError);
     });
 }());

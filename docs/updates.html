@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Updates — Flight Line</title>
+    <meta name="description" content="Live Flight Line release notes pulled directly from official GitHub Releases.">
+    <meta name="theme-color" content="#111417">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Updates — Flight Line">
+    <meta property="og:description" content="Every official Flight Line release note, read live from GitHub Releases.">
+    <meta property="og:image" content="https://notmicrosoft2000-cmd.github.io/flightline/og-image.png">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="updates">
+    <div data-site-header></div>
+    <div data-flight-ticker></div>
+    <noscript><div class="container" style="padding-top:18px"><p class="callout warn">JavaScript is required for site navigation and live release data. Visit <a href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">GitHub Releases</a> directly.</p></div></noscript>
+
+    <main>
+        <section class="container page-title">
+            <span class="page-kicker">CHANGELOG / 05</span>
+            <h1>Updates</h1>
+            <p>One source of truth. This page reads release notes straight from GitHub Releases, so the changelog is never out of sync with the jar.</p>
+        </section>
+
+        <section class="container section">
+            <div class="two-col">
+                <div class="content-panel pixel-box">
+                    <h2>How official builds ship</h2>
+                    <ol class="priority-list">
+                        <li>A tagged build is published on GitHub Releases.</li>
+                        <li>The jar and sources jar are attached to that release.</li>
+                        <li>This site reads the public GitHub API.</li>
+                        <li>The newest note appears here and on the download page automatically.</li>
+                    </ol>
+                </div>
+                <div class="callout info pixel-box">
+                    <h3>Which file do I need?</h3>
+                    <p>Download the plain <code>.jar</code>. The <code>-sources.jar</code> asset is for developers who want to read the mod code and is not needed to play.</p>
+                    <p>Third-party mirrors are not official. Always check the <a href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">Releases page</a>.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Release feed</h2>
+                <p>Loading from GitHub Releases…</p>
+            </div>
+            <div class="timeline" data-changelog>
+                <article class="timeline-item pixel-box"><p class="release-status">LOADING RELEASE DATA...</p></article>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="content-panel pixel-box table-wrap">
+                <h2>Current platform line</h2>
+                <table class="spec-table">
+                    <thead><tr><th>Requirement</th><th>Version</th></tr></thead>
+                    <tbody>
+                        <tr><td>Minecraft</td><td>26.3</td></tr>
+                        <tr><td>Fabric Loader</td><td>0.20.1 or newer</td></tr>
+                        <tr><td>Fabric API</td><td>0.165.2+26.3</td></tr>
+                        <tr><td>Java</td><td>25 or newer</td></tr>
+                        <tr><td>Mod version</td><td>0.1.0-alpha.7</td></tr>
+                        <tr><td>License</td><td>MIT</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="container section">
+            <a class="btn primary" href="download.html">DOWNLOAD LATEST</a>
+            <a class="btn" href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">GITHUB RELEASES</a>
+        </section>
+    </main>
+
+    <div data-site-footer></div>
+    <script src="site.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ATC — Flight Line</title>
+    <meta name="description" content="Flight Line ATC guide for server operators: radar, clearances, follow instructions and player aircraft handoff.">
+    <meta name="theme-color" content="#111417">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="ATC — Flight Line">
+    <meta property="og:description" content="Operator-only radar control for AI and player aircraft, with a clean F7 handoff back to the pilot.">
+    <meta property="og:image" content="https://notmicrosoft2000-cmd.github.io/flightline/og-image.png">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="atc">
+    <div data-site-header></div>
+    <div data-flight-ticker></div>
+    <noscript><div class="container" style="padding-top:18px"><p class="callout warn">JavaScript is required for site navigation and live release data.</p></div></noscript>
+
+    <main>
+        <section class="container page-title">
+            <span class="page-kicker">MULTIPLAYER / 04</span>
+            <h1>ATC</h1>
+            <p>Operators see the whole sky and can issue real clearances to AI traffic — or take temporary command of a player aircraft with a clean handoff back.</p>
+        </section>
+
+        <section class="container section">
+            <div class="callout warn pixel-box">
+                <h3>Operator only</h3>
+                <p>Run <code>/flightline atc</code> to open the controller screen. Normal players cannot open it, set emergency state, or issue orders. Every order is validated on the server.</p>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>What the controller sees</h2>
+                <p>One authoritative contact snapshot is built per dimension and sent to radar clients.</p>
+            </div>
+            <div class="feature-grid">
+                <article class="feature-card pixel-box">
+                    <div class="feature-icon" aria-hidden="true">R</div>
+                    <div><h3>Radar scope</h3><p>4096-block radar range with 128-block air/ground traffic and TCAS contacts. Snapshots are throttled for busy servers.</p></div>
+                </article>
+                <article class="feature-card pixel-box">
+                    <div class="feature-icon" aria-hidden="true">S</div>
+                    <div><h3>Select & follow</h3><p>Highlight a contact, follow it with the camera, pick a lead aircraft, or select a target from the map.</p></div>
+                </article>
+                <article class="feature-card pixel-box">
+                    <div class="feature-icon" aria-hidden="true">O</div>
+                    <div><h3>Issue orders</h3><p>Hold, turn, climb, descend, speed, orbit, return or follow. Player clearances drive their autopilot; AI clearances drive mob flight control.</p></div>
+                </article>
+                <article class="feature-card pixel-box">
+                    <div class="feature-icon" aria-hidden="true">F</div>
+                    <div><h3>Release control</h3><p><code>RELEASE CTRL</code> in the GUI or <code>F7</code> from the pilot returns full authority immediately.</p></div>
+                </article>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Available clearances</h2>
+                <p>Enter a value, issue the order, and the aircraft acknowledges in radio phraseology.</p>
+            </div>
+            <div class="content-panel pixel-box table-wrap">
+                <table class="key-table">
+                    <thead><tr><th>Order</th><th>Valid value</th><th>Radio phrase</th></tr></thead>
+                    <tbody>
+                        <tr><td>HOLD</td><td>0</td><td>Hold present heading and altitude.</td></tr>
+                        <tr><td>TURN</td><td>0–359</td><td>Turn heading 090.</td></tr>
+                        <tr><td>CLIMB</td><td>100–40,000 ft</td><td>Climb and maintain 5000 feet.</td></tr>
+                        <tr><td>DESCEND</td><td>100–40,000 ft</td><td>Descend and maintain 3000 feet.</td></tr>
+                        <tr><td>SPEED</td><td>40–300 kt</td><td>Maintain 180 knots.</td></tr>
+                        <tr><td>ORBIT</td><td>0</td><td>Orbit my position.</td></tr>
+                        <tr><td>RETURN</td><td>0</td><td>Return to my position.</td></tr>
+                        <tr><td>FOLLOW</td><td>0 + valid lead</td><td>Follow aircraft …</td></tr>
+                        <tr><td>RELEASE</td><td>0</td><td>Resume own navigation.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p style="margin-top:14px;color:var(--muted)">Climb and descend clearances use ±1,500 fpm. Follow targets must be valid aircraft within controller range.</p>
+        </section>
+
+        <section class="container section two-col">
+            <div class="content-panel pixel-box">
+                <h2>Taking command of a player</h2>
+                <ol class="priority-list">
+                    <li>Run <code>/flightline atc</code> as an operator.</li>
+                    <li>Select a live airborne player contact on radar or the map.</li>
+                    <li>Enter the heading, altitude or speed target.</li>
+                    <li>Issue the order; the player sees the clearance and autopilot takes over.</li>
+                    <li>Click <code>RELEASE CTRL</code>, or let the pilot press <code>F7</code>.</li>
+                </ol>
+            </div>
+            <div class="callout info pixel-box">
+                <h3>Automatic release</h3>
+                <p>Control also drops when the pilot moves throttle or bank manually, changes autopilot settings, engages normal or emergency autoland, crashes, respawns, disables flight, dies, spectates, or leaves the controller's dimension or 2048-block range.</p>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="callout pixel-box">
+                <h3>Range and safety checks</h3>
+                <p>The target must be alive, not the operator, in the same dimension and within <strong>2048 blocks</strong>. Player aircraft must be airborne before an operator can take command. A release clears the clearance, disengages autopilot and autoland, and notifies both controller and pilot.</p>
+            </div>
+        </section>
+
+        <section class="container section">
+            <a class="btn primary" href="emergencies.html">EMERGENCY PROCEDURES</a>
+            <a class="btn" href="controls.html">CONTROL REFERENCE</a>
+        </section>
+    </main>
+
+    <div data-site-footer></div>
+    <script src="site.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
