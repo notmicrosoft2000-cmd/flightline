@@ -17,5 +17,7 @@
   "key.flightline.controls": "Open Flight Line Controls",
   "key.flightline.atc_ack": "Acknowledge ATC Message",
   "key.flightline.anti_ice": "Toggle Anti-Ice",
+  "key.flightline.emergency_checklist": "Open Emergency Checklist",
+  "key.flightline.emergency_execute": "Execute Recommended Emergency Fix",
   "death.attack.flightline_crash": "%1$s crashed while piloting an aircraft."
 }

@@ -1,10 +1,12 @@
 package dev.flightline.client;
 
 import dev.flightline.flight.AircraftType;
+import dev.flightline.flight.EmergencyStatus;
 import dev.flightline.flight.FlightPhase;
 import dev.flightline.flight.FlightTuning;
 import dev.flightline.flight.FlightWarning;
 import dev.flightline.FlightLine;
+import dev.flightline.network.EmergencyStatusPayload;
 import dev.flightline.network.FlightInstrumentPayload;
 import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
@@ -71,6 +73,9 @@ final class FlightHud {
     private static long atcMessageExpiresNanos;
     private static int atcControllerEntityId = -1;
     private static final Deque<String> atcRadioLog = new ArrayDeque<>();
+    private static EmergencyStatusPayload emergencyStatus = EmergencyStatusPayload.inactive();
+    private static String cockpitNotice = "";
+    private static long cockpitNoticeExpiresNanos;
     private static final String PREFERENCES_FILE = "flightline-client.properties";
 
     private FlightHud() {
@@ -122,6 +127,10 @@ final class FlightHud {
 
     static FlightInstrumentPayload.AutopilotGuidance autopilotGuidance() {
         return autopilotGuidance;
+    }
+
+    static boolean isAtcControlled() {
+        return autopilotGuidance.atcControlled();
     }
 
     static boolean isIlsActive() {
@@ -252,6 +261,19 @@ final class FlightHud {
         return weatherGuidance;
     }
 
+    static EmergencyStatusPayload emergencyStatus() {
+        return emergencyStatus;
+    }
+
+    static void updateEmergency(EmergencyStatusPayload payload) {
+        emergencyStatus = payload;
+    }
+
+    static void showNotice(String message) {
+        cockpitNotice = message;
+        cockpitNoticeExpiresNanos = System.nanoTime() + 5_000_000_000L;
+    }
+
     static void update(FlightStatePayload state) {
         enabled = state.enabled();
         phase = FlightPhase.fromId(state.phase());
@@ -308,6 +330,9 @@ final class FlightHud {
         atcControllerEntityId = -1;
         atcMessageExpiresNanos = 0L;
         atcRadioLog.clear();
+        emergencyStatus = EmergencyStatusPayload.inactive();
+        cockpitNotice = "";
+        cockpitNoticeExpiresNanos = 0L;
         ilsLocalizerDegrees = ilsGlideslopeDegrees = 0.0f;
         ilsRunwayHeadingDegrees = ilsThresholdDistanceBlocks = 0.0f;
         ilsReferenceGlideSlopeDegrees = 3.0f;
@@ -485,11 +510,22 @@ final class FlightHud {
 
         if (eicasVisible) {
             drawEicas(g, mc, player, eicasX, 6, clock);
+            if (emergencyStatus.active()) {
+                drawEmergencyPanel(g, mc, eicasX, 6 + EICAS_HEIGHT + 4, clock);
+            }
         }
 
         updateKeybindPanelAnimation();
         if (showKeybinds && keybindPanelProgress > 0.01f) {
             drawKeybindList(g, mc, screenWidth, screenHeight);
+        }
+        if (enabled && isAtcControlled()) {
+            int bannerWidth = Math.min(screenWidth - 24, 250);
+            int bannerX = (screenWidth - bannerWidth) / 2;
+            g.fill(bannerX, 78, bannerX + bannerWidth, 98, 0xE54A2A12);
+            g.outline(bannerX, 78, bannerWidth, 20, 0xFFFFB14D);
+            g.centeredText(mc.font, "ATC CONTROL ACTIVE  ·  F7 RELEASE",
+                    screenWidth / 2, 84, 0xFFFFD89B);
         }
         if (!atcMessage.isEmpty() && System.nanoTime() < atcMessageExpiresNanos) {
             int messageWidth = Math.min(screenWidth - 24, 260);
@@ -501,6 +537,7 @@ final class FlightHud {
         } else {
             atcMessage = "";
         }
+        drawNotice(g, mc, screenWidth);
 
         List<String> alerts = warningLabels();
         if (!alerts.isEmpty()) {
@@ -635,7 +672,7 @@ final class FlightHud {
         String alert = null;
         int alertColor = PFD_GREEN;
         if (engineFire) {
-            alert = "ENGINE FIRE - SHUT DOWN";
+            alert = "ENG FIRE - " + FlightLineClient.keyName(FlightLineClient.emergencyChecklist());
             alertColor = blinkOn ? PFD_WHITE : PFD_RED;
         } else if ((warnings & FlightWarning.ENGINE_FAILURE) != 0) {
             alert = "ENGINE FAILURE - GLIDE";
@@ -680,6 +717,88 @@ final class FlightHud {
         g.centeredText(font, fitText(font, alertText, EICAS_WIDTH - 16),
                 x + EICAS_WIDTH / 2, y + 120,
                 alert == null ? PFD_MUTED : alertColor);
+    }
+
+    /** Compact checklist summary below EICAS; the full procedure list opens with O. */
+    private static void drawEmergencyPanel(GuiGraphicsExtractor g, Minecraft mc, int x, int y, double clock) {
+        Font font = mc.font;
+        EmergencyStatusPayload status = emergencyStatus;
+        List<String> lines = new ArrayList<>();
+        boolean grouped = FlightLineClient.getAircraftType() == AircraftType.GINA_787;
+        String engine1 = EmergencyStatus.engineName(0, grouped);
+        String engine2 = EmergencyStatus.engineName(1, grouped);
+        if (status.hasCondition(EmergencyStatus.FIRE_1)) {
+            lines.add(engine1 + " FIRE " + Math.max(0, 30 - status.fireTicks1() / 20) + "S");
+        }
+        if (status.hasCondition(EmergencyStatus.FIRE_2)) {
+            lines.add(engine2 + " FIRE " + Math.max(0, 30 - status.fireTicks2() / 20) + "S");
+        }
+        if (status.hasCondition(EmergencyStatus.FAILURE_1)) lines.add(engine1 + " FAILED");
+        if (status.hasCondition(EmergencyStatus.FAILURE_2)) lines.add(engine2 + " FAILED");
+        if (status.hasCondition(EmergencyStatus.FUEL_EMPTY)) lines.add("FUEL EMPTY");
+        else if (status.hasCondition(EmergencyStatus.FUEL_LOW)) lines.add("LOW FUEL");
+        if (status.hasCondition(EmergencyStatus.HEAVY_FUEL)) lines.add("HEAVY FUEL");
+        if (status.hasCondition(EmergencyStatus.GEAR_FAILED)) lines.add("GEAR FAILED");
+        if (status.hasCondition(EmergencyStatus.HYDRAULIC)) lines.add("HYDRAULIC FAIL");
+        if (status.hasCondition(EmergencyStatus.PRESSURISATION)) lines.add("CABIN ALTITUDE");
+        if (status.hasCondition(EmergencyStatus.ICING)) lines.add("AIRFRAME ICE");
+        if (status.hasCondition(EmergencyStatus.OVERSPEED)) lines.add("OVERSPEED");
+        if (status.hasCondition(EmergencyStatus.EMERGENCY_DECLARED)) lines.add("MAYDAY ACTIVE");
+        if (status.hasCondition(EmergencyStatus.FUEL_DUMPING)) lines.add("FUEL JETTISON");
+
+        var recommendation = status.recommendation();
+        int rows = Math.min(4, lines.size());
+        int height = 18 + rows * 10 + (recommendation.present() ? 20 : 0);
+        boolean urgent = status.hasCondition(EmergencyStatus.FIRE_1 | EmergencyStatus.FIRE_2
+                | EmergencyStatus.FAILURE_1 | EmergencyStatus.FAILURE_2
+                | EmergencyStatus.FUEL_EMPTY);
+        int border = urgent && (((long) (clock * 3.0) & 1L) == 0L) ? PFD_RED : PFD_AMBER;
+
+        g.fill(x, y, x + EICAS_WIDTH, y + height, 0xEE1A0B0C);
+        g.outline(x, y, EICAS_WIDTH, height, border);
+        String title = "EMERGENCY " + FlightLineClient.keyName(FlightLineClient.emergencyChecklist());
+        g.text(font, fitText(font, title, EICAS_WIDTH - 10), x + 4, y + 3, border, true);
+        if (status.hasCondition(EmergencyStatus.FIRE_1 | EmergencyStatus.FIRE_2)) {
+            String bottles = "BTL " + status.extinguisherBottles();
+            g.text(font, bottles, x + EICAS_WIDTH - font.width(bottles) - 4, y + 3, PFD_WHITE, true);
+        }
+        for (int i = 0; i < rows; i++) {
+            int rowColor = lines.get(i).contains("FIRE") || lines.get(i).contains("EMPTY")
+                    || lines.get(i).contains("FAILED") ? PFD_RED : PFD_AMBER;
+            g.text(font, fitText(font, lines.get(i), EICAS_WIDTH - 10), x + 4, y + 14 + i * 10,
+                    rowColor, true);
+        }
+        if (recommendation.present()) {
+            int actionY = y + height - 18;
+            g.fill(x + 3, actionY, x + EICAS_WIDTH - 3, actionY + 15, 0xFF102022);
+            g.outline(x + 3, actionY, EICAS_WIDTH - 6, 15, PFD_GREEN);
+            String action = EmergencyStatus.actionLabel(recommendation.action());
+            if (recommendation.target() >= 0 && action.startsWith("Extinguish")) {
+                action = EmergencyStatus.engineName(recommendation.target(), grouped) + " FIRE";
+            } else if (recommendation.target() >= 0 && action.startsWith("Restart")) {
+                action = EmergencyStatus.engineName(recommendation.target(), grouped) + " RELIGHT";
+            }
+            String prompt = FlightLineClient.keyName(FlightLineClient.executeEmergency()) + " " + action;
+            g.centeredText(font, fitText(font, prompt, EICAS_WIDTH - 10), x + EICAS_WIDTH / 2,
+                    actionY + 3, PFD_GREEN);
+        }
+    }
+
+    /** Server action feedback as a short cockpit toast, independent of the radio/chat stack. */
+    private static void drawNotice(GuiGraphicsExtractor g, Minecraft mc, int screenWidth) {
+        long remaining = cockpitNoticeExpiresNanos - System.nanoTime();
+        if (remaining <= 0 || cockpitNotice.isEmpty()) {
+            cockpitNotice = "";
+            return;
+        }
+        float alpha = Math.min(1.0f, remaining / 500_000_000.0f);
+        int width = Math.min(screenWidth - 24, 300);
+        int x = (screenWidth - width) / 2;
+        int y = 128;
+        g.fill(x, y, x + width, y + 18, withAlpha(0xE51A2630, alpha));
+        g.outline(x, y, width, 18, withAlpha(PFD_CYAN, alpha));
+        g.centeredText(mc.font, fitText(mc.font, cockpitNotice, width - 12), screenWidth / 2,
+                y + 5, withAlpha(PFD_WHITE, alpha));
     }
 
     private static void drawEicasEngineTile(GuiGraphicsExtractor g, Font font, int x, int y, int width,
@@ -1023,8 +1142,12 @@ final class FlightHud {
                 pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(), "RUDDER"),
                 binding(FlightLineClient.brakes(), "BRAKES"),
                 binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT PANEL"),
+                binding(FlightLineClient.emergencyChecklist(), "EMERGENCY CHECKLIST"),
                 binding(FlightLineClient.openControls(), "ALL CONTROLS"),
                 binding(FlightLineClient.toggleKeybindHints(), "HIDE PROMPTS")));
+        if (emergencyStatus.recommendation().present()) {
+            bindings.add(binding(FlightLineClient.executeEmergency(), "EXECUTE RECOMMENDED FIX"));
+        }
         if (FlightLineClient.isAirborne()) {
             bindings.addAll(List.of(
                     pairBinding(FlightLineClient.flapsIncrease(), FlightLineClient.flapsDecrease(),
@@ -1045,7 +1168,11 @@ final class FlightHud {
             }
         }
         if (FlightLineClient.isAirborne()) bindings.add(binding(FlightLineClient.flightRadar(), "FLIGHT RADAR"));
-        if (hasAtcMessage()) bindings.add(binding(FlightLineClient.ackAtc(), "ACK ATC"));
+        if (isAtcControlled()) {
+            bindings.add(binding(FlightLineClient.ackAtc(), "RELEASE ATC"));
+        } else if (hasAtcMessage()) {
+            bindings.add(binding(FlightLineClient.ackAtc(), "ACK ATC"));
+        }
         bindings.sort(String.CASE_INSENSITIVE_ORDER);
         int contentWidth = Math.min(188, Math.max(70, screenWidth - 12));
         int contentHeight = bindings.size() * 9;

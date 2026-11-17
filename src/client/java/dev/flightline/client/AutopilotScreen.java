@@ -404,6 +404,10 @@ public class AutopilotScreen extends Screen {
                     place(left, 24, scaleX), place(top, 196, scaleY), 0xFFB6C8D1, true);
             graphics.text(font, fitText(font, autothrottle, panelWidth - 40),
                     place(left, 24, scaleX), place(top, 210, scaleY), 0xFFB6C8D1, true);
+            if (guidance.atcControlled()) {
+                graphics.text(font, "ATC CONTROL ACTIVE · F7 RELEASES",
+                        place(left, 24, scaleX), place(top, 224, scaleY), 0xFFFFB14D, true);
+            }
         } else if (activePage == 1) {
             graphics.text(font, "THRESHOLD X", place(left, 38, scaleX), place(top, 48, scaleY), 0xFF9FC4D0, true);
             graphics.text(font, "THRESHOLD Z", place(left, 126, scaleX), place(top, 48, scaleY), 0xFF9FC4D0, true);
@@ -489,13 +493,15 @@ public class AutopilotScreen extends Screen {
             drawKeyRow(graphics, left, top, scaleX, 194, "Pushback / brakes",
                     FlightLineClient.keyName(FlightLineClient.pushback()) + " / "
                             + FlightLineClient.keyName(FlightLineClient.brakes()));
-            drawKeyRow(graphics, left, top, scaleX, 214, "Radar / displays / prompts",
+            drawKeyRow(graphics, left, top, scaleX, 214, "Radar / displays / anti-ice",
                     FlightLineClient.keyName(FlightLineClient.flightRadar()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.togglePfd()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleEicas()) + "/"
                             + FlightLineClient.keyName(FlightLineClient.toggleNdRadar()) + "/"
-                            + FlightLineClient.keyName(FlightLineClient.toggleKeybindHints()));
-            drawKeyRow(graphics, left, top, scaleX, 224, "Anti-ice", FlightLineClient.keyName(FlightLineClient.antiIce()));
+                            + FlightLineClient.keyName(FlightLineClient.antiIce()));
+            drawKeyRow(graphics, left, top, scaleX, 224, "Emergency checklist / fix",
+                    FlightLineClient.keyName(FlightLineClient.emergencyChecklist()) + " / "
+                            + FlightLineClient.keyName(FlightLineClient.executeEmergency()));
             graphics.centeredText(font, "FLAPS add lift and drag · SPOILERS dump lift · AIRBRAKES add drag",
                     width / 2, place(top, 239, panelHeight() / 250.0), 0xFF83959B);
         }

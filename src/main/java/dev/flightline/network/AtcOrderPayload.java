@@ -32,4 +32,5 @@ public record AtcOrderPayload(int entityId, int order, int value, int referenceE
     public static final int ORBIT = 5;
     public static final int RETURN = 6;
     public static final int FOLLOW = 7;
+    public static final int RELEASE = 8;
 }

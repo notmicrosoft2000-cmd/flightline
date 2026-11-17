@@ -1,12 +1,17 @@
 package dev.flightline;
 
 import dev.flightline.flight.AircraftType;
+import dev.flightline.flight.AtcClearance;
+import dev.flightline.flight.EmergencyScenario;
 import dev.flightline.flight.FlightController;
 import dev.flightline.flight.MobFlightController;
 import dev.flightline.flight.RunwayGenerator;
 import dev.flightline.network.AtcOrderPayload;
 import dev.flightline.network.AtcRadioPayload;
 import dev.flightline.network.AtcAckPayload;
+import dev.flightline.network.EmergencyActionPayload;
+import dev.flightline.network.EmergencyStatusPayload;
+import dev.flightline.network.FlightNoticePayload;
 import dev.flightline.network.OpenAtcPayload;
 import dev.flightline.network.FlightInputPayload;
 import dev.flightline.network.FlightInstrumentPayload;
@@ -48,6 +53,7 @@ import net.minecraft.world.item.component.WrittenBookContent;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.util.Prediction;
 import com.mojang.brigadier.arguments.FloatArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.commands.CommandSourceStack;
@@ -174,6 +180,7 @@ public class FlightLine implements ModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(AtcOrderPayload.TYPE, AtcOrderPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(AtcAckPayload.TYPE, AtcAckPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ShutdownEnginesPayload.TYPE, ShutdownEnginesPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(EmergencyActionPayload.TYPE, EmergencyActionPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(FlightInputPayload.TYPE, FlightInputPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(ToggleGearPayload.TYPE, ToggleGearPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(StartEnginesPayload.TYPE, StartEnginesPayload.CODEC);
@@ -183,6 +190,8 @@ public class FlightLine implements ModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(FlightInstrumentPayload.TYPE, FlightInstrumentPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(FlightRadarPayload.TYPE, FlightRadarPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(AtcRadioPayload.TYPE, AtcRadioPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(EmergencyStatusPayload.TYPE, EmergencyStatusPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(FlightNoticePayload.TYPE, FlightNoticePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(OpenAtcPayload.TYPE, OpenAtcPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(SelectPlanePayload.TYPE, SelectPlanePayload.CODEC);
 
@@ -209,6 +218,9 @@ public class FlightLine implements ModInitializer {
                 FlightController.setAirbrake(context.player(), payload.deployed()));
         ServerPlayNetworking.registerGlobalReceiver(ShutdownEnginesPayload.TYPE, (payload, context) ->
                 FlightController.shutdownEngines(context.player()));
+        ServerPlayNetworking.registerGlobalReceiver(EmergencyActionPayload.TYPE, (payload, context) ->
+                context.server().execute(() -> FlightController.handleEmergencyAction(
+                        context.player(), payload.action(), payload.target())));
         ServerPlayNetworking.registerGlobalReceiver(ToggleAutopilotPayload.TYPE, (payload, context) ->
                 FlightController.toggleAutopilot(context.player()));
         ServerPlayNetworking.registerGlobalReceiver(ConfigureAutopilotPayload.TYPE, (payload, context) ->
@@ -294,13 +306,25 @@ public class FlightLine implements ModInitializer {
             sender.sendSystemMessage(Component.literal("Invalid ATC order."));
             return;
         }
+        if (payload.order() == AtcOrderPayload.RELEASE) {
+            if (target instanceof ServerPlayer pilot && FlightController.releaseAtcControl(pilot)) {
+                PENDING_ATC_ACKS.remove(pilot.getUUID());
+                sendAtcLog(sender, "RELEASE FROM " + atcCallsign(pilot) + ": pilot authority restored.");
+            } else {
+                sender.sendSystemMessage(Component.literal("Target does not have an active ATC clearance."));
+            }
+            return;
+        }
         if (target instanceof ServerPlayer pilot) {
-            PENDING_ATC_ACKS.put(pilot.getUUID(), new PendingAtcAcknowledgement(sender.getId(),
-                    sender.level().getGameTime() + 200));
+            if (!FlightController.issueAtcOrder(sender, pilot, payload.order(), payload.value(),
+                    payload.referenceEntityId())) {
+                sender.sendSystemMessage(Component.literal("Player aircraft unavailable: the pilot must be airborne."));
+                return;
+            }
             ServerPlayNetworking.send(pilot, new AtcRadioPayload("ATC " + atcCallsign(sender)
                     + ": " + order, sender.getId()));
             pilot.sendSystemMessage(Component.literal("[ATC] " + atcCallsign(sender) + ": " + order));
-            sendAtcLog(sender, "CALL TO " + atcCallsign(pilot) + ": " + order);
+            sendAtcLog(sender, "ACK FROM " + atcCallsign(pilot) + ": control accepted: " + order);
             return;
         }
         if (target instanceof Mob mob && MobFlightController.issueAtcOrder(sender, mob,
@@ -308,10 +332,16 @@ public class FlightLine implements ModInitializer {
             sendAtcLog(sender, "ACK FROM " + atcCallsign(mob) + ": order accepted.");
             return;
         }
-        sender.sendSystemMessage(Component.literal("Target is not an active AI aircraft."));
+        sender.sendSystemMessage(Component.literal("Target is not an active aircraft."));
     }
 
     private static void acknowledgeAtc(ServerPlayer pilot, AtcAckPayload payload) {
+        if (FlightController.isAtcControlled(pilot)
+                && payload.controllerEntityId() == FlightController.atcControllerEntityId(pilot)) {
+            FlightController.releaseAtcControl(pilot, "pilot release request");
+            PENDING_ATC_ACKS.remove(pilot.getUUID());
+            return;
+        }
         PendingAtcAcknowledgement pending = PENDING_ATC_ACKS.remove(pilot.getUUID());
         if (pending == null || pending.controllerEntityId() != payload.controllerEntityId()
                 || pilot.level().getGameTime() > pending.expiresAtTick()) {
@@ -346,22 +376,11 @@ public class FlightLine implements ModInitializer {
     }
 
     private static @org.jspecify.annotations.Nullable String atcOrderText(AtcOrderPayload payload) {
-        return switch (payload.order()) {
-            case AtcOrderPayload.HOLD -> "hold present heading and altitude";
-            case AtcOrderPayload.TURN -> payload.value() >= 0 && payload.value() < 360
-                    ? "turn heading " + String.format(java.util.Locale.ROOT, "%03d", payload.value()) : null;
-            case AtcOrderPayload.CLIMB -> payload.value() >= 0 && payload.value() <= 40000
-                    ? "climb and maintain " + payload.value() + " feet" : null;
-            case AtcOrderPayload.DESCEND -> payload.value() >= 0 && payload.value() <= 40000
-                    ? "descend and maintain " + payload.value() + " feet" : null;
-            case AtcOrderPayload.SPEED -> payload.value() >= 40 && payload.value() <= 300
-                    ? "maintain " + payload.value() + " knots" : null;
-            case AtcOrderPayload.ORBIT -> "orbit my position";
-            case AtcOrderPayload.RETURN -> "return to my position";
-            case AtcOrderPayload.FOLLOW -> payload.referenceEntityId() >= 0
-                    ? "follow aircraft " + payload.referenceEntityId() : null;
-            default -> null;
-        };
+        if (payload.order() == AtcOrderPayload.RELEASE) return "release control";
+        if (!AtcClearance.isValidOrder(payload.order())
+                || !AtcClearance.isValidValue(payload.order(), payload.value())) return null;
+        return AtcClearance.create(payload.order(), payload.value(), payload.referenceEntityId(),
+                0.0, AtcClearance.MIN_ALTITUDE_FEET, AtcClearance.MIN_SPEED_KNOTS).radioText();
     }
 
     private static void giveFlightGuide(ServerPlayer player) {
@@ -383,8 +402,10 @@ public class FlightLine implements ModInitializer {
                 "GEAR & LANDING\nLower the landing gear before approach. Aim for a shallow, stable descent with modest bank and a safe airspeed. Flaps help approach; spoilers should be retracted before landing. Avoid high sink rate and excessive touchdown speed.",
                 "ILS & AUTOLAND\nSet an ILS runway threshold and heading from the flight radar or autopilot panel. Intercept the localizer and glide slope. Arm autoland only when airborne, engines are running, airspeed is safe, and ILS guidance is valid. Monitor the approach; it is not a substitute for a safe runway.",
                 "WEATHER & ANTI-ICE\nRain or storms in cold biomes can build airframe ice while airborne. Ice reduces lift and raises stall speed. Toggle anti-ice with its listed key. It clears ice only while at least one engine is running and engine spool is above 35%. It cannot prevent all ice buildup instantly; start it early and keep airspeed margin.",
-                "WARNINGS & RECOVERY\nTreat windshear, terrain, stall, and TCAS resolution alerts as urgent. Reduce bank in turbulence, maintain airspeed, and avoid abrupt control changes. Overspeed is structural stress: reduce throttle; prolonged overspeed reduces lift and damages health. For an engine fire, follow the flashing EICAS shutdown prompt; for engine failure, maintain control and plan a safe landing.",
-                "KEYS & ATC\nBottom-right prompts show relevant keys. F10 opens controls, where bindings can be checked and changed; F9 toggles prompts. Operators use /flightline atc to select and highlight traffic, optionally follow it with the camera, and send ATC orders. Player instructions are advisory; pilots stay in control. Press the displayed ACK key to acknowledge a radio call."
+                "WARNINGS & RECOVERY\nTreat windshear, terrain, stall, and TCAS resolution alerts as urgent. Reduce bank in turbulence, maintain airspeed, and avoid abrupt control changes. Overspeed is structural stress: reduce throttle; prolonged overspeed reduces lift and damages health.",
+                "EMERGENCY PROCEDURES\nPress O for the checklist. It explains what is wrong and why the highlighted fix helps; T executes that fix. A fire or failure affects only the selected engine (one group on the Gina 787). Discharge a fire bottle before the fire burns through the nacelle. Relight a failed engine only with fuel, airspeed and a cool engine. Alternate gear and hydraulic backup restore controls. Emergency descent handles cabin altitude; fuel jettison protects the 20% landing reserve; MAYDAY broadcasts position and failures; emergency autoland needs a valid ILS. A safe landing also secures any remaining fire.",
+                "OPERATOR DEBUG\nOperators can run /flightline emergency to open a clickable list of training faults: engine fire, engine failure, gear, hydraulic, pressurisation, fuel, ice, overspeed and clear. Engine fire and failure ask for target 1 or 2; on the Gina 787 those are engine groups. Every fault is applied by the server to your own aircraft only, and the checklist updates immediately. Use clear to restore the aircraft after practice.",
+                "KEYS & ATC\nBottom-right prompts show relevant keys. O opens the emergency checklist and T runs its recommended fix. F10 opens controls, where bindings can be checked and changed; F9 toggles prompts. Operators use /flightline atc to select and highlight traffic, follow it with the camera, and issue control clearances to AI or player aircraft. Player clearances drive the aircraft autopilot; the pilot can press F7 or move the flight controls to return to manual control. RELEASE CTRL also returns a player aircraft to its pilot."
         );
         List<Filterable<Component>> bookPages = pages.stream()
                 .map(page -> Filterable.<Component>passThrough(Component.literal(page))).toList();
@@ -467,6 +488,58 @@ public class FlightLine implements ModInitializer {
                     return 1;
                 }));
         dispatcher.register(Commands.literal("flightline")
+                .executes(context -> {
+                    CommandSourceStack source = context.getSource();
+                    if (isOperator(source)) {
+                        sendEmergencyMenu(source);
+                        source.sendSuccess(() -> Component.literal(
+                                "\n§6Other: §7/flightline atc · /flightline ils set · /flightline ils clear"), false);
+                    } else {
+                        source.sendSuccess(() -> Component.literal(
+                                "§6[Flight Line] §fUse /flightline ils set to mark a runway, /flightline ils clear to remove it. Press O in flight for the emergency checklist."), false);
+                    }
+                    return 1;
+                })
+                .then(Commands.literal("emergency").requires(
+                                (@NonNull CommandSourceStack source) -> isOperator(source))
+                        .executes(context -> {
+                            sendEmergencyMenu(context.getSource());
+                            return 1;
+                        })
+                        .then(Commands.argument("scenario", StringArgumentType.word())
+                                .suggests((context, builder) -> {
+                                    for (EmergencyScenario scenario : EmergencyScenario.values()) {
+                                        builder.suggest(scenario.id());
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(context -> {
+                                    EmergencyScenario scenario = EmergencyScenario.fromId(
+                                            StringArgumentType.getString(context, "scenario"));
+                                    if (scenario == null) {
+                                        context.getSource().sendFailure(Component.literal(
+                                                "Unknown emergency. Use /flightline emergency for the list."));
+                                        return 0;
+                                    }
+                                    if (scenario.targetsEngine()) {
+                                        context.getSource().sendFailure(Component.literal(
+                                                "Add an engine target: 1 or 2 (groups on the Gina 787)."));
+                                        return 0;
+                                    }
+                                    return causeEmergency(context.getSource(), scenario, 0);
+                                })
+                                .then(Commands.argument("engine", IntegerArgumentType.integer(1, 2))
+                                        .executes(context -> {
+                                            EmergencyScenario scenario = EmergencyScenario.fromId(
+                                                    StringArgumentType.getString(context, "scenario"));
+                                            if (scenario == null) {
+                                                context.getSource().sendFailure(Component.literal(
+                                                        "Unknown emergency. Use /flightline emergency for the list."));
+                                                return 0;
+                                            }
+                                            return causeEmergency(context.getSource(), scenario,
+                                                    IntegerArgumentType.getInteger(context, "engine") - 1);
+                                        }))))
                 .then(Commands.literal("atc").requires(
                                 (@NonNull CommandSourceStack source) -> isOperator(source))
                         .executes(context -> {
@@ -497,6 +570,45 @@ public class FlightLine implements ModInitializer {
                                             () -> Component.literal("ILS reference cleared."), false);
                                     return 1;
                                 }))));
+    }
+
+    private static void sendEmergencyMenu(CommandSourceStack source) {
+        Component message = Component.literal("§6[Flight Line] §fDebug emergencies (operator only, affects your aircraft):")
+                .append(emergencyLink("ENGINE 1 FIRE", "/flightline emergency fire 1"))
+                .append(emergencyLink("ENGINE 2 FIRE", "/flightline emergency fire 2"))
+                .append(emergencyLink("ENGINE 1 FAILURE", "/flightline emergency failure 1"))
+                .append(emergencyLink("ENGINE 2 FAILURE", "/flightline emergency failure 2"))
+                .append(emergencyLink("GEAR FAILURE", "/flightline emergency gear"))
+                .append(emergencyLink("HYDRAULIC FAILURE", "/flightline emergency hydraulic"))
+                .append(emergencyLink("PRESSURISATION", "/flightline emergency cabin"))
+                .append(emergencyLink("FUEL EXHAUSTION", "/flightline emergency fuel"))
+                .append(emergencyLink("AIRFRAME ICE", "/flightline emergency ice"))
+                .append(emergencyLink("OVERSPEED", "/flightline emergency overspeed"))
+                .append(emergencyLink("CLEAR ALL", "/flightline emergency clear"));
+        source.sendSuccess(() -> message, false);
+    }
+
+    private static Component emergencyLink(String label, String command) {
+        return Component.literal("\n§c[" + label + "]")
+                .withStyle(style -> style
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand(command))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                                Component.literal("Run " + command))));
+    }
+
+    private static int causeEmergency(CommandSourceStack source, EmergencyScenario scenario, int engineTarget) {
+        try {
+            boolean applied = FlightController.debugCauseEmergency(source.getPlayerOrException(), scenario, engineTarget);
+            if (!applied) {
+                source.sendFailure(Component.literal("Could not inject " + scenario.label() + "."));
+                return 0;
+            }
+            source.sendSuccess(() -> Component.literal("§a[Flight Line] §fInjected: §e" + scenario.label()), false);
+            return 1;
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException exception) {
+            source.sendFailure(Component.literal("Run this command as a player."));
+            return 0;
+        }
     }
 
     @SuppressWarnings("null")

@@ -260,7 +260,8 @@ public final class FlightRadarScreen extends Screen {
         if (!compactLayout) {
             int detailX = scopeLeft + scopeWidth + 10;
             int detailWidth = panelLeft + panelWidth - 10 - detailX;
-            graphics.text(font, "TRAFFIC " + contacts.size() + "/512", detailX, scopeTop + 2, 0xFF72E6F5, true);
+            graphics.text(font, "TRAFFIC " + contacts.size() + "/" + FlightRadarPayload.MAX_CONTACTS,
+                    detailX, scopeTop + 2, 0xFF72E6F5, true);
             graphics.text(font, "OWN " + FlightHud.currentSpeedKnots() + "KT  "
                     + FlightHud.radarOwnAltitudeFeet() + "FT", detailX, scopeTop + 13, 0xFFD5E0E8, true);
             graphics.text(font, "RANGE " + RANGES[rangeIndex] + "B  HDG "
@@ -295,7 +296,7 @@ public final class FlightRadarScreen extends Screen {
                 graphics.text(font, "No traffic in range.", detailX, listY, 0xFF9BAAB1, true);
             }
         } else {
-            String scopeInfo = "CONTACTS " + contacts.size() + "/512 · RANGE "
+            String scopeInfo = "CONTACTS " + contacts.size() + "/" + FlightRadarPayload.MAX_CONTACTS + " · RANGE "
                     + RANGES[rangeIndex] + " B · PILOT " + FlightHud.radarOwnAltitudeFeet() + " FT";
             graphics.text(font, fit(scopeInfo, scopeWidth - 8), scopeLeft + 4, scopeTop + 4, 0xFF72E6F5, true);
         }

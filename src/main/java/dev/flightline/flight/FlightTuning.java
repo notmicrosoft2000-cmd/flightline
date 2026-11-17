@@ -45,6 +45,23 @@ public final class FlightTuning {
     public static final int FUEL_LOW_PERCENT = 15;
     /** Fuel threshold (percent) at which the FUEL_EMPTY warning fires and engines flame out. */
     public static final int FUEL_EMPTY_PERCENT = 0;
+    /** Fuel jettison stops here so an emergency landing still has a usable reserve. */
+    public static final double FUEL_JETTISON_RESERVE_PERCENT = 20.0;
+    /** Per-tick jettison flow: a full airliner tanks about 2-3 minutes to dump to reserve. */
+    public static final double FUEL_JETTISON_PER_TICK = 0.02;
+
+    // Emergency / failure simulation tuning
+    public static final double ENGINE_HOT_TEMPERATURE = 900.0;
+    public static final int ENGINE_HOT_TO_FIRE_TICKS = 1200;
+    public static final int ENGINE_FIRE_DAMAGE_DELAY_TICKS = 240;
+    public static final int ENGINE_FIRE_DAMAGE_INTERVAL_TICKS = 80;
+    /** An extinguisher bottle can only catch a fire before it becomes structural. */
+    public static final int ENGINE_FIRE_SUPPRESSION_WINDOW_TICKS = 600;
+    public static final int ENGINE_FIRE_CATASTROPHIC_TICKS = 1500;
+    public static final double ENGINE_RESTART_MAX_TEMPERATURE = 820.0;
+    public static final double ENGINE_RESTART_MIN_FUEL_PERCENT = 5.0;
+    public static final double ENGINE_RESTART_MIN_AIRSPEED_FACTOR = 1.15;
+    public static final int ENGINE_RESTART_ATTEMPTS = 3;
     /** An unpowered aircraft glides: less drag, a lower effective stall speed and a shallow sink. */
     static final double ENGINE_OUT_STALL_SPEED_FACTOR = 0.72;
     static final double ENGINE_OUT_DRAG_FACTOR = 0.55;
@@ -144,6 +161,30 @@ public final class FlightTuning {
 
     static boolean shouldApplyOverspeedDamage(int stressTicks, int cooldownTicks) {
         return stressTicks >= OVERSPEED_DAMAGE_START_TICKS && cooldownTicks <= 0;
+    }
+
+    /** Extinguishers only work before the fire has burned through the nacelle structure. */
+    public static boolean canSuppressFire(int fireTicks) {
+        return fireTicks >= 0 && fireTicks <= ENGINE_FIRE_SUPPRESSION_WINDOW_TICKS;
+    }
+
+    /**
+     * In-flight restart envelope: airspeed provides a windmilling start, the engine must be cool
+     * enough to relight, fuel must remain, and repeated hot starts are limited.
+     */
+    public static boolean canRestartEngine(boolean airborne, boolean failedState, double fuelPercent,
+                                           int attempts, double airspeed, double stallSpeed,
+                                           double engineTemperature) {
+        return airborne && failedState
+                && fuelPercent > ENGINE_RESTART_MIN_FUEL_PERCENT
+                && attempts < ENGINE_RESTART_ATTEMPTS
+                && engineTemperature < ENGINE_RESTART_MAX_TEMPERATURE
+                && airspeed > stallSpeed * ENGINE_RESTART_MIN_AIRSPEED_FACTOR;
+    }
+
+    /** Jettison cannot drain the reserve needed for an emergency landing. */
+    public static double fuelAfterJettison(double currentPercent) {
+        return Math.max(FUEL_JETTISON_RESERVE_PERCENT, currentPercent - FUEL_JETTISON_PER_TICK);
     }
 
     static double icedStallSpeed(double icingPercent, double flapPosition) {

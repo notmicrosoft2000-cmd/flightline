@@ -7,7 +7,10 @@ import dev.flightline.flight.FlightControls;
 import dev.flightline.flight.FlightPhase;
 import dev.flightline.flight.FlightWarning;
 import dev.flightline.network.AdjustFlapsPayload;
+import dev.flightline.network.EmergencyActionPayload;
+import dev.flightline.network.EmergencyStatusPayload;
 import dev.flightline.network.FlightInputPayload;
+import dev.flightline.network.FlightNoticePayload;
 import dev.flightline.network.FlightInstrumentPayload;
 import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
@@ -69,11 +72,14 @@ public class FlightLineClient implements ClientModInitializer {
     private static final KeyMapping OPEN_CONTROLS = key("key.flightline.controls", InputConstants.KEY_F10);
     private static final KeyMapping ACK_ATC = key("key.flightline.atc_ack", InputConstants.KEY_F7);
     private static final KeyMapping TOGGLE_ANTI_ICE = key("key.flightline.anti_ice", InputConstants.KEY_F8);
+    private static final KeyMapping EMERGENCY_CHECKLIST = key("key.flightline.emergency_checklist", InputConstants.KEY_O);
+    private static final KeyMapping EXECUTE_EMERGENCY = key("key.flightline.emergency_execute", InputConstants.KEY_T);
     private static final List<KeyMapping> FLIGHTLINE_BINDINGS = List.of(
             TOGGLE_GEAR, SHUTDOWN_ENGINES, TOGGLE_PUSHBACK, BRAKES,
             FLAPS_INCREASE, FLAPS_DECREASE, TOGGLE_SPOILERS, TOGGLE_AIRBRAKE, TOGGLE_AUTOPILOT,
             OPEN_FLIGHT_RADAR, TOGGLE_PFD, TOGGLE_EICAS, TOGGLE_ND_RADAR,
-            TOGGLE_KEYBIND_HINTS, OPEN_CONTROLS, ACK_ATC, TOGGLE_ANTI_ICE);
+            TOGGLE_KEYBIND_HINTS, OPEN_CONTROLS, ACK_ATC, TOGGLE_ANTI_ICE,
+            EMERGENCY_CHECKLIST, EXECUTE_EMERGENCY);
     private static volatile boolean flightEnabled;
     private boolean savedViewBobbing;
     private boolean hasSavedViewBobbing;
@@ -115,6 +121,9 @@ public class FlightLineClient implements ClientModInitializer {
     private @Nullable FlightEngineSound engineSound;
     private boolean engineSoundCruise;
     private static int cameraFollowEntityId = -1;
+    private static volatile float targetHeadingDegrees;
+    private static volatile float targetPitchDegrees;
+    private static boolean targetRotationInitialized;
     private static int atcHighlightedEntityId = -1;
     private static @Nullable Entity atcHighlightedEntity;
     private static boolean atcHighlightOriginalGlow;
@@ -126,6 +135,13 @@ public class FlightLineClient implements ClientModInitializer {
                 InputConstants.Type.KEYBOARD, keyCode, CATEGORY));
     }
 
+    private static float shortestAngle(float delta) {
+        float wrapped = delta % 360.0f;
+        if (wrapped > 180.0f) wrapped -= 360.0f;
+        if (wrapped < -180.0f) wrapped += 360.0f;
+        return wrapped;
+    }
+
     public static boolean isFlightEnabled() { return flightEnabled; }
     public static AircraftType getAircraftType() { return currentAircraft; }
     public static void setAircraftType(AircraftType type) { currentAircraft = type; }
@@ -135,6 +151,8 @@ public class FlightLineClient implements ClientModInitializer {
     public static KeyMapping toggleNdRadar() { return TOGGLE_ND_RADAR; }
     public static KeyMapping toggleKeybindHints() { return TOGGLE_KEYBIND_HINTS; }
     public static KeyMapping openControls() { return OPEN_CONTROLS; }
+    static KeyMapping emergencyChecklist() { return EMERGENCY_CHECKLIST; }
+    static KeyMapping executeEmergency() { return EXECUTE_EMERGENCY; }
 
     public static void playTcasTest(Minecraft client) {
         boolean gina = currentAircraft == AircraftType.GINA_787;
@@ -144,13 +162,24 @@ public class FlightLineClient implements ClientModInitializer {
         client.getSoundManager().play(SimpleSoundInstance.forUI(result, VOICE_PITCH, VOICE_VOLUME));
     }
 
+    private static void executeRecommendedEmergency() {
+        var recommendation = FlightHud.emergencyStatus().recommendation();
+        if (recommendation.present()) {
+            ClientPlayNetworking.send(new EmergencyActionPayload(
+                    recommendation.action(), recommendation.target()));
+        }
+    }
+
     @Override
     public void onInitializeClient() {
         FlightHud.loadPreferences();
         ClientPlayNetworking.registerGlobalReceiver(FlightStatePayload.TYPE, (payload, context) -> {
             flightEnabled = payload.enabled();
             airborne = payload.enabled() && (payload.phase() == 4 || payload.phase() == 5);
-            if (!payload.enabled()) engineStartRequestTicks = 0;
+            if (!payload.enabled()) {
+                engineStartRequestTicks = 0;
+                targetRotationInitialized = false;
+            }
             if (lastSentControls == -1) lastSentControls = 0;
             FlightHud.update(payload);
             FlightCameraEffects.updateFlightState(FlightPhase.fromId(payload.phase()));
@@ -166,8 +195,14 @@ public class FlightLineClient implements ClientModInitializer {
             bankDegrees = payload.bankDegrees();
             var player = context.client().player;
             if (player != null && flightEnabled) {
-                player.setYRot(payload.headingDegrees());
-                player.setYHeadRot(payload.headingDegrees());
+                targetHeadingDegrees = payload.headingDegrees();
+                targetPitchDegrees = payload.pitchDegrees();
+                if (!targetRotationInitialized) {
+                    player.setYRot(targetHeadingDegrees);
+                    player.setYHeadRot(targetHeadingDegrees);
+                    player.setXRot(-targetPitchDegrees);
+                    targetRotationInitialized = true;
+                }
             }
             int engine1 = payload.systems() & 7;
             int engine2 = (payload.systems() >> 3) & 7;
@@ -185,6 +220,10 @@ public class FlightLineClient implements ClientModInitializer {
         });
         ClientPlayNetworking.registerGlobalReceiver(FlightRadarPayload.TYPE, (payload, context) ->
                 FlightHud.updateRadar(payload));
+        ClientPlayNetworking.registerGlobalReceiver(EmergencyStatusPayload.TYPE, (payload, context) ->
+                FlightHud.updateEmergency(payload));
+        ClientPlayNetworking.registerGlobalReceiver(FlightNoticePayload.TYPE, (payload, context) ->
+                FlightHud.showNotice(payload.message()));
         ClientPlayNetworking.registerGlobalReceiver(AtcRadioPayload.TYPE, (payload, context) -> {
             FlightHud.showAtcMessage(payload.message(), payload.senderEntityId());
             context.client().getSoundManager().play(SimpleSoundInstance.forUI(
@@ -270,6 +309,12 @@ public class FlightLineClient implements ClientModInitializer {
                     if (TOGGLE_ND_RADAR.consumeClick()) FlightHud.toggleRadar();
                     if (TOGGLE_KEYBIND_HINTS.consumeClick()) FlightHud.toggleKeybinds();
                     if (OPEN_CONTROLS.consumeClick()) client.gui.setScreen(new FlightControlsScreen());
+                    if (EMERGENCY_CHECKLIST.consumeClick() && flightEnabled) {
+                        client.gui.setScreen(new EmergencyScreen());
+                    }
+                    if (EXECUTE_EMERGENCY.consumeClick() && flightEnabled) {
+                        executeRecommendedEmergency();
+                    }
                     if (TOGGLE_ANTI_ICE.consumeClick() && flightEnabled) {
                         ClientPlayNetworking.send(new ToggleAntiIcePayload(!FlightHud.weatherGuidance().antiIceActive()));
                     }
@@ -279,10 +324,20 @@ public class FlightLineClient implements ClientModInitializer {
                 }
             }
             updateAtcCameraFollow(client);
-            if (player != null && FlightHud.isAutopilotEngaged()) {
-                player.setYRot(FlightHud.currentHeading());
-                player.setYHeadRot(FlightHud.currentHeading());
-                player.setXRot(-FlightHud.currentPitch());
+            if (player != null && flightEnabled && targetRotationInitialized && client.gui.screen() == null) {
+                float currentYaw = player.getYRot();
+                float yaw = currentYaw + shortestAngle(targetHeadingDegrees - currentYaw) * 0.35f;
+                player.setYRot(yaw);
+                player.setYHeadRot(yaw);
+
+                // Do not pull the view toward the server's smoothed aircraft pitch while the pilot
+                // is flying manually: the camera IS the pitch control, so that feedback loop fights
+                // every mouse movement and makes looking up/down feel heavy. Only autopilot/ATC
+                // owns the camera pitch, where the view should follow the aircraft instead.
+                if (FlightHud.isAutopilotEngaged() || FlightHud.isAtcControlled()) {
+                    float currentPitch = player.getXRot();
+                    player.setXRot(currentPitch + (-targetPitchDegrees - currentPitch) * 0.35f);
+                }
             }
             if (player == null || client.level == null || !flightEnabled) return;
             if (client.gui.screen() != null) {
@@ -320,6 +375,7 @@ public class FlightLineClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             flightEnabled = false;
             updateViewBobbing(client);
+            targetRotationInitialized = false;
             bankDegrees = 0.0f;
             airborne = false;
             FlightCameraEffects.updateFlightState(FlightPhase.OFF);

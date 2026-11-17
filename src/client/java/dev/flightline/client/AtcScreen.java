@@ -31,7 +31,7 @@ public final class AtcScreen extends Screen {
     private boolean closing;
     private float openProgress;
     private long lastFrameNanos = System.nanoTime();
-    private String status = "Select an aircraft to issue an ATC order.";
+    private String status = "Select an aircraft to issue a control clearance.";
     private @Nullable Button cameraButton;
     private @Nullable EditBox headingInput;
     private @Nullable EditBox altitudeInput;
@@ -88,6 +88,8 @@ public final class AtcScreen extends Screen {
             addLeadButton(secondX, actionsY + rowSpacing * 3, actionWidth, buttonHeight);
             addOrderButton("FOLLOW LEAD", AtcOrderPayload.FOLLOW, panelLeft + 12,
                     actionsY + rowSpacing * 4, actionWidth, buttonHeight);
+            addOrderButton("RELEASE CTRL", AtcOrderPayload.RELEASE, secondX,
+                    actionsY + rowSpacing * 4, actionWidth, buttonHeight);
         } else {
             visibleRows = Math.max(1, (panelHeight - 116) / 20);
             headingInput = numberInput(right, panelTop + 48, 62, "HDG",
@@ -108,6 +110,8 @@ public final class AtcScreen extends Screen {
                     actionsY + (rowHeight + 3) * 3, colWidth);
             addLeadButton(right + colWidth + gap, actionsY + (rowHeight + 3) * 3, colWidth, 20);
             addOrderButton("FOLLOW LEAD", AtcOrderPayload.FOLLOW, right,
+                    actionsY + (rowHeight + 3) * 4, colWidth);
+            addOrderButton("RELEASE CTRL", AtcOrderPayload.RELEASE, right + colWidth + gap,
                     actionsY + (rowHeight + 3) * 4, colWidth);
         }
         int mapButtonWidth = Math.min(70, Math.max(46, panelWidth / 5));
@@ -183,10 +187,16 @@ public final class AtcScreen extends Screen {
             status = "Select a lead aircraft first.";
             return;
         }
+        if (order == AtcOrderPayload.RELEASE && !selected.player()) {
+            status = "Release applies to player aircraft only.";
+            return;
+        }
         ClientPlayNetworking.send(new AtcOrderPayload(selectedEntityId, order, value, leadEntityId));
-        status = selected.player()
-                ? "Advisory radio call sent; the pilot remains in control."
-                : "Order sent to " + selected.name() + ".";
+        status = order == AtcOrderPayload.RELEASE
+                ? "Release sent to " + selected.name() + "."
+                : selected.player()
+                        ? "Clearance sent: pilot autopilot is now under ATC control."
+                        : "Order sent to " + selected.name() + ".";
     }
 
     private int parse(EditBox input, int min, int max) {
@@ -220,7 +230,7 @@ public final class AtcScreen extends Screen {
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 25, 0xFF1C2733);
-        graphics.centeredText(font, fit("OPERATOR ATC  ·  ADVISORY TO PILOTS", panelWidth - 16),
+        graphics.centeredText(font, fit("OPERATOR ATC  ·  AIRCRAFT CONTROL", panelWidth - 16),
                 panelLeft + panelWidth / 2, panelTop + 8, 0xFF72E6F5);
         List<FlightRadarPayload.Contact> contacts = FlightHud.radarContacts();
         int maxOffset = Math.max(0, contacts.size() - visibleRows);
@@ -247,18 +257,12 @@ public final class AtcScreen extends Screen {
                     0xFFB6C8D1, true);
         }
         if (compactDense) {
-            List<String> radioLog = FlightHud.atcRadioLog();
-            for (int i = 0; i < Math.min(2, radioLog.size()); i++) {
-                graphics.text(font, fit("RADIO: " + radioLog.get(i), panelWidth - 24),
-                        panelLeft + 12, panelTop + panelHeight - 106 + i * 11,
-                        i == 0 ? 0xFF72E6F5 : 0xFF9BAAB1, true);
-            }
             graphics.text(font, fit(status, panelWidth - 100), panelLeft + 12,
                     panelTop + panelHeight - 14, 0xFF72E6F5, true);
         } else {
             FlightRadarPayload.Contact selected = findContact(selectedEntityId);
             String selection = selected == null ? "TARGET: NONE" : "TARGET: "
-                    + selected.name() + (selected.player() ? " (PILOT ADVISORY)" : " (AI)");
+                    + selected.name() + (selected.player() ? " (PLAYER · ATC CONTROL)" : " (AI)");
             graphics.text(font, fit(selection, panelWidth - 24), panelLeft + 12,
                     panelTop + panelHeight - 62, 0xFFD5E0E8, true);
             FlightRadarPayload.Contact lead = findContact(leadEntityId);

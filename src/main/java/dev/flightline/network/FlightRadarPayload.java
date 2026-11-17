@@ -11,6 +11,7 @@ import java.util.List;
 
 public record FlightRadarPayload(int ownX, int ownZ, int ownAltitudeFeet, float ownHeadingDegrees,
                                  int scopeBlocks, List<Contact> contacts) implements CustomPacketPayload {
+    public static final int MAX_CONTACTS = 128;
     public static final Type<FlightRadarPayload> TYPE = new Type<>(FlightLine.id("flight_radar"));
 
     @SuppressWarnings("null")
@@ -20,7 +21,7 @@ public record FlightRadarPayload(int ownX, int ownZ, int ownAltitudeFeet, float 
             ByteBufCodecs.VAR_INT, FlightRadarPayload::ownAltitudeFeet,
             ByteBufCodecs.FLOAT, FlightRadarPayload::ownHeadingDegrees,
             ByteBufCodecs.VAR_INT, FlightRadarPayload::scopeBlocks,
-            ByteBufCodecs.collection(ArrayList::new, Contact.CODEC, 512), FlightRadarPayload::contacts,
+            ByteBufCodecs.collection(ArrayList::new, Contact.CODEC, MAX_CONTACTS), FlightRadarPayload::contacts,
             FlightRadarPayload::new
     );
 
