@@ -109,6 +109,14 @@ final class FlightHud {
         return autopilot;
     }
 
+    static boolean gearDown() {
+        return gearState == 0;
+    }
+
+    static boolean anyEngineRunning() {
+        return (systems & 7) == 2 || ((systems >> 3) & 7) == 2;
+    }
+
     static boolean spoilersDeployed() {
         return (systems & (1 << 8)) != 0;
     }
