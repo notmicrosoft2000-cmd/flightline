@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Download Flight Line</title>
+    <meta name="description" content="Download official Flight Line releases from GitHub Releases.">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container header-inner">
+            <a class="brand" href="index.html" aria-label="Flight Line home">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <span>
+                    <span class="brand-name">FLIGHT LINE</span>
+                    <span class="brand-sub">MINECRAFT FABRIC MOD</span>
+                </span>
+            </a>
+            <nav class="nav" aria-label="Main navigation">
+                <a class="nav-link" href="index.html">HOME</a>
+                <a class="nav-link active" href="download.html">DOWNLOAD</a>
+                <a class="nav-link github" href="https://github.com/notmicrosoft2000-cmd/flightline" target="_blank" rel="noreferrer">GITHUB</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="container page-title">
+            <h1>Download</h1>
+            <p>Official builds are published as GitHub Releases. Pick the newest stable jar below, or browse every tagged version.</p>
+        </section>
+
+        <section class="container download-layout">
+            <div>
+                <article id="latest-release" class="release-card pixel-box">
+                    <p class="release-status">LOADING RELEASE DATA...</p>
+                </article>
+
+                <div class="release-list" id="release-list" aria-label="Previous releases"></div>
+            </div>
+
+            <aside class="side-card pixel-box">
+                <h3>Before you fly</h3>
+                <ul>
+                    <li>Minecraft <strong>26.3</strong></li>
+                    <li>Fabric Loader</li>
+                    <li>Fabric API</li>
+                    <li>Java <strong>25</strong></li>
+                </ul>
+                <p>Place the <code>.jar</code> in your <code>mods</code> folder. Do not unzip the release archive.</p>
+                <a class="btn" href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">ALL RELEASES</a>
+            </aside>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <span>FLIGHT LINE · OFFICIAL BUILDS</span>
+            <span><a href="index.html">HOME</a> · <a href="https://github.com/notmicrosoft2000-cmd/flightline/releases" target="_blank" rel="noreferrer">RELEASES</a></span>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
