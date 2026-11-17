@@ -6,6 +6,7 @@
         { id: "aircraft", label: "AIRCRAFT", href: "aircraft.html" },
         { id: "controls", label: "CONTROLS", href: "controls.html" },
         { id: "emergencies", label: "EMERGENCIES", href: "emergencies.html" },
+        { id: "audio", label: "SOUNDS", href: "audio.html" },
         { id: "atc", label: "ATC", href: "atc.html" },
         { id: "updates", label: "UPDATES", href: "updates.html" },
         { id: "download", label: "DOWNLOAD", href: "download.html" }
@@ -50,6 +51,7 @@
         return '' +
             '<svg class="' + (mode === "hero" ? "live-plane" : "ticker-plane") + '" viewBox="-32 -32 64 64" aria-hidden="true">' +
                 '<g data-plane data-plane-mode="' + mode + '">' +
+                    '<line class="contrail" x1="-18" y1="0" x2="-74" y2="0" stroke="#dcecf1" stroke-width="2" stroke-dasharray="8 7" opacity="0.8"/>' +
                     '<g fill="#0b0e10">' +
                         '<rect x="-3" y="-16" width="6" height="32"/>' +
                         '<rect x="-17" y="-4" width="34" height="8"/>' +

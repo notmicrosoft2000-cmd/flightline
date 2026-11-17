@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sounds — Flight Line</title>
+    <meta name="description" content="Listen to every Flight Line cockpit sound: Kasa A380 callouts, Gina 787 voices, GPWS, TCAS and alarms.">
+    <meta name="theme-color" content="#111417">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Sounds — Flight Line">
+    <meta property="og:description" content="Play every Kasa and Gina cockpit callout, alarm and radio voice right in the browser.">
+    <meta property="og:image" content="https://notmicrosoft2000-cmd.github.io/flightline/og-image.png">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="audio">
+    <div data-site-header></div>
+    <div data-flight-ticker></div>
+    <noscript><div class="container" style="padding-top:18px"><p class="callout warn">JavaScript is required for the in-browser audio player.</p></div></noscript>
+
+    <main>
+        <section class="container page-title">
+            <span class="page-kicker">SOUND CHECK / 07</span>
+            <h1>Cockpit sounds</h1>
+            <p>Every callout, alarm and radio voice from the mod. Pick an airframe, hit one button, and let the whole sound set play in order.</p>
+        </section>
+
+        <section class="container section">
+            <div class="sound-panel pixel-box" data-sound-panel>
+                <div class="sound-panel-head">
+                    <div>
+                        <span class="tag cyan">IN-BROWSER PLAYER</span>
+                        <h2 style="margin-top:12px">Flight deck audio</h2>
+                        <p data-set-description>Standard callouts, GPWS, TCAS and ATC voice guidance.</p>
+                    </div>
+                    <div class="aircraft-switch" role="group" aria-label="Choose aircraft sound set">
+                        <button type="button" class="nav-link active" data-set="kasa">KASA A380</button>
+                        <button type="button" class="nav-link" data-set="gina">THE GINA 787</button>
+                    </div>
+                </div>
+
+                <div class="player-deck">
+                    <div class="equalizer" data-equalizer aria-hidden="true">
+                        <i></i><i></i><i></i><i></i><i></i>
+                    </div>
+                    <div class="player-main">
+                        <div class="player-top">
+                            <span class="release-status" data-sound-status>READY</span>
+                            <span class="player-count" data-counter>0 CLIPS</span>
+                        </div>
+                        <div class="now-playing" data-now-playing>NO CLIP SELECTED</div>
+                        <div class="progress-row">
+                            <span data-current-time>0:00</span>
+                            <div class="progress-track"><span data-progress></span></div>
+                            <span data-duration>0:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="player-controls">
+                    <button type="button" class="player-btn" data-prev>PREV</button>
+                    <button type="button" class="player-btn" data-play-pause>RESUME</button>
+                    <button type="button" class="player-btn" data-stop>STOP</button>
+                    <button type="button" class="player-btn" data-next>NEXT</button>
+                    <label class="volume-control">
+                        <span>VOL</span>
+                        <input type="range" min="0" max="100" value="80" data-volume aria-label="Volume">
+                    </label>
+                    <button type="button" class="btn primary" data-play-all>PLAY ALL KASA A380</button>
+                </div>
+
+                <audio data-audio preload="metadata"></audio>
+                <div class="sound-list" data-track-list></div>
+            </div>
+        </section>
+
+        <section class="container section two-col">
+            <div class="callout info pixel-box">
+                <h3>Two separate voice sets</h3>
+                <p>Kasa uses the standard GPWS and ATC-style voice pack. Gina has its own callouts, alarms and radio phrases, including decision-height callouts and its own windshear and TCAS wording.</p>
+                <p>While you fly Gina, the mod does not play Kasa voices. The cockpit alarms use separate playback timers so multiple warnings stay audible instead of blocking each other.</p>
+            </div>
+            <div class="content-panel pixel-box">
+                <h3>Where these sounds appear</h3>
+                <ul>
+                    <li>Radio altimeter callouts at 2500, 1000, 500 and lowering minima.</li>
+                    <li>TCAS traffic, climb, descend and clear-of-conflict advisories.</li>
+                    <li>GPWS pull-up, sink rate, terrain, gear, flaps, glideslope and windshear.</li>
+                    <li>Caution and urgent alarms for engine fire, failure, hydraulic and pressurisation events.</li>
+                    <li>Engine loops while aircraft power is available.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="container section">
+            <a class="btn primary" href="controls.html">CONTROL REFERENCE</a>
+            <a class="btn" href="emergencies.html">EMERGENCY PROCEDURES</a>
+        </section>
+    </main>
+
+    <div data-site-footer></div>
+    <script src="site.js"></script>
+    <script src="audio.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

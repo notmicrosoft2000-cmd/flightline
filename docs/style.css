@@ -969,6 +969,301 @@ code,
     color: var(--grass-light);
 }
 
+.ground-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 22px;
+    border-top: 3px solid var(--black);
+    background-image:
+        linear-gradient(90deg, rgba(8, 9, 10, 0.65) 0 2px, transparent 2px),
+        repeating-linear-gradient(90deg, #5d6b52 0 8px, #4b5942 8px 16px);
+    background-size: 64px 100%, 64px 100%;
+    animation: groundScroll 1.4s linear infinite;
+}
+
+.contrail {
+    animation: contrailFlow 0.65s linear infinite;
+}
+
+.radar-display {
+    position: relative;
+    min-height: 340px;
+    overflow: hidden;
+    background-color: #0d1b14;
+    border: 4px solid var(--black);
+}
+
+.radar-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(90deg, rgba(115, 199, 90, 0.14) 1px, transparent 1px),
+        linear-gradient(rgba(115, 199, 90, 0.14) 1px, transparent 1px);
+    background-size: 32px 32px;
+}
+
+.radar-sweep {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 520px;
+    height: 520px;
+    margin-left: -260px;
+    margin-top: -260px;
+    background: conic-gradient(from 0deg,
+        rgba(115, 199, 90, 0) 0deg,
+        rgba(115, 199, 90, 0) 300deg,
+        rgba(115, 199, 90, 0.35) 345deg,
+        rgba(115, 199, 90, 0.7) 360deg);
+    animation: radarSpin 4.5s linear infinite;
+}
+
+.radar-blip {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    background: var(--green);
+    border: 2px solid var(--black);
+    box-shadow: 0 0 0 3px rgba(115, 199, 90, 0.2);
+    animation: blipPulse 1.8s steps(2, end) infinite;
+}
+
+.blip-a { left: 27%; top: 32%; }
+.blip-b { left: 68%; top: 56%; animation-delay: 0.6s; }
+.blip-c { left: 42%; top: 74%; animation-delay: 1.2s; }
+
+.radar-label {
+    position: absolute;
+    color: #b6f0a7;
+    font-size: 16px;
+    text-shadow: 2px 2px 0 var(--black);
+    white-space: nowrap;
+}
+
+.label-a { left: 30%; top: 25%; }
+.label-b { left: 70%; top: 49%; }
+.label-c { left: 44%; top: 67%; }
+
+.radar-center {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    background: var(--amber);
+    border: 3px solid var(--black);
+    box-shadow: 0 0 0 4px rgba(226, 182, 64, 0.2);
+}
+
+.sound-panel {
+    padding: 26px 28px;
+}
+
+.sound-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 22px;
+}
+
+.sound-panel-head p {
+    max-width: 620px;
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 19px;
+}
+
+.aircraft-switch {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.aircraft-switch .nav-link {
+    cursor: pointer;
+}
+
+.player-deck {
+    display: flex;
+    gap: 18px;
+    align-items: stretch;
+    padding: 18px;
+    background: #101619;
+    border: 3px solid var(--black);
+}
+
+.equalizer {
+    width: 54px;
+    height: 86px;
+    flex: 0 0 54px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px;
+    background: #0a0f12;
+    border: 3px solid var(--black);
+}
+
+.equalizer i {
+    display: block;
+    width: 6px;
+    height: 12px;
+    background: var(--stone-dark);
+    border: 1px solid var(--black);
+}
+
+.is-sounding .equalizer i {
+    background: var(--green);
+    animation: eqBounce 0.7s steps(4, end) infinite alternate;
+}
+
+.is-sounding .equalizer i:nth-child(2) { animation-delay: 0.1s; }
+.is-sounding .equalizer i:nth-child(3) { animation-delay: 0.25s; }
+.is-sounding .equalizer i:nth-child(4) { animation-delay: 0.4s; }
+.is-sounding .equalizer i:nth-child(5) { animation-delay: 0.15s; }
+
+.player-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.player-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.player-count {
+    color: var(--muted);
+    font-size: 17px;
+}
+
+.now-playing {
+    margin: 8px 0 12px;
+    color: var(--white);
+    font-family: "Press Start 2P", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    text-shadow: 3px 3px 0 var(--black);
+    overflow-wrap: anywhere;
+}
+
+.progress-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 17px;
+}
+
+.progress-track {
+    flex: 1;
+    height: 14px;
+    background: #080c0e;
+    border: 3px solid var(--black);
+    box-shadow: inset 2px 2px 0 #000;
+}
+
+.progress-track span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--green);
+}
+
+.player-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 16px 0 22px;
+}
+
+.player-btn {
+    min-height: 42px;
+    padding: 10px 14px;
+    color: var(--white);
+    background: var(--panel-light);
+    border: 3px solid var(--black);
+    box-shadow: inset 3px 3px 0 #3d464d, inset -3px -3px 0 #121619;
+    font-family: "Press Start 2P", monospace;
+    font-size: 8px;
+    cursor: pointer;
+}
+
+.player-btn:hover {
+    background: var(--stone-dark);
+}
+
+.volume-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-family: "Press Start 2P", monospace;
+    font-size: 8px;
+}
+
+.volume-control input {
+    width: 110px;
+    accent-color: var(--green);
+}
+
+audio[data-audio] {
+    display: none;
+}
+
+.sound-list {
+    display: grid;
+    gap: 16px;
+}
+
+.sound-group {
+    padding: 18px;
+    background: #151b1f;
+    border: 3px solid var(--black);
+}
+
+.sound-group-title {
+    margin: 0 0 12px;
+    color: var(--amber);
+    font-size: 10px;
+}
+
+.sound-track-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+}
+
+.sound-track {
+    padding: 10px 12px;
+    text-align: left;
+    color: #d8e2e6;
+    background: var(--panel-light);
+    border: 3px solid var(--black);
+    box-shadow: inset 2px 2px 0 #3d464d, inset -2px -2px 0 #121619;
+    font-family: "VT323", monospace;
+    font-size: 19px;
+    cursor: pointer;
+}
+
+.sound-track:hover,
+.sound-track.active {
+    background: var(--grass-dark);
+    color: #fff;
+}
+
+.sound-track.active {
+    box-shadow: inset 3px 3px 0 var(--grass), inset -3px -3px 0 #233d1e;
+}
+
 @keyframes drift {
     from {
         left: -90px;
@@ -981,6 +1276,28 @@ code,
 @keyframes pulse {
     0%, 49% { background: var(--red); }
     50%, 100% { background: var(--amber); }
+}
+
+@keyframes contrailFlow {
+    to { stroke-dashoffset: -15; }
+}
+
+@keyframes groundScroll {
+    to { background-position: 64px 0, 64px 0; }
+}
+
+@keyframes radarSpin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes blipPulse {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0.25; }
+}
+
+@keyframes eqBounce {
+    from { height: 12px; }
+    to { height: 52px; }
 }
 
 @media (max-width: 1000px) {
@@ -1086,7 +1403,12 @@ code,
     }
 
     .cloud,
-    .live-dot {
+    .live-dot,
+    .contrail,
+    .ground-track,
+    .radar-sweep,
+    .radar-blip,
+    .is-sounding .equalizer i {
         animation: none;
     }
 

@@ -6,7 +6,7 @@ Flight Line is a Fabric mod for Minecraft 26.3 that turns players and mobs into 
 
 Official site: <https://notmicrosoft2000-cmd.github.io/flightline/>
 
-The site lives in [`docs/`](docs/) and deploys to GitHub Pages through [`.github/workflows/pages.yml`](.github/workflows/pages.yml). It includes the home page, aircraft comparison, control reference, emergency procedures, ATC guide, live release changelog, and downloads. The shared header, animated flight display, favicon and social preview are generated from `docs/site.js`, `docs/style.css` and the pixel-art assets in `docs/`.
+The site lives in [`docs/`](docs/) and deploys to GitHub Pages through [`.github/workflows/pages.yml`](.github/workflows/pages.yml). It includes the home page, aircraft comparison, control reference, emergency procedures, an in-browser cockpit audio player, ATC guide, live release changelog, and downloads. The shared header, animated flight display, favicon and social preview are generated from `docs/site.js`, `docs/style.css` and the pixel-art assets in `docs/`. Browser audio is served from [`docs/audio/`](docs/audio/) and controlled by `docs/audio.js`.
 
 The in-game mod icon is [`src/main/resources/assets/flightline/icon.png`](src/main/resources/assets/flightline/icon.png) and is referenced by `fabric.mod.json`.
 
