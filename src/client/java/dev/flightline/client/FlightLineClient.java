@@ -502,7 +502,7 @@ public class FlightLineClient implements ClientModInitializer {
         } else if ((warnings & FlightWarning.PULL_UP) != 0) {
             alertId = 11;
             if (gina) {
-                sound = FlightLine.GINA_GPWS_TERRAIN_PULLUP;
+                sound = FlightLine.GINA_GPWS_PULL_UP;
             } else {
                 phrase = new SoundEvent[]{FlightLine.GPWS_TERRAIN, FlightLine.GPWS_TERRAIN,
                         FlightLine.GPWS_PULL_UP};

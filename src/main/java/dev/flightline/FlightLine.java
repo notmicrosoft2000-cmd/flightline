@@ -574,6 +574,33 @@ public class FlightLine implements ModInitializer {
                                             return causeEmergency(context.getSource(), scenario,
                                                     IntegerArgumentType.getInteger(context, "engine") - 1);
                                         }))))
+                .then(Commands.literal("weather").requires(
+                                (@NonNull CommandSourceStack source) -> isOperator(source))
+                        .executes(context -> {
+                            context.getSource().sendSuccess(() -> Component.literal(
+                                    "§6[Flight Line] §fUsage: /flightline weather windshear [durationTicks] "
+                                            + "· /flightline weather clear"), false);
+                            return 1;
+                        })
+                        .then(Commands.literal("windshear")
+                                .executes(context -> causeWindshear(context.getSource(), 140))
+                                .then(Commands.argument("durationTicks", IntegerArgumentType.integer(1))
+                                        .executes(context -> causeWindshear(context.getSource(),
+                                                IntegerArgumentType.getInteger(context, "durationTicks")))))
+                        .then(Commands.literal("clear")
+                                .executes(context -> {
+                                    try {
+                                        FlightController.clearForcedWindshear(
+                                                context.getSource().getPlayerOrException());
+                                        context.getSource().sendSuccess(() -> Component.literal(
+                                                "§a[Flight Line] §fForced windshear cleared in this dimension."), false);
+                                        return 1;
+                                    } catch (com.mojang.brigadier.exceptions.CommandSyntaxException exception) {
+                                        context.getSource().sendFailure(Component.literal(
+                                                "Run this command as a player."));
+                                        return 0;
+                                    }
+                                })))
                 .then(Commands.literal("atc").requires(
                                 (@NonNull CommandSourceStack source) -> isOperator(source))
                         .executes(context -> {
@@ -638,6 +665,23 @@ public class FlightLine implements ModInitializer {
                 return 0;
             }
             source.sendSuccess(() -> Component.literal("§a[Flight Line] §fInjected: §e" + scenario.label()), false);
+            return 1;
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException exception) {
+            source.sendFailure(Component.literal("Run this command as a player."));
+            return 0;
+        }
+    }
+
+    private static int causeWindshear(CommandSourceStack source, int durationTicks) {
+        try {
+            if (!FlightController.forceWindshear(source.getPlayerOrException(), durationTicks)) {
+                source.sendFailure(Component.literal(
+                        "Forced windshear requires an active thunderstorm in your dimension."));
+                return 0;
+            }
+            source.sendSuccess(() -> Component.literal(
+                    "§a[Flight Line] §fForced windshear active for §e" + durationTicks
+                            + " ticks §fin this dimension."), false);
             return 1;
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException exception) {
             source.sendFailure(Component.literal("Run this command as a player."));

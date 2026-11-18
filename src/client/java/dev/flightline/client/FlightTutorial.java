@@ -40,16 +40,23 @@ final class FlightTutorial {
     private static final boolean[] COMPLETED = new boolean[STAGES.length];
     private static int stageIndex;
     private static boolean active;
+    private static boolean completedHidden;
 
     private FlightTutorial() {
     }
 
     static void setActive(boolean value) {
         active = value;
+        if (value) completedHidden = false;
     }
 
     static boolean isActive() {
         return active;
+    }
+
+    /** True while the compact tracker should be shown, including the auto-hide at completion. */
+    static boolean trackerVisible() {
+        return active && !(completedHidden && allCompleted());
     }
 
     static Stage stage() {
@@ -68,6 +75,7 @@ final class FlightTutorial {
         for (int i = 0; i < COMPLETED.length; i++) COMPLETED[i] = false;
         stageIndex = 0;
         active = false;
+        completedHidden = false;
     }
 
     static boolean isCompleted(int index) {
@@ -92,6 +100,7 @@ final class FlightTutorial {
                 && objectivesFor(Stage.LANDING).stream().allMatch(Objective::done)) {
             COMPLETED[stageIndex] = true;
         }
+        if (allCompleted()) completedHidden = true;
     }
 
     static List<Objective> objectives() {
@@ -145,31 +154,27 @@ final class FlightTutorial {
         };
     }
 
-    /** Small always-on lesson card rendered in the world HUD while the lesson is active. */
+    /** Compact one-line lesson nudge; it disappears once every objective is complete. */
     static void drawTracker(GuiGraphicsExtractor g, Minecraft mc, int screenWidth, int screenHeight) {
-        if (!active || screenWidth < 300 || screenHeight < 240) return;
+        if (!trackerVisible() || screenWidth < 300 || screenHeight < 240) return;
         Font font = mc.font;
-        int width = 190;
-        int height = 50;
+        int width = 164;
+        int height = 26;
         int x = 6;
         int y = 148;
-        if (y + height > screenHeight - 76) y = Math.max(96, screenHeight - height - 76);
-        g.fill(x, y, x + width, y + height, 0xD8091017);
-        g.outline(x, y, width, height, 0xFF4EB8C8);
-        g.text(font, allCompleted() ? "TUTORIAL COMPLETE" : "LESSON · " + stage().title(),
-                x + 5, y + 3, allCompleted() ? 0xFF62D89B : 0xFF72E6F5, true);
+        if (y + height > screenHeight - 64) y = Math.max(84, screenHeight - height - 64);
+        int accent = FlightLineTheme.CYAN;
+        FlightLineTheme.panel(g, x, y, width, height, FlightLineTheme.CARD, FlightLineTheme.LINE);
+        g.fill(x + 4, y + 4, x + 7, y + height - 4, accent);
         List<Objective> objectives = objectives();
         int done = 0;
         for (Objective objective : objectives) if (objective.done()) done++;
         String next = objectives.stream().filter(objective -> !objective.done())
-                .map(Objective::label).findFirst().orElse("ALL OBJECTIVES COMPLETE");
-        g.text(font, fit(font, next, width - 10), x + 5, y + 15, 0xFFFFFFFF, true);
-        int barX = x + 5;
-        int barY = y + height - 9;
-        g.fill(barX, barY, barX + width - 10, barY + 4, 0xFF26343D);
-        int fill = Math.round((width - 10) * (objectives.isEmpty() ? 1.0f : done / (float) objectives.size()));
-        g.fill(barX, barY, barX + fill, barY + 4, 0xFF62D89B);
-        g.text(font, "L · FULL LESSON", x + 5, y + 27, 0xFF8198A3, false);
+                .map(Objective::label).findFirst().orElse("LESSON COMPLETE");
+        g.text(font, fit(font, next, width - 14), x + 10, y + 7, FlightLineTheme.PAPER, true);
+        float progress = objectives.isEmpty() ? 1.0f : done / (float) objectives.size();
+        FlightLineTheme.bar(g, x + 10, y + height - 8, width - 14, 3, progress,
+                FlightLineTheme.GREEN, FlightLineTheme.COAL);
     }
 
     private static String fit(Font font, String text, int maxWidth) {

@@ -9,7 +9,7 @@ import dev.flightline.network.ToggleGearPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -21,23 +21,18 @@ import java.util.Locale;
 public final class FlightTutorialScreen extends Screen {
     private static final int BASE_WIDTH = 640;
     private static final int BASE_HEIGHT = 410;
-    private static final int TEXT = 0xFFDCE8EE;
-    private static final int MUTED = 0xFF8198A3;
-    private static final int CYAN = 0xFF4EB8C8;
-    private static final int GREEN = 0xFF62D89B;
-    private static final int AMBER = 0xFFFFC44D;
-    private static final int RED = 0xFFFF5A50;
-    private static final int PANEL = 0xF0121A22;
-    private static final int CARD = 0xE3101920;
-    private static final int BORDER = 0xFF2A3D49;
+    private static final int TEXT = FlightLineTheme.TEXT;
+    private static final int MUTED = FlightLineTheme.MUTED;
+    private static final int CYAN = FlightLineTheme.CYAN;
+    private static final int GREEN = FlightLineTheme.GREEN;
+    private static final int AMBER = FlightLineTheme.AMBER;
+    private static final int RED = FlightLineTheme.RED;
 
     private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int panelLeft;
     private int panelTop;
     private int panelWidth;
     private int panelHeight;
-    private float scaleX;
-    private float scaleY;
     private String status = "Use the live instruments to complete each training objective.";
     private long lastFrameNanos = System.nanoTime();
     private float openProgress;
@@ -54,8 +49,6 @@ public final class FlightTutorialScreen extends Screen {
         panelHeight = BASE_HEIGHT;
         panelLeft = 8;
         panelTop = 8;
-        scaleX = 1.0f;
-        scaleY = 1.0f;
 
         String[] labels = {"TAKEOFF", "CRUISE", "AUTOPILOT", "LANDING"};
         int[] positions = {12, 126, 252, 388};
@@ -64,17 +57,18 @@ public final class FlightTutorialScreen extends Screen {
             final int stageIndex = i;
             String text = FlightTutorial.stageIndex() == stageIndex ? "[" + labels[stageIndex] + "]" : labels[stageIndex];
             int tabWidth = widths[stageIndex];
-            addRenderableWidget(Button.builder(Component.literal(fit(text, w(tabWidth) - 8)), button -> {
+            addRenderableWidget(FlightLineTheme.button(fit(text, w(tabWidth) - 8),
+                    x(positions[i]), y(30), w(tabWidth), h(20), () -> {
                         FlightTutorial.setStage(stageIndex);
                         status = FlightTutorial.stage().brief();
                         rebuild();
-                    })
-                    .bounds(x(positions[i]), y(30), w(tabWidth), h(20)).build());
+                    }));
         }
-        addRenderableWidget(actionButton(FlightTutorial.isActive() ? "HIDE TRACKER" : "SHOW TRACKER",
+        boolean trackerVisible = FlightTutorial.trackerVisible();
+        addRenderableWidget(actionButton(trackerVisible ? "HIDE TRACKER" : "SHOW TRACKER",
                 492, 30, 136, () -> {
-                    FlightTutorial.setActive(!FlightTutorial.isActive());
-                    status = FlightTutorial.isActive() ? "Compact lesson tracker is visible while flying."
+                    FlightTutorial.setActive(!trackerVisible);
+                    status = !trackerVisible ? "Compact lesson tracker is visible while flying."
                             : "Compact lesson tracker hidden. Press L to reopen the lesson.";
                     rebuild();
                 }));
@@ -133,9 +127,9 @@ public final class FlightTutorialScreen extends Screen {
         }
     }
 
-    private Button actionButton(String label, int x, int y, int width, Runnable action) {
-        return Button.builder(Component.literal(fit(label, w(width) - 8)), button -> action.run())
-                .bounds(x(x), y(y), w(width), h(22)).build();
+    private AbstractWidget actionButton(String label, int x, int y, int width, Runnable action) {
+        return FlightLineTheme.button(fit(label, w(width) - 8),
+                x(x), y(y), w(width), h(22), action);
     }
 
     private void startEngines() {
@@ -214,19 +208,14 @@ public final class FlightTutorialScreen extends Screen {
 
         scaler.update(width, height);
         scaler.push(graphics);
-        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
-        var pose = graphics.pose();
-        pose.pushMatrix();
-        pose.translate(scaler.width() / 2.0f, scaler.height() / 2.0f);
-        pose.scale(0.96f + openProgress * 0.04f, 0.96f + openProgress * 0.04f);
-        pose.translate(-scaler.width() / 2.0f, -scaler.height() / 2.0f);
+        scaler.scrim(graphics);
 
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL);
-        graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 26, 0xFF1C2733);
-        graphics.centeredText(font, fit("FLIGHT TRAINING  ·  " + FlightTutorial.stage().title()
-                        + "  ·  " + FlightTutorial.progressLabel(), panelWidth - 16),
-                panelLeft + panelWidth / 2, panelTop + 8, 0xFF72E6F5);
+        FlightLineTheme.panel(graphics, panelLeft, panelTop, panelWidth, panelHeight,
+                FlightLineTheme.PANEL, FlightLineTheme.STONE);
+        String lessonTitle = fit("FLIGHT TRAINING  ·  " + FlightTutorial.stage().title()
+                + "  ·  " + FlightTutorial.progressLabel(), panelWidth - w(88));
+        FlightLineTheme.header(graphics, font, panelLeft + 4, panelTop + 4,
+                panelWidth - 8, 26, "06", lessonTitle, GREEN);
 
         drawObjectives(graphics);
         drawBriefing(graphics);
@@ -234,16 +223,15 @@ public final class FlightTutorialScreen extends Screen {
         int barX = x(12);
         int barY = y(360);
         int barWidth = w(616);
-        graphics.fill(barX, barY, barX + barWidth, barY + 6, 0xFF26343D);
         List<FlightTutorial.Objective> objectives = FlightTutorial.objectives();
         int done = 0;
         for (FlightTutorial.Objective objective : objectives) if (objective.done()) done++;
-        int filled = objectives.isEmpty() ? barWidth : Math.round(barWidth * done / (float) objectives.size());
-        graphics.fill(barX, barY, barX + filled, barY + 6, FlightTutorial.allCompleted() ? GREEN : CYAN);
+        float progress = objectives.isEmpty() ? 1.0f : done / (float) objectives.size();
+        FlightLineTheme.bar(graphics, barX, barY, barWidth, h(6), progress,
+                FlightTutorial.allCompleted() ? GREEN : CYAN, FlightLineTheme.COAL);
         graphics.text(font, fit(status, barWidth), barX, barY - 12, MUTED, true);
 
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
-        pose.popMatrix();
         scaler.pop(graphics);
     }
 
@@ -282,20 +270,19 @@ public final class FlightTutorialScreen extends Screen {
         int cardY = y(60);
         int cardWidth = w(380);
         int cardHeight = h(288);
-        graphics.fill(cardX, cardY, cardX + cardWidth, cardY + cardHeight, CARD);
-        graphics.outline(cardX, cardY, cardWidth, cardHeight, BORDER);
-        graphics.text(font, "LIVE OBJECTIVES", cardX + 8, cardY + 6, CYAN, true);
+        FlightLineTheme.card(graphics, cardX, cardY, cardWidth, cardHeight, CYAN);
+        graphics.text(font, "LIVE OBJECTIVES", cardX + w(10), cardY + h(6), CYAN, true);
         List<FlightTutorial.Objective> objectives = FlightTutorial.objectives();
         int rowY = cardY + h(22);
-        int step = Math.max(20, Math.round(34 * scaleY));
+        int step = 34;
         for (int i = 0; i < objectives.size(); i++) {
             FlightTutorial.Objective objective = objectives.get(i);
             int color = objective.done() ? GREEN : i == firstPending(objectives) ? AMBER : TEXT;
-            graphics.text(font, objective.done() ? "[X] " : "[ ] ", cardX + w(8), rowY, color, true);
-            graphics.text(font, fit(objective.label(), cardWidth - w(28)),
-                    cardX + w(28), rowY, color, true);
-            graphics.text(font, fit(objective.detail(), cardWidth - w(28)),
-                    cardX + w(28), rowY + h(10), MUTED, false);
+            graphics.text(font, objective.done() ? "[X] " : "[ ] ", cardX + w(10), rowY, color, true);
+            graphics.text(font, fit(objective.label(), cardWidth - w(32)),
+                    cardX + w(30), rowY, color, true);
+            graphics.text(font, fit(objective.detail(), cardWidth - w(32)),
+                    cardX + w(30), rowY + h(10), MUTED, false);
             rowY += step;
         }
     }
@@ -312,48 +299,47 @@ public final class FlightTutorialScreen extends Screen {
         int cardY = y(60);
         int cardWidth = w(224);
         int cardHeight = h(288);
-        graphics.fill(cardX, cardY, cardX + cardWidth, cardY + cardHeight, CARD);
-        graphics.outline(cardX, cardY, cardWidth, cardHeight, BORDER);
-        graphics.text(font, fit(FlightTutorial.stage().title() + " BRIEF", cardWidth - w(16)),
-                cardX + w(8), cardY + h(6), AMBER, true);
-        graphics.text(font, fit(FlightTutorial.stage().brief(), cardWidth - w(16)),
-                cardX + w(8), cardY + h(20), MUTED, false);
+        FlightLineTheme.card(graphics, cardX, cardY, cardWidth, cardHeight, AMBER);
+        graphics.text(font, fit(FlightTutorial.stage().title() + " BRIEF", cardWidth - w(20)),
+                cardX + w(10), cardY + h(6), AMBER, true);
+        graphics.text(font, fit(FlightTutorial.stage().brief(), cardWidth - w(20)),
+                cardX + w(10), cardY + h(20), MUTED, false);
         graphics.text(font, fit("AIRCRAFT  " + FlightLineClient.getAircraftType().displayName(),
-                cardWidth - w(16)), cardX + w(8), cardY + h(42), TEXT, true);
+                cardWidth - w(20)), cardX + w(10), cardY + h(42), TEXT, true);
         graphics.text(font, fit(String.format(Locale.ROOT, "IAS %d KT   ALT %d FT",
-                FlightHud.currentSpeedKnots(), FlightHud.currentAltitudeFeet()), cardWidth - w(16)),
-                cardX + w(8), cardY + h(56), CYAN, true);
+                FlightHud.currentSpeedKnots(), FlightHud.currentAltitudeFeet()), cardWidth - w(20)),
+                cardX + w(10), cardY + h(56), CYAN, true);
         graphics.text(font, fit(String.format(Locale.ROOT, "HDG %03d°   VS %+d",
-                FlightHud.trackDegrees(), FlightHud.currentVsFpm()), cardWidth - w(16)),
-                cardX + w(8), cardY + h(70), TEXT, true);
-        graphics.text(font, "COCKPIT CONTROLS", cardX + w(8), cardY + h(94), AMBER, true);
-        graphics.text(font, fit("These controls use the same aircraft systems", cardWidth - w(16)),
-                cardX + w(8), cardY + h(108), MUTED, false);
-        graphics.text(font, "as the cockpit panels.", cardX + w(8), cardY + h(118), MUTED, false);
+                FlightHud.trackDegrees(), FlightHud.currentVsFpm()), cardWidth - w(20)),
+                cardX + w(10), cardY + h(70), TEXT, true);
+        graphics.text(font, "COCKPIT CONTROLS", cardX + w(10), cardY + h(94), AMBER, true);
+        graphics.text(font, fit("These controls use the same aircraft systems", cardWidth - w(20)),
+                cardX + w(10), cardY + h(108), MUTED, false);
+        graphics.text(font, "as the cockpit panels.", cardX + w(10), cardY + h(118), MUTED, false);
         graphics.text(font, fit(FlightLineClient.flightTutorial().getTranslatedKeyMessage().getString()
-                        + " reopens this lesson in flight.", cardWidth - w(16)),
-                cardX + w(8), cardY + h(132), MUTED, false);
+                        + " reopens this lesson in flight.", cardWidth - w(20)),
+                cardX + w(10), cardY + h(132), MUTED, false);
         if (FlightHud.isCrashed()) {
-            graphics.text(font, "AIRFRAME DOWN", cardX + w(8), cardY + cardHeight - h(12), RED, true);
+            graphics.text(font, "AIRFRAME DOWN", cardX + w(10), cardY + cardHeight - h(12), RED, true);
         } else if (FlightTutorial.allCompleted()) {
-            graphics.text(font, "ALL STAGES COMPLETE", cardX + w(8), cardY + cardHeight - h(12), GREEN, true);
+            graphics.text(font, "ALL STAGES COMPLETE", cardX + w(10), cardY + cardHeight - h(12), GREEN, true);
         }
     }
 
     private int x(int base) {
-        return panelLeft + Math.round(base * scaleX);
+        return panelLeft + base;
     }
 
     private int y(int base) {
-        return panelTop + Math.round(base * scaleY);
+        return panelTop + base;
     }
 
     private int w(int base) {
-        return Math.max(1, Math.round(base * scaleX));
+        return Math.max(1, base);
     }
 
     private int h(int base) {
-        return Math.max(1, Math.round(base * scaleY));
+        return Math.max(1, base);
     }
 
     private String fit(String text, int maxWidth) {

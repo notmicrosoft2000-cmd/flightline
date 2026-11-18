@@ -8,7 +8,7 @@ import dev.flightline.network.EmergencyActionPayload;
 import dev.flightline.network.EmergencyStatusPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -24,15 +24,13 @@ public final class EmergencyScreen extends Screen {
     private static final int PANEL_HEIGHT = 600;
     private static final int CARD_HEIGHT = 44;
     private static final int LINE_HEIGHT = 12;
-    private static final int NORMAL_TEXT = 0xFFD8E4EA;
-    private static final int MUTED_TEXT = 0xFF8FA2AA;
-    private static final int WARNING_TEXT = 0xFFFF8A7A;
-    private static final int AMBER_TEXT = 0xFFFFC44D;
-    private static final int ACCENT_TEXT = 0xFF62D89B;
-    private static final int CYAN_TEXT = 0xFF4EB8C8;
-    private static final int PANEL_FILL = 0xF0121A22;
-    private static final int SUBPANEL_FILL = 0xE30D1419;
-    private static final int BORDER = 0xFF2A3D49;
+    private static final int NORMAL_TEXT = FlightLineTheme.TEXT_DIM;
+    private static final int MUTED_TEXT = FlightLineTheme.MUTED;
+    private static final int WARNING_TEXT = FlightLineTheme.RED;
+    private static final int AMBER_TEXT = FlightLineTheme.AMBER;
+    private static final int ACCENT_TEXT = FlightLineTheme.GREEN;
+    private static final int CYAN_TEXT = FlightLineTheme.CYAN;
+    private static final int BORDER = FlightLineTheme.LINE;
 
     private static final int[][] PROCEDURE_SLOTS = {
             {EmergencyAction.EXTINGUISH_ENGINE, 0},
@@ -53,8 +51,6 @@ public final class EmergencyScreen extends Screen {
     private int panelTop;
     private int panelWidth;
     private int panelHeight;
-    private float scaleX;
-    private float scaleY;
     private int infoLeft;
     private int infoRight;
     private int infoTop;
@@ -66,7 +62,7 @@ public final class EmergencyScreen extends Screen {
     private int cardScroll;
     private int activeTab;
     private List<ConditionCard> cards = List.of();
-    private @Nullable Button runFixButton;
+    private @Nullable AbstractWidget runFixButton;
 
     public EmergencyScreen() {
         super(Component.literal("Emergency Checklist"));
@@ -81,8 +77,6 @@ public final class EmergencyScreen extends Screen {
         panelHeight = PANEL_HEIGHT;
         panelLeft = 8;
         panelTop = 8;
-        scaleX = 1.0f;
-        scaleY = 1.0f;
 
         infoLeft = x(12);
         infoRight = x(396);
@@ -96,17 +90,16 @@ public final class EmergencyScreen extends Screen {
 
         int tabY = y(66);
         int tabWidth = w(130);
-        addRenderableWidget(Button.builder(Component.literal(fitText("NEXT ACTION", tabWidth - 8)),
-                b -> switchTab(0)).bounds(x(410), tabY, tabWidth, h(18)).build());
-        addRenderableWidget(Button.builder(Component.literal(fitText("PROCEDURES", tabWidth - 8)),
-                b -> switchTab(1)).bounds(x(546), tabY, tabWidth, h(18)).build());
-        addRenderableWidget(Button.builder(Component.literal("CLOSE"), b -> onClose())
-                .bounds(x(772), y(7), w(76), h(18)).build());
+        addRenderableWidget(FlightLineTheme.button(fitText("NEXT ACTION", tabWidth - 8),
+                x(410), tabY, tabWidth, h(18), () -> switchTab(0)));
+        addRenderableWidget(FlightLineTheme.button(fitText("PROCEDURES", tabWidth - 8),
+                x(546), tabY, tabWidth, h(18), () -> switchTab(1)));
+        addRenderableWidget(FlightLineTheme.button("CLOSE",
+                x(772), y(7), w(76), h(18), this::onClose));
 
         if (activeTab == 0) {
-            runFixButton = Button.builder(Component.literal("EXECUTE NEXT ACTION"), b -> executeRecommended())
-                    .bounds(x(418), y(194), w(418), h(24))
-                    .build();
+            runFixButton = FlightLineTheme.button("EXECUTE NEXT ACTION",
+                    x(418), y(194), w(418), h(24), this::executeRecommended);
             addRenderableWidget(runFixButton);
         } else {
             runFixButton = null;
@@ -130,14 +123,14 @@ public final class EmergencyScreen extends Screen {
     }
 
     private void addAction(int action, int target, int x, int y, int width, int height) {
-        Button button = Button.builder(Component.literal(""), clicked -> sendAction(clicked))
-                .bounds(x, y, width, height)
-                .build();
-        actionButtons.add(new ActionButton(button, action, target, width));
-        addRenderableWidget(button);
+        var holder = new AbstractWidget[1];
+        holder[0] = FlightLineTheme.button("", x, y, width, height,
+                () -> sendAction(holder[0]));
+        actionButtons.add(new ActionButton(holder[0], action, target, width));
+        addRenderableWidget(holder[0]);
     }
 
-    private void sendAction(Button button) {
+    private void sendAction(AbstractWidget button) {
         for (ActionButton entry : actionButtons) {
             if (entry.button == button) {
                 ClientPlayNetworking.send(new EmergencyActionPayload(entry.action, entry.target));
@@ -173,21 +166,22 @@ public final class EmergencyScreen extends Screen {
 
         scaler.update(width, height);
         scaler.push(graphics);
-        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL_FILL);
-        graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN_TEXT);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, y(28), 0xFF1C2733);
-        graphics.centeredText(font, fitText("EMERGENCY CHECKLIST", panelWidth - w(180)),
-                panelLeft + panelWidth / 2, y(9), WARNING_TEXT);
+        scaler.scrim(graphics);
+        FlightLineTheme.panel(graphics, panelLeft, panelTop, panelWidth, panelHeight,
+                FlightLineTheme.PANEL, FlightLineTheme.STONE);
+        FlightLineTheme.header(graphics, font, panelLeft + 4, panelTop + 4,
+                panelWidth - 8, 24, "05", "EMERGENCY CHECKLIST", WARNING_TEXT);
         drawSeverityBanner(graphics, status, grouped);
 
-        graphics.fill(x(10), y(60), x(398), y(570), SUBPANEL_FILL);
-        graphics.outline(x(10), y(60), w(388), h(510), BORDER);
+        FlightLineTheme.inset(graphics, x(10), y(60), w(388), h(510), BORDER);
+        graphics.fill(x(12), y(60), x(396), y(80), FlightLineTheme.HEADER);
+        graphics.fill(x(12), y(80), x(396), y(81), CYAN_TEXT);
         graphics.centeredText(font, "ACTIVE CONDITIONS", infoLeft + (infoRight - infoLeft) / 2,
                 y(65), CYAN_TEXT);
 
-        graphics.fill(x(406), y(62), x(848), y(570), SUBPANEL_FILL);
-        graphics.outline(x(406), y(62), w(442), h(508), BORDER);
+        FlightLineTheme.inset(graphics, x(406), y(62), w(442), h(508), BORDER);
+        graphics.fill(x(406), y(62), x(848), y(82), FlightLineTheme.HEADER);
+        graphics.fill(x(406), y(82), x(848), y(83), CYAN_TEXT);
 
         cards = buildCards(status, grouped);
         drawConditionCards(graphics);
@@ -214,12 +208,14 @@ public final class EmergencyScreen extends Screen {
                 | EmergencyStatus.FAILURE_1 | EmergencyStatus.FAILURE_2 | EmergencyStatus.FUEL_EMPTY);
         boolean caution = status.active();
         int color = critical ? WARNING_TEXT : caution ? AMBER_TEXT : ACCENT_TEXT;
-        int fill = critical ? 0xFF3A1414 : caution ? 0xFF332A13 : 0xFF12301F;
+        int fill = critical ? FlightLineTheme.COAL : caution ? FlightLineTheme.COAL
+                : FlightLineTheme.INSET;
 
         graphics.fill(x(12), top, x(848), bottom, fill);
         graphics.outline(x(12), top, w(836), bottom - top, color);
+        graphics.fill(x(12), top, x(17), bottom, color);
         String severity = critical ? "CRITICAL" : caution ? "CAUTION" : "ALL SYSTEMS NORMAL";
-        graphics.text(font, severity, x(20), top + h(6), color, true);
+        graphics.text(font, severity, x(22), top + h(6), color, true);
 
         String resources = "BOTTLES " + status.extinguisherBottles()
                 + " · E1 " + status.restartAttempts1() + "/3 · E2 " + status.restartAttempts2() + "/3";
@@ -231,7 +227,7 @@ public final class EmergencyScreen extends Screen {
                 : caution ? "Abnormal condition active · follow the next action"
                 : grouped ? "GINA 787 · 6 engines in 2 groups"
                 : "KASA A380 · 2 independent engines";
-        int summaryX = x(20) + font.width(severity) + w(12);
+        int summaryX = x(22) + font.width(severity) + w(12);
         graphics.text(font, fitText(summary, Math.max(1, resourcesX - summaryX - w(10))),
                 summaryX, top + h(6), NORMAL_TEXT, true);
     }
@@ -260,24 +256,23 @@ public final class EmergencyScreen extends Screen {
             ConditionCard card = cards.get(i);
             int cardY = infoTop + (i - cardScroll) * h(CARD_HEIGHT);
             int bottom = cardY + h(CARD_HEIGHT) - 3;
-            graphics.fill(infoLeft, cardY, infoRight, bottom, 0xE3162028);
-            graphics.outline(infoLeft, cardY, infoRight - infoLeft, bottom - cardY, card.color());
-            graphics.fill(infoLeft, cardY, infoLeft + w(3), bottom, card.color());
+            FlightLineTheme.card(graphics, infoLeft, cardY, infoRight - infoLeft,
+                    bottom - cardY, card.color());
             graphics.text(font, fitText(card.title(), infoRight - infoLeft - w(14)),
-                    infoLeft + w(8), cardY + h(3), card.color(), true);
+                    infoLeft + w(10), cardY + h(5), card.color(), true);
 
-            List<String> detail = wrap(card.detail(), infoRight - infoLeft - w(16));
+            List<String> detail = wrap(card.detail(), infoRight - infoLeft - w(18));
             int detailLines = card.barFraction() >= 0.0f ? 1 : 2;
             for (int line = 0; line < Math.min(detailLines, detail.size()); line++) {
-                graphics.text(font, fitText(detail.get(line), infoRight - infoLeft - w(16)),
-                        infoLeft + w(8), cardY + h(15) + line * h(LINE_HEIGHT),
+                graphics.text(font, fitText(detail.get(line), infoRight - infoLeft - w(18)),
+                        infoLeft + w(10), cardY + h(17) + line * h(LINE_HEIGHT),
                         NORMAL_TEXT, true);
             }
             if (card.barFraction() >= 0.0f) {
-                int barLeft = infoLeft + w(8);
+                int barLeft = infoLeft + w(10);
                 int barRight = infoRight - w(8);
                 int barTop = cardY + h(CARD_HEIGHT) - h(10);
-                graphics.fill(barLeft, barTop, barRight, barTop + h(5), 0xFF101A20);
+                graphics.fill(barLeft, barTop, barRight, barTop + h(5), FlightLineTheme.INSET);
                 int fillWidth = Math.round((barRight - barLeft) * card.barFraction());
                 graphics.fill(barLeft, barTop, barLeft + fillWidth, barTop + h(5), card.color());
                 String barLabel = fitText(card.barLabel(), barRight - barLeft - w(4));
@@ -289,8 +284,10 @@ public final class EmergencyScreen extends Screen {
             int trackHeight = infoBottom - infoTop;
             int thumbHeight = Math.max(14, trackHeight * visibleCards / cards.size());
             int thumbTop = infoTop + (int) (cardScroll / (float) maxScroll * (trackHeight - thumbHeight));
-            graphics.fill(infoRight - w(6), infoTop, infoRight - w(3), infoBottom, 0xFF1F2A33);
-            graphics.fill(infoRight - w(6), thumbTop, infoRight - w(3), thumbTop + thumbHeight, CYAN_TEXT);
+            graphics.fill(infoRight - w(6), infoTop, infoRight - w(3), infoBottom,
+                    FlightLineTheme.COAL);
+            graphics.fill(infoRight - w(6), thumbTop, infoRight - w(3), thumbTop + thumbHeight,
+                    CYAN_TEXT);
         }
     }
 
@@ -300,10 +297,11 @@ public final class EmergencyScreen extends Screen {
         int bottom = y(186);
         var recommendation = status.recommendation();
         int color = recommendation.present() ? ACCENT_TEXT : MUTED_TEXT;
-        int textX = x(418);
-        int textWidth = w(418) - w(16);
-        graphics.fill(x(416), top, x(838), bottom, 0xFF17222B);
-        graphics.outline(x(416), top, w(422), bottom - top, color);
+        int textX = x(426);
+        int textWidth = w(418) - w(24);
+        FlightLineTheme.panel(graphics, x(416), top, w(422), bottom - top,
+                FlightLineTheme.CARD, BORDER);
+        graphics.fill(x(416), top, x(422), bottom, color);
 
         if (!recommendation.present()) {
             graphics.text(font, "MANUAL ACTION REQUIRED", textX, top + h(8), MUTED_TEXT, true);
@@ -342,8 +340,9 @@ public final class EmergencyScreen extends Screen {
         for (int i = 0; i < checkpoints.length; i++) {
             int rowY = progressTop + h(18) + i * h(16);
             boolean done = "X".equals(checkpoints[i][1]);
-            graphics.fill(x(422), rowY, x(432), rowY + h(10), done ? 0xFF173423 : 0xFF1B2227);
-            graphics.outline(x(422), rowY, w(10), h(10), done ? ACCENT_TEXT : BORDER);
+            graphics.fill(x(422), rowY, x(432), rowY + h(10),
+                    done ? FlightLineTheme.GREEN_DARK : FlightLineTheme.COAL);
+            graphics.outline(x(422), rowY, w(10), h(10), done ? ACCENT_TEXT : FlightLineTheme.STONE);
             graphics.text(font, "[" + checkpoints[i][1] + "]", x(422), rowY,
                     done ? ACCENT_TEXT : MUTED_TEXT, true);
             graphics.text(font, fitText(checkpoints[i][0], w(380)), x(442), rowY,
@@ -446,10 +445,10 @@ public final class EmergencyScreen extends Screen {
         return fitted + "…";
     }
 
-    private int x(int base) { return panelLeft + Math.round(base * scaleX); }
-    private int y(int base) { return panelTop + Math.round(base * scaleY); }
-    private int w(int base) { return Math.max(1, Math.round(base * scaleX)); }
-    private int h(int base) { return Math.max(1, Math.round(base * scaleY)); }
+    private int x(int base) { return panelLeft + base; }
+    private int y(int base) { return panelTop + base; }
+    private int w(int base) { return Math.max(1, base); }
+    private int h(int base) { return Math.max(1, base); }
 
     private static boolean actionAvailable(EmergencyStatusPayload status, int action, int target) {
         return switch (action) {
@@ -585,13 +584,13 @@ public final class EmergencyScreen extends Screen {
     }
 
     private static final class ActionButton {
-        private final Button button;
+        private final AbstractWidget button;
         private final int baseAction;
         private final int target;
         private final int width;
         private int action;
 
-        private ActionButton(Button button, int action, int target, int width) {
+        private ActionButton(AbstractWidget button, int action, int target, int width) {
             this.button = button;
             this.baseAction = action;
             this.action = action;

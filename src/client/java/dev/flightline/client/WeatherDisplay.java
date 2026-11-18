@@ -125,31 +125,26 @@ final class WeatherDisplay {
         int intensity = cell.intensity();
         boolean storm = cell.condition() == 2;
         if (history) {
-            g.fill(px - half, py - half, px + half, py + half,
+            octagon(g, px, py, half,
                     cell.hail() ? 0x505FA05C : storm ? 0x54B84330 : 0x485B8E66);
             if (intensity >= 60) {
-                int core = Math.max(1, half / 2);
-                g.fill(px - core, py - core, px + core, py + core,
+                octagon(g, px, py, Math.max(1, half / 2),
                         storm ? 0x66E05026 : 0x603E8E58);
             }
             return;
         }
 
-        g.fill(px - half, py - half, px + half, py + half, cellColor(cell));
-        int contour = storm ? 0xD8FFD7A0 : intensity >= 50 ? 0xB0B8A532 : 0x803E8E58;
-        g.fill(px - half, py - half, px + half, py - half + 1, contour);
-        g.fill(px - half, py + half - 1, px + half, py + half, contour);
-        g.fill(px - half, py - half, px - half + 1, py + half, contour);
-        g.fill(px + half - 1, py - half, px + half, py + half, contour);
+        // Octagonal returns keep the field-manual look without the harsh square-block seams.
+        int contour = storm ? 0xFF705010 : intensity >= 50 ? 0xFF7A5A18 : 0xFF1E4A32;
+        octagon(g, px, py, half + 1, contour);
+        octagon(g, px, py, half, cellColor(cell));
 
         if (intensity >= 44) {
-            int inner = Math.max(1, half - 2);
-            g.fill(px - inner, py - inner, px + inner, py + inner,
+            octagon(g, px, py, Math.max(1, half - 2),
                     storm ? 0xB8E05026 : 0x90B8A532);
         }
         if (intensity >= 68) {
-            int core = Math.max(1, half / 2);
-            g.fill(px - core, py - core, px + core, py + core,
+            octagon(g, px, py, Math.max(1, half / 2),
                     cell.hail() ? HAIL_COLOR : storm ? 0xE8B31E22 : 0xC8B8A532);
         }
         if (cell.lightning()) {
@@ -159,6 +154,22 @@ final class WeatherDisplay {
         }
         if (cell.hail()) {
             g.fill(px - 2, py - 2, px + 2, py + 2, HAIL_COLOR);
+        }
+    }
+
+    /** Small octagonal fill: bevelled corners read as weather echoes instead of square tiles. */
+    private static void octagon(GuiGraphicsExtractor g, int px, int py, int half, int color) {
+        if (half <= 1) {
+            g.fill(px - half, py - half, px + half + 1, py + half + 1, color);
+            return;
+        }
+        int cut = Math.max(1, half / 3);
+        for (int dy = -half; dy <= half; dy++) {
+            int excess = Math.abs(dy) - (half - cut);
+            int inset = Math.max(0, excess);
+            int span = half - inset;
+            if (span < 0) continue;
+            g.fill(px - span, py + dy, px + span + 1, py + dy + 1, color);
         }
     }
 

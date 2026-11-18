@@ -11,8 +11,8 @@ import dev.flightline.network.ToggleAutolandPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -28,16 +28,16 @@ public class AutopilotScreen extends Screen {
     private static final int BASE_WIDTH = 600;
     private static final int BASE_HEIGHT = 400;
 
-    private static final int TEXT = 0xFFDCE8EE;
-    private static final int MUTED = 0xFF8198A3;
-    private static final int CYAN = 0xFF4EB8C8;
-    private static final int GREEN = 0xFF62D89B;
-    private static final int AMBER = 0xFFFFC44D;
-    private static final int RED = 0xFFFF5A50;
+    private static final int TEXT = FlightLineTheme.PAPER;
+    private static final int MUTED = FlightLineTheme.MUTED;
+    private static final int CYAN = FlightLineTheme.CYAN;
+    private static final int GREEN = FlightLineTheme.GREEN;
+    private static final int AMBER = FlightLineTheme.AMBER;
+    private static final int RED = FlightLineTheme.RED;
     private static final int PURPLE = 0xFFC678FF;
-    private static final int PANEL_FILL = 0xF0121A22;
-    private static final int CARD_FILL = 0xE3101920;
-    private static final int BORDER = 0xFF2A3D49;
+    private static final int PANEL_FILL = FlightLineTheme.PANEL;
+    private static final int CARD_FILL = FlightLineTheme.CARD;
+    private static final int BORDER = FlightLineTheme.STONE;
 
     private static int cachedHeading;
     private static int cachedAltitude = 2000;
@@ -56,7 +56,7 @@ public class AutopilotScreen extends Screen {
     private @Nullable EditBox thresholdXBox;
     private @Nullable EditBox thresholdZBox;
     private @Nullable EditBox runwayHeadingBox;
-    private @Nullable Button apMasterBtn;
+    private @Nullable AbstractWidget apMasterBtn;
     private boolean engaged;
     private int activePage;
     private String ilsMessage = "";
@@ -74,8 +74,6 @@ public class AutopilotScreen extends Screen {
     private int panelTop;
     private int panelWidth;
     private int panelHeight;
-    private float scaleX;
-    private float scaleY;
 
     public AutopilotScreen(boolean currentlyEngaged, int currentHeading, int currentAltitudeFeet,
                            int currentVsFpm, int currentSpeedKnots) {
@@ -112,8 +110,6 @@ public class AutopilotScreen extends Screen {
         panelHeight = BASE_HEIGHT;
         panelLeft = 8;
         panelTop = 8;
-        scaleX = 1.0f;
-        scaleY = 1.0f;
 
         addRenderableWidget(tabButton("MCP", 0, 12, 100));
         addRenderableWidget(tabButton("FPLN", 1, 116, 80));
@@ -133,8 +129,8 @@ public class AutopilotScreen extends Screen {
             initSystemsPage();
         }
 
-        addRenderableWidget(Button.builder(Component.literal("APPLY"), b -> onClose())
-                .bounds(x(494), y(370), w(94), h(20)).build());
+        addRenderableWidget(FlightLineTheme.button("APPLY", x(494), y(370), w(94), h(20),
+                this::onClose));
     }
 
     private void initMcpPage() {
@@ -159,8 +155,8 @@ public class AutopilotScreen extends Screen {
         addRenderableWidget(stepButton("+10", 495, 304, 27, () -> adjustSpeed(10)));
         addRenderableWidget(compactActionButton("SYNC", 464, 326, 58, this::syncSpeed));
 
-        apMasterBtn = Button.builder(apButtonText(), b -> toggleAp())
-                .bounds(x(12), y(350), w(180), h(20)).build();
+        apMasterBtn = FlightLineTheme.button(apButtonText(), x(12), y(350), w(180), h(20),
+                this::toggleAp);
         addRenderableWidget(apMasterBtn);
     }
 
@@ -202,19 +198,19 @@ public class AutopilotScreen extends Screen {
     }
 
     private void initNavPage() {
-        thresholdXBox = numberInput(382, 130, 76, "X", cachedThresholdX, 10);
-        thresholdZBox = numberInput(466, 130, 76, "Z", cachedThresholdZ, 10);
-        runwayHeadingBox = numberInput(382, 186, 76, "HDG", cachedRunwayHeading, 3);
+        thresholdXBox = numberInput(382, 124, 76, "X", cachedThresholdX, 10);
+        thresholdZBox = numberInput(466, 124, 76, "Z", cachedThresholdZ, 10);
+        runwayHeadingBox = numberInput(382, 188, 76, "HDG", cachedRunwayHeading, 3);
 
-        addRenderableWidget(compactActionButton("- 0.1°", 382, 152, 76, () -> adjustGlideSlope(-0.1f)));
-        addRenderableWidget(compactActionButton("+ 0.1°", 466, 152, 76, () -> adjustGlideSlope(0.1f)));
+        addRenderableWidget(compactActionButton("- 0.1°", 382, 156, 76, () -> adjustGlideSlope(-0.1f)));
+        addRenderableWidget(compactActionButton("+ 0.1°", 466, 156, 76, () -> adjustGlideSlope(0.1f)));
         addRenderableWidget(compactActionButton("SET RUNWAY", 382, 222, 160, this::setIls));
         addRenderableWidget(compactActionButton("USE MY POSITION", 382, 246, 160, this::useCurrentPosition));
         addRenderableWidget(compactActionButton("CLEAR ILS", 382, 270, 160, this::clearIls));
 
         String armLabel = FlightHud.autopilotGuidance().autolandArmed()
                 ? "DISARM AUTOLAND" : "ARM ILS AUTOLAND";
-        Button autoland = actionButton(armLabel, 382, 324, 160, () -> {
+        var autoland = actionButton(armLabel, 382, 324, 160, () -> {
             ClientPlayNetworking.send(new ToggleAutolandPayload());
             ilsMessage = "";
         });
@@ -231,26 +227,26 @@ public class AutopilotScreen extends Screen {
         // The systems page is a live aircraft schematic with no editable controls.
     }
 
-    private Button tabButton(String label, int page, int x, int width) {
+    private net.minecraft.client.gui.components.AbstractWidget tabButton(String label, int page, int x, int width) {
         String shortLabel = label.equals("NAV / ILS") && panelWidth < 420 ? "NAV" : label;
         String text = activePage == page ? "[" + shortLabel + "]" : shortLabel;
-        return Button.builder(Component.literal(fit(text, w(width) - 8)), button -> switchPage(page))
-                .bounds(x(x), y(30), w(width), h(20)).build();
+        return FlightLineTheme.button(fit(text, w(width) - 8), x(x), y(30), w(width), h(20),
+                () -> switchPage(page));
     }
 
-    private Button stepButton(String label, int x, int y, int width, Runnable action) {
-        return Button.builder(Component.literal(fit(label, w(width) - 6)), button -> action.run())
-                .bounds(x(x), y(y), w(width), h(20)).build();
+    private net.minecraft.client.gui.components.AbstractWidget stepButton(String label, int x, int y, int width,
+                                                                         Runnable action) {
+        return FlightLineTheme.button(fit(label, w(width) - 6), x(x), y(y), w(width), h(20), action);
     }
 
-    private Button actionButton(String label, int x, int y, int width, Runnable action) {
-        return Button.builder(Component.literal(fit(label, w(width) - 8)), button -> action.run())
-                .bounds(x(x), y(y), w(width), h(22)).build();
+    private net.minecraft.client.gui.components.AbstractWidget actionButton(String label, int x, int y, int width,
+                                                                           Runnable action) {
+        return FlightLineTheme.button(fit(label, w(width) - 8), x(x), y(y), w(width), h(22), action);
     }
 
-    private Button compactActionButton(String label, int x, int y, int width, Runnable action) {
-        return Button.builder(Component.literal(fit(label, w(width) - 8)), button -> action.run())
-                .bounds(x(x), y(y), w(width), h(18)).build();
+    private net.minecraft.client.gui.components.AbstractWidget compactActionButton(String label, int x, int y,
+                                                                                  int width, Runnable action) {
+        return FlightLineTheme.button(fit(label, w(width) - 8), x(x), y(y), w(width), h(18), action);
     }
 
     private EditBox numberInput(int x, int y, int width, String label, int value, int maxLength) {
@@ -264,6 +260,7 @@ public class AutopilotScreen extends Screen {
     private void switchPage(int page) {
         if (activePage == page) return;
         if (activePage == 0) saveAutopilotValues();
+        if (activePage == 2) saveIlsValues();
         activePage = page;
         ilsMessage = "";
         if (page == 1) resetFlightPlanDraft();
@@ -559,15 +556,15 @@ public class AutopilotScreen extends Screen {
         updateGeometry();
         scaler.update(width, height);
         scaler.push(graphics);
-        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL_FILL);
-        graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + h(24), 0xFF1C2733);
-        fittedCenteredText(graphics, "AUTOPILOT / FLIGHT DIRECTOR", panelLeft + panelWidth / 2,
-                panelTop + y(7), 0xFF72E6F5, panelWidth - 8);
+        scaler.scrim(graphics);
+        FlightLineTheme.panel(graphics, panelLeft, panelTop, panelWidth, panelHeight, PANEL_FILL, BORDER);
+        FlightLineTheme.header(graphics, font, panelLeft + 4, panelTop + 4, panelWidth - 8, h(24),
+                "01", "AUTOPILOT / FLIGHT DIRECTOR", GREEN);
+        fittedText(graphics, "ILS SETUP: NAV/ILS 1-4", panelLeft + x(486), panelTop + y(36),
+                MUTED, w(112), true);
 
         drawFma(graphics);
-        card(graphics, 12, 92, 576, 280, BORDER);
+        FlightLineTheme.card(graphics, panelLeft + x(12), panelTop + y(92), w(576), h(280), GREEN);
 
         switch (activePage) {
             case 0 -> drawMcpPage(graphics);
@@ -587,8 +584,6 @@ public class AutopilotScreen extends Screen {
         panelHeight = BASE_HEIGHT;
         panelLeft = 8;
         panelTop = 8;
-        scaleX = 1.0f;
-        scaleY = 1.0f;
     }
 
     private void drawFma(GuiGraphicsExtractor graphics) {
@@ -606,8 +601,8 @@ public class AutopilotScreen extends Screen {
         boolean atc = guidance.atcControlled();
 
         graphics.fill(panelLeft + x(12), panelTop + y(54), panelLeft + x(588),
-                panelTop + y(84), 0xFF0C1318);
-        graphics.outline(panelLeft + x(12), panelTop + y(54), w(576), h(30), BORDER);
+                panelTop + y(84), FlightLineTheme.INSET);
+        graphics.outline(panelLeft + x(12), panelTop + y(54), w(576), h(30), FlightLineTheme.STONE);
         fmaChip(graphics, 18, 57, 58, "A/P", ap ? GREEN : MUTED, ap);
         fmaChip(graphics, 80, 57, 58, "A/T", at ? GREEN : MUTED, at);
         fmaChip(graphics, 142, 57, 58, lnav ? "LNAV" : "HDG", lnav || hdg ? GREEN : MUTED,
@@ -622,10 +617,12 @@ public class AutopilotScreen extends Screen {
 
     private void fmaChip(GuiGraphicsExtractor graphics, int x, int y, int width,
                          String label, int color, boolean active) {
-        int fill = active ? 0xFF173326 : 0xFF131C22;
+        int fill = active ? FlightLineTheme.COAL : FlightLineTheme.INSET;
         graphics.fill(panelLeft + x(x), panelTop + y(y), panelLeft + x(x + width),
                 panelTop + y(y + 24), fill);
         graphics.outline(panelLeft + x(x), panelTop + y(y), w(width), h(24), color);
+        if (active) graphics.fill(panelLeft + x(x), panelTop + y(y), panelLeft + x(x + 4),
+                panelTop + y(y + 24), color);
         fittedCenteredText(graphics, label, panelLeft + x(x + width / 2), panelTop + y(y + 7),
                 color, w(width) - 6);
     }
@@ -671,12 +668,12 @@ public class AutopilotScreen extends Screen {
     private void drawHeadingDial(GuiGraphicsExtractor graphics, int cx, int cy, int radius,
                                  int current, int selected) {
         graphics.fill(panelLeft + x(cx - 2), panelTop + y(cy - 2),
-                panelLeft + x(cx + 2), panelTop + y(cy + 2), 0xFF1D2D36);
+                panelLeft + x(cx + 2), panelTop + y(cy + 2), FlightLineTheme.INSET);
         graphics.outline(panelLeft + x(cx - radius), panelTop + y(cy - radius),
                 w(radius * 2), h(radius * 2), BORDER);
 
         graphics.outline(panelLeft + x(cx - radius + 9), panelTop + y(cy - radius + 9),
-                w((radius - 9) * 2), h((radius - 9) * 2), 0xFF1F3039);
+                w((radius - 9) * 2), h((radius - 9) * 2), FlightLineTheme.INSET);
         for (int degree = 0; degree < 360; degree += 15) {
             int r = degree % 90 == 0 ? radius - 4 : degree % 30 == 0 ? radius - 7 : radius - 10;
             int[] point = headingPoint(cx, cy, r, degree);
@@ -705,7 +702,7 @@ public class AutopilotScreen extends Screen {
     private void drawTape(GuiGraphicsExtractor graphics, int x, int y, int width, int height,
                           int current, int selected, int step, String unit, int labelStep) {
         graphics.fill(panelLeft + x(x), panelTop + y(y), panelLeft + x(x + width),
-                panelTop + y(y + height), 0xFF0C141A);
+                panelTop + y(y + height), FlightLineTheme.INSET);
         graphics.outline(panelLeft + x(x), panelTop + y(y), w(width), h(height), BORDER);
         int center = y + height / 2;
         graphics.fill(panelLeft + x(x), panelTop + y(center - 1),
@@ -732,7 +729,7 @@ public class AutopilotScreen extends Screen {
         graphics.disableScissor();
 
         graphics.fill(panelLeft + x(x + 3), panelTop + y(y + height - 15),
-                panelLeft + x(x + 55), panelTop + y(y + height - 2), 0xFF111D24);
+                panelLeft + x(x + 55), panelTop + y(y + height - 2), FlightLineTheme.COAL);
         graphics.outline(panelLeft + x(x + 3), panelTop + y(y + height - 15), w(52), h(13), AMBER);
         fittedCenteredText(graphics, selected + " " + unit, panelLeft + x(x + 29),
                 panelTop + y(y + height - 13), AMBER, w(48));
@@ -742,7 +739,7 @@ public class AutopilotScreen extends Screen {
                                    int current, int selected) {
         int top = cy - height / 2;
         graphics.fill(panelLeft + x(cx - 34), panelTop + y(top),
-                panelLeft + x(cx + 34), panelTop + y(top + height), 0xFF0C141A);
+                panelLeft + x(cx + 34), panelTop + y(top + height), FlightLineTheme.INSET);
         graphics.outline(panelLeft + x(cx - 34), panelTop + y(top), w(68), h(height), BORDER);
         graphics.fill(panelLeft + x(cx - 34), panelTop + y(cy),
                 panelLeft + x(cx + 34), panelTop + y(cy + 1), MUTED);
@@ -799,7 +796,7 @@ public class AutopilotScreen extends Screen {
             int y = 192 + row * 16;
             if (index >= fplnWaypoints.size()) {
                 fittedText(graphics, String.format(Locale.ROOT, "%d  --------", index + 1),
-                        panelLeft + x(276), panelTop + y(y), 0xFF4E626C, w(300), true);
+                        panelLeft + x(276), panelTop + y(y), FlightLineTheme.MUTED, w(300), true);
                 continue;
             }
             var fix = NavigationState.fix(fplnWaypoints.get(index));
@@ -820,6 +817,10 @@ public class AutopilotScreen extends Screen {
         fittedText(graphics, summary, panelLeft + x(28), panelTop + y(312),
                 plan == null ? MUTED : GREEN, w(430), true);
         fittedText(graphics, fplnMessage, panelLeft + x(28), panelTop + y(330), CYAN, w(540), true);
+        fittedText(graphics, "ILS SETUP  1 SET THRESHOLD X/Z  2 SET RWY HDG",
+                panelLeft + x(28), panelTop + y(344), MUTED, w(540), true);
+        fittedText(graphics, "3 SET RUNWAY  4 ARM ILS AUTOLAND",
+                panelLeft + x(28), panelTop + y(356), MUTED, w(540), true);
     }
 
     private String activeLegLabel() {
@@ -845,7 +846,7 @@ public class AutopilotScreen extends Screen {
         int centerY = 208;
 
         graphics.fill(panelLeft + x(42), panelTop + y(centerY - 52),
-                panelLeft + x(342), panelTop + y(centerY + 52), 0xFF0B1217);
+                panelLeft + x(342), panelTop + y(centerY + 52), FlightLineTheme.INSET);
         graphics.outline(panelLeft + x(42), panelTop + y(centerY - 52), w(300), h(104), ils ? GREEN : BORDER);
 
         line(graphics, 72, centerY, 312, centerY, ils ? MUTED : BORDER);
@@ -871,17 +872,19 @@ public class AutopilotScreen extends Screen {
                 localizer, glideslope, cachedGlideSlope), panelLeft + x(centerX),
                 panelTop + y(128), ils ? TEXT : MUTED, w(340));
 
-        fittedText(graphics, "THRESHOLD", panelLeft + x(382), panelTop + y(118), MUTED,
+        fittedText(graphics, "THRESHOLD", panelLeft + x(382), panelTop + y(112), MUTED,
                 freeWidth(382, 466), true);
-        fittedText(graphics, "POSITION", panelLeft + x(466), panelTop + y(118), MUTED,
+        fittedText(graphics, "POSITION", panelLeft + x(466), panelTop + y(112), MUTED,
                 freeWidth(466, 550), true);
-        graphics.text(font, "RUNWAY HDG", panelLeft + x(382), panelTop + y(172), MUTED, true);
+        fittedText(graphics, String.format(Locale.ROOT, "GLIDE SLOPE  %.1f°", cachedGlideSlope),
+                panelLeft + x(382), panelTop + y(146), CYAN, freeWidth(382, 550), true);
+        graphics.text(font, "RUNWAY HDG", panelLeft + x(382), panelTop + y(178), MUTED, true);
         drawMiniCompass(graphics, 520, 208, 20, cachedRunwayHeading);
 
         String[] status = navStatus(ils);
         int color = statusColor(status[0]);
         graphics.fill(panelLeft + x(26), panelTop + y(304), panelLeft + x(574), panelTop + y(362),
-                color == GREEN ? 0xFF14301F : color == AMBER ? 0xFF302514 : 0xFF211419);
+                color == GREEN ? 0xFF1C2E16 : color == AMBER ? 0xFF2E2610 : 0xFF2A1918);
         graphics.outline(panelLeft + x(26), panelTop + y(304), w(548), h(58), color);
         fittedText(graphics, status[0], panelLeft + x(34), panelTop + y(312), color,
                 freeWidth(34, 366), true);
@@ -893,6 +896,22 @@ public class AutopilotScreen extends Screen {
             fittedText(graphics, ilsMessage, panelLeft + x(34), panelTop + y(344), CYAN,
                     freeWidth(34, 366), true);
         }
+
+        String[] steps = {
+                "1 SET THRESHOLD X/Z",
+                "2 SET RWY HDG",
+                "3 SET RUNWAY",
+                "4 ARM ILS AUTOLAND"
+        };
+        for (int i = 0; i < steps.length; i++) {
+            fittedText(graphics, steps[i], panelLeft + x(382), panelTop + y(310 + i * 12),
+                    i == 3 && guidanceAutolandArmed() ? GREEN : TEXT,
+                    freeWidth(382, 568), true);
+        }
+    }
+
+    private boolean guidanceAutolandArmed() {
+        return FlightHud.autopilotGuidance().autolandArmed();
     }
 
     private String[] navStatus(boolean ils) {
@@ -1007,16 +1026,16 @@ public class AutopilotScreen extends Screen {
     private void drawWeatherRadar(GuiGraphicsExtractor graphics, int x, int y, int width, int height,
                                   FlightInstrumentPayload.WeatherGuidance weather) {
         graphics.fill(panelLeft + x(x), panelTop + y(y), panelLeft + x(x + width),
-                panelTop + y(y + height), 0xFF081015);
+                panelTop + y(y + height), FlightLineTheme.INSET);
         graphics.outline(panelLeft + x(x), panelTop + y(y), w(width), h(height), BORDER);
         graphics.enableScissor(panelLeft + x(x), panelTop + y(y), w(width), h(height));
         for (int lineX = x + 30; lineX < x + width; lineX += 30) {
             graphics.fill(panelLeft + x(lineX), panelTop + y(y), panelLeft + x(lineX + 1),
-                    panelTop + y(y + height), 0xFF15242C);
+                    panelTop + y(y + height), FlightLineTheme.COAL);
         }
         for (int lineY = y + 30; lineY < y + height; lineY += 30) {
             graphics.fill(panelLeft + x(x), panelTop + y(lineY), panelLeft + x(x + width),
-                    panelTop + y(lineY + 1), 0xFF15242C);
+                    panelTop + y(lineY + 1), FlightLineTheme.COAL);
         }
         graphics.fill(panelLeft + x(x + width / 2 - 1), panelTop + y(y),
                 panelLeft + x(x + width / 2 + 1), panelTop + y(y + height), CYAN);
@@ -1044,7 +1063,7 @@ public class AutopilotScreen extends Screen {
         long phase = System.nanoTime() / 25_000_000L;
         int sweep = x + (int) (phase % Math.max(1, width - 2));
         graphics.fill(panelLeft + x(sweep), panelTop + y(y), panelLeft + x(sweep + 2),
-                panelTop + y(y + height), 0x8062D89B);
+                panelTop + y(y + height), 0x806CC349);
         drawWindArrow(graphics, x + 34, y + 28, weather.windDirectionDegrees() + 180,
                 weather.windSpeedKnots(), conditionColor(weather));
         graphics.disableScissor();
@@ -1079,7 +1098,7 @@ public class AutopilotScreen extends Screen {
         fittedText(graphics, percent + "%", panelLeft + x(x + width - 26),
                 panelTop + y(y), color, w(26), true);
         graphics.fill(panelLeft + x(x), panelTop + y(y + 14), panelLeft + x(x + width),
-                panelTop + y(y + 22), 0xFF1A262E);
+                panelTop + y(y + 22), FlightLineTheme.COAL);
         graphics.fill(panelLeft + x(x), panelTop + y(y + 14),
                 panelLeft + x(x + Math.round(width * clamp(percent, 0, 100) / 100.0f)),
                 panelTop + y(y + 22), color);
@@ -1149,19 +1168,24 @@ public class AutopilotScreen extends Screen {
     }
 
     private void card(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int borderColor) {
+        graphics.fill(panelLeft + x(x) + 4, panelTop + y(y) + 4, panelLeft + x(x + width) + 4,
+                panelTop + y(y + height) + 4, FlightLineTheme.SHADOW);
         graphics.fill(panelLeft + x(x), panelTop + y(y), panelLeft + x(x + width),
                 panelTop + y(y + height), CARD_FILL);
         graphics.outline(panelLeft + x(x), panelTop + y(y), w(width), h(height), borderColor);
     }
 
     private void panel(GuiGraphicsExtractor graphics, int x, int y, int width, int height, String title) {
-        graphics.fill(panelLeft + x(x), panelTop + y(y), panelLeft + x(x + width),
-                panelTop + y(y + height), CARD_FILL);
-        graphics.outline(panelLeft + x(x), panelTop + y(y), w(width), h(height), BORDER);
-        graphics.fill(panelLeft + x(x), panelTop + y(y), panelLeft + x(x + width),
-                panelTop + y(y + 18), 0xFF172631);
-        fittedText(graphics, title, panelLeft + x(x + 7), panelTop + y(y + 4), CYAN,
-                w(width) - 14, true);
+        FlightLineTheme.panel(graphics, panelLeft + x(x), panelTop + y(y), w(width), h(height),
+                CARD_FILL, BORDER);
+        graphics.fill(panelLeft + x(x) + 2, panelTop + y(y) + 2, panelLeft + x(x + width) - 2,
+                panelTop + y(y + 19), FlightLineTheme.HEADER);
+        graphics.fill(panelLeft + x(x) + 2, panelTop + y(y + 19), panelLeft + x(x + width) - 2,
+                panelTop + y(y + 20), CYAN);
+        graphics.fill(panelLeft + x(x) + 2, panelTop + y(y) + 2, panelLeft + x(x) + 6,
+                panelTop + y(y + 19), CYAN);
+        fittedText(graphics, title, panelLeft + x(x + 9), panelTop + y(y + 5), CYAN,
+                w(width) - 16, true);
     }
 
     private void triangle(GuiGraphicsExtractor graphics, int[] tip, int heading, int color, int size) {
@@ -1223,19 +1247,19 @@ public class AutopilotScreen extends Screen {
     }
 
     private int x(int value) {
-        return Math.round(value * scaleX);
+        return value;
     }
 
     private int y(int value) {
-        return Math.round(value * scaleY);
+        return value;
     }
 
     private int w(int value) {
-        return Math.max(1, Math.round(value * scaleX));
+        return Math.max(1, value);
     }
 
     private int h(int value) {
-        return Math.max(1, Math.round(value * scaleY));
+        return Math.max(1, value);
     }
 
     private String fit(String text, int maxWidth) {
@@ -1329,6 +1353,7 @@ public class AutopilotScreen extends Screen {
     @Override
     public void onClose() {
         if (headingBox != null) saveAutopilotValues();
+        if (activePage == 2 && thresholdXBox != null) saveIlsValues();
         ClientPlayNetworking.send(new ConfigureAutopilotPayload(
                 engaged, cachedHeading, cachedAltitude, cachedVs, cachedSpeed
         ));

@@ -63,6 +63,7 @@ public final class FlightController {
     private static final Set<UUID> FLIGHT_DISABLED = new HashSet<>();
     private static final Map<UUID, AircraftType> PLAYER_AIRCRAFT = new ConcurrentHashMap<>();
     private static final Map<ResourceKey<Level>, RadarSnapshot> RADAR_SNAPSHOTS = new ConcurrentHashMap<>();
+    private static final Map<ResourceKey<Level>, ForcedWindshear> FORCED_WINDSHEARS = new ConcurrentHashMap<>();
 
     private FlightController() {
     }
@@ -969,6 +970,22 @@ public final class FlightController {
     }
 
     /**
+     * Operator-only debug override. The override is scoped to the executing player's dimension and
+     * only arms during storm weather; sessions still receive the event through updateWeather.
+     */
+    public static boolean forceWindshear(ServerPlayer player, int durationTicks) {
+        if (!(player.level() instanceof ServerLevel level) || durationTicks <= 0 || !level.isThundering()) {
+            return false;
+        }
+        FORCED_WINDSHEARS.put(level.dimension(), new ForcedWindshear(durationTicks, null));
+        return true;
+    }
+
+    public static void clearForcedWindshear(ServerPlayer player) {
+        FORCED_WINDSHEARS.remove(player.level().dimension());
+    }
+
+    /**
      * Operator-only debug injection. Everything is applied here on the server so the client can
      * never write emergency state directly, and each engine scenario targets exactly one slot.
      */
@@ -1243,6 +1260,14 @@ public final class FlightController {
             }
             sendState(player, session, true);
         }
+        FORCED_WINDSHEARS.forEach((dimension, forced) -> {
+            int remaining = forced.remainingTicks() - 1;
+            if (remaining > 0) {
+                FORCED_WINDSHEARS.put(dimension, new ForcedWindshear(remaining, forced.severity()));
+            } else {
+                FORCED_WINDSHEARS.remove(dimension, forced);
+            }
+        });
     }
 
     public static void handleMobCollision(ServerPlayer player, net.minecraft.world.entity.Mob mob,
@@ -1974,10 +1999,12 @@ public final class FlightController {
                     70 + (int) Math.round(22.0 * session.windShearSeverity));
             if (session.windShearTicks == 0) session.windShearSeverity = 0.0;
         }
-        if (WeatherSimulation.isWindshearEvent(player.level().isThundering(), gameTime, seed)) {
+        ForcedWindshear forced = FORCED_WINDSHEARS.get(player.level().dimension());
+        if (WeatherSimulation.shouldStartWindshear(player.level().isThundering(), gameTime, seed,
+                forced != null)) {
             session.windShearTicks = 140;
-            session.windShearSeverity = 0.55 + 0.45
-                    * Math.min(1.0, conditions.gustKnots() / 70.0);
+            session.windShearSeverity = forced != null && forced.severity() != null
+                    ? forced.severity() : WeatherSimulation.windshearSeverity(conditions.gustKnots());
             session.turbulencePercent = Math.max(session.turbulencePercent, 88);
             session.gustKnots = Math.max(session.gustKnots, conditions.gustKnots() + 15);
         }
@@ -2579,6 +2606,9 @@ public final class FlightController {
     }
 
     private record RadarSnapshot(long tick, List<FlightRadarPayload.Contact> contacts) {
+    }
+
+    private record ForcedWindshear(int remainingTicks, @Nullable Double severity) {
     }
 
     private static final class Session {

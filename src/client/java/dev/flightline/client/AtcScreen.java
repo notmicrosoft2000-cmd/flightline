@@ -5,8 +5,8 @@ import dev.flightline.network.FlightRadarPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -22,12 +22,12 @@ public final class AtcScreen extends Screen {
 
     private static final int BASE_WIDTH = 520;
     private static final int BASE_HEIGHT = 360;
-    private static final int TEXT = 0xFFDCE8EE;
-    private static final int MUTED = 0xFF8198A3;
-    private static final int CYAN = 0xFF72E6F5;
-    private static final int GREEN = 0xFF75E6A5;
-    private static final int AMBER = 0xFFFFCE52;
-    private static final int PLAYER = 0xFF6BCBFF;
+    private static final int TEXT = FlightLineTheme.PAPER;
+    private static final int MUTED = FlightLineTheme.MUTED;
+    private static final int CYAN = FlightLineTheme.CYAN;
+    private static final int GREEN = FlightLineTheme.GREEN;
+    private static final int AMBER = FlightLineTheme.AMBER;
+    private static final int PLAYER = FlightLineTheme.BLUE;
 
     private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int selectedEntityId = FlightLineClient.atcSelectedTarget();
@@ -42,15 +42,13 @@ public final class AtcScreen extends Screen {
     private int listWidth;
     private int visibleRows;
     private int rowHeight;
-    private float scaleX;
-    private float scaleY;
     private Filter filter = Filter.ALL;
     private boolean selectingLead;
     private boolean closing;
     private float openProgress;
     private long lastFrameNanos = System.nanoTime();
     private String status = "Select a contact, then issue a clearance or order.";
-    private @Nullable Button cameraButton;
+    private @Nullable AbstractWidget cameraButton;
     private @Nullable EditBox headingInput;
     private @Nullable EditBox altitudeInput;
     private @Nullable EditBox speedInput;
@@ -67,8 +65,6 @@ public final class AtcScreen extends Screen {
         panelHeight = BASE_HEIGHT;
         panelLeft = 8;
         panelTop = 8;
-        scaleX = 1.0f;
-        scaleY = 1.0f;
         rowHeight = 30;
         listLeft = x(12);
         listTop = y(54);
@@ -85,22 +81,21 @@ public final class AtcScreen extends Screen {
         addRenderableWidget(tabButton("ALL", 0, 12, 58, () -> setFilter(Filter.ALL)));
         addRenderableWidget(tabButton("CREWED", 1, 74, 78, () -> setFilter(Filter.CREWED)));
         addRenderableWidget(tabButton("AUTO", 2, 156, 62, () -> setFilter(Filter.AUTO)));
-        addRenderableWidget(Button.builder(Component.literal("MAP"), button ->
-                        Minecraft.getInstance().gui.setScreen(FlightRadarScreen.forAtcSelection()))
-                .bounds(x(344), y(28), w(52), h(18)).build());
-        cameraButton = addRenderableWidget(Button.builder(Component.literal(fit(
-                cameraLabel().getString(), w(106) - 8)), button -> {
+        addRenderableWidget(FlightLineTheme.button("MAP", x(344), y(28), w(52), h(18), () ->
+                Minecraft.getInstance().gui.setScreen(FlightRadarScreen.forAtcSelection())));
+        cameraButton = addRenderableWidget(FlightLineTheme.button(
+                fit(cameraLabel().getString(), w(106) - 8), x(402), y(28), w(106), h(18), () -> {
                     if (findContact(selectedEntityId) == null) {
                         status = "Select an aircraft contact first.";
                         return;
                     }
                     FlightLineClient.toggleAtcCameraFollow(selectedEntityId);
-                    button.setMessage(Component.literal(fit(cameraLabel().getString(), button.getWidth() - 8)));
+                    cameraButton.setMessage(Component.literal(
+                            fit(cameraLabel().getString(), cameraButton.getWidth() - 8)));
                     status = FlightLineClient.isFollowingAtcTarget(selectedEntityId)
                             ? "Camera following target. Select again to stop."
                             : "Camera follow stopped.";
-                })
-                .bounds(x(402), y(28), w(106), h(18)).build());
+                }));
 
         headingInput = numberInput(318, 70, 58, "HDG", initialHeading);
         altitudeInput = numberInput(382, 70, 60, "ALT FT",
@@ -118,16 +113,14 @@ public final class AtcScreen extends Screen {
         addLeadButton(414, 172, 92);
         addOrderButton("FOLLOW LEAD", AtcOrderPayload.FOLLOW, 318, 198, 90);
         addOrderButton("RELEASE CTRL", AtcOrderPayload.RELEASE, 414, 198, 92);
-        addRenderableWidget(Button.builder(Component.literal("TCAS TEST"),
-                        button -> FlightLineClient.playTcasTest(Minecraft.getInstance()))
-                .bounds(x(318), y(232), w(188), h(20)).build());
-        addRenderableWidget(Button.builder(Component.literal("CLEAR LEAD"), button -> {
+        addRenderableWidget(FlightLineTheme.button("TCAS TEST", x(318), y(232), w(188), h(20),
+                () -> FlightLineClient.playTcasTest(Minecraft.getInstance())));
+        addRenderableWidget(FlightLineTheme.button("CLEAR LEAD", x(318), y(258), w(188), h(20), () -> {
                     leadEntityId = -1;
                     status = "Follow lead cleared.";
-                })
-                .bounds(x(318), y(258), w(188), h(20)).build());
-        addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
-                .bounds(x(418), y(328), w(88), h(18)).build());
+                }));
+        addRenderableWidget(FlightLineTheme.button("CLOSE", x(418), y(328), w(88), h(18),
+                this::onClose));
     }
 
     private void setFilter(Filter next) {
@@ -142,11 +135,13 @@ public final class AtcScreen extends Screen {
         init();
     }
 
-    private Button tabButton(String label, int filterIndex, int baseX, int baseWidth, Runnable action) {
+    private net.minecraft.client.gui.components.AbstractWidget tabButton(String label, int filterIndex,
+                                                                         int baseX, int baseWidth,
+                                                                         Runnable action) {
         boolean selected = filter.ordinal() == filterIndex;
         String text = selected ? "[" + label + "]" : label;
-        return Button.builder(Component.literal(fit(text, w(baseWidth) - 8)), button -> action.run())
-                .bounds(x(baseX), y(28), w(baseWidth), h(18)).build();
+        return FlightLineTheme.button(fit(text, w(baseWidth) - 8), x(baseX), y(28), w(baseWidth),
+                h(18), action);
     }
 
     private EditBox numberInput(int baseX, int baseY, int baseWidth, String hint, int value) {
@@ -159,22 +154,23 @@ public final class AtcScreen extends Screen {
     }
 
     private void addOrderButton(String label, int order, int baseX, int baseY, int baseWidth) {
-        addRenderableWidget(Button.builder(Component.literal(fit(label, w(baseWidth) - 8)),
-                        button -> sendOrder(order))
-                .bounds(x(baseX), y(baseY), w(baseWidth), h(22)).build());
+        addRenderableWidget(FlightLineTheme.button(fit(label, w(baseWidth) - 8), x(baseX), y(baseY),
+                w(baseWidth), h(22), () -> sendOrder(order)));
     }
 
     private void addLeadButton(int baseX, int baseY, int baseWidth) {
-        addRenderableWidget(Button.builder(Component.literal(fit(
-                        selectingLead ? "CANCEL LEAD" : "SELECT LEAD", w(baseWidth) - 8)),
-                        button -> {
-                            selectingLead = !selectingLead;
-                            button.setMessage(Component.literal(fit(
-                                    selectingLead ? "CANCEL LEAD" : "SELECT LEAD", button.getWidth() - 8)));
-                            status = selectingLead ? "Choose an aircraft from the list as the follow lead."
-                                    : "Lead selection cancelled.";
-                        })
-                .bounds(x(baseX), y(baseY), w(baseWidth), h(22)).build());
+        var holder = new net.minecraft.client.gui.components.AbstractWidget[1];
+        holder[0] = FlightLineTheme.button(fit(
+                        selectingLead ? "CANCEL LEAD" : "SELECT LEAD", w(baseWidth) - 8),
+                x(baseX), y(baseY), w(baseWidth), h(22), () -> {
+                    selectingLead = !selectingLead;
+                    holder[0].setMessage(Component.literal(fit(
+                            selectingLead ? "CANCEL LEAD" : "SELECT LEAD",
+                            holder[0].getWidth() - 8)));
+                    status = selectingLead ? "Choose an aircraft from the list as the follow lead."
+                            : "Lead selection cancelled.";
+                });
+        addRenderableWidget(holder[0]);
     }
 
     private void sendOrder(int order) {
@@ -245,19 +241,12 @@ public final class AtcScreen extends Screen {
 
         scaler.update(width, height);
         scaler.push(graphics);
-        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
-        var pose = graphics.pose();
-        pose.pushMatrix();
-        float scale = 0.96f + openProgress * 0.04f;
-        pose.translate(scaler.width() / 2.0f, scaler.height() / 2.0f);
-        pose.scale(scale, scale);
-        pose.translate(-scaler.width() / 2.0f, -scaler.height() / 2.0f);
+        scaler.scrim(graphics);
 
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
-        graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 24, 0xFF1C2733);
-        graphics.centeredText(font, fit("APPROACH CONTROL  ·  TRAFFIC CONSOLE", panelWidth - 16),
-                panelLeft + panelWidth / 2, panelTop + 7, CYAN);
+        FlightLineTheme.panel(graphics, panelLeft, panelTop, panelWidth, panelHeight,
+                FlightLineTheme.PANEL, FlightLineTheme.STONE);
+        FlightLineTheme.header(graphics, font, panelLeft + 4, panelTop + 4, panelWidth - 8, 24,
+                "02", "APPROACH CONTROL  ·  TRAFFIC CONSOLE", AMBER);
 
         List<FlightRadarPayload.Contact> contacts = filteredContacts();
         if (selectedEntityId >= 0 && !contacts.isEmpty()
@@ -277,17 +266,19 @@ public final class AtcScreen extends Screen {
                 panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 12, MUTED, true);
 
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
-        pose.popMatrix();
         scaler.pop(graphics);
     }
 
     private void drawContactList(GuiGraphicsExtractor graphics, List<FlightRadarPayload.Contact> contacts) {
         int cardTop = y(54);
         int cardHeight = h(280);
-        graphics.fill(listLeft, cardTop, listLeft + listWidth, cardTop + cardHeight, 0xE3101920);
-        graphics.outline(listLeft, cardTop, listWidth, cardHeight, 0xFF2A3D49);
+        FlightLineTheme.panel(graphics, listLeft, cardTop, listWidth, cardHeight,
+                FlightLineTheme.CARD, FlightLineTheme.STONE);
+        graphics.fill(listLeft + 2, cardTop + 2, listLeft + listWidth - 2, cardTop + 16,
+                FlightLineTheme.HEADER);
+        graphics.fill(listLeft + 2, cardTop + 16, listLeft + listWidth - 2, cardTop + 17, CYAN);
         graphics.text(font, fit("CONTACT BOARD  ·  " + filter.name() + "  ·  " + contacts.size(),
-                listWidth - 12), listLeft + 6, cardTop + 5, CYAN, true);
+                listWidth - 12), listLeft + 7, cardTop + 5, CYAN, false);
         int shown = Math.min(visibleRows, Math.max(0, contacts.size() - contactOffset));
         for (int i = 0; i < shown; i++) {
             FlightRadarPayload.Contact contact = contacts.get(i + contactOffset);
@@ -295,8 +286,10 @@ public final class AtcScreen extends Screen {
             boolean selected = contact.entityId() == selectedEntityId;
             boolean lead = contact.entityId() == leadEntityId;
             if (selected || lead) {
-                graphics.fill(listLeft + 3, rowY - 2, listLeft + listWidth - 3, rowY + rowHeight - 3,
-                        selected ? 0x8052B8C8 : 0x805982AB);
+                graphics.fill(listLeft + 4, rowY - 2, listLeft + listWidth - 4, rowY + rowHeight - 3,
+                        selected ? 0x8036E6FF : 0x806CC349);
+                graphics.fill(listLeft + 4, rowY - 2, listLeft + 7, rowY + rowHeight - 3,
+                        selected ? CYAN : GREEN);
             }
             int roleColor = contact.player() ? PLAYER : GREEN;
             String name = String.format(Locale.ROOT, "%s  %s",
@@ -321,9 +314,11 @@ public final class AtcScreen extends Screen {
         int cardY = y(54);
         int cardWidth = w(200);
         int cardHeight = h(280);
-        graphics.fill(cardX, cardY, cardX + cardWidth, cardY + cardHeight, 0xE3101920);
-        graphics.outline(cardX, cardY, cardWidth, cardHeight, 0xFF2A3D49);
-        graphics.text(font, fit("CLEARANCE ENTRY", cardWidth - 16), cardX + 8, cardY + 5, AMBER, true);
+        FlightLineTheme.panel(graphics, cardX, cardY, cardWidth, cardHeight,
+                FlightLineTheme.CARD, FlightLineTheme.STONE);
+        graphics.fill(cardX + 2, cardY + 2, cardX + cardWidth - 2, cardY + 18, FlightLineTheme.HEADER);
+        graphics.fill(cardX + 2, cardY + 18, cardX + cardWidth - 2, cardY + 19, AMBER);
+        graphics.text(font, fit("CLEARANCE ENTRY", cardWidth - 16), cardX + 9, cardY + 5, AMBER, false);
         FlightRadarPayload.Contact selected = findContact(selectedEntityId);
         String target = selected == null ? "TARGET: NONE"
                 : "TARGET: " + selected.name() + (selected.player() ? "  PILOTED" : "  AUTO TRAFFIC");
@@ -425,10 +420,10 @@ public final class AtcScreen extends Screen {
         return fitted;
     }
 
-    private int x(int base) { return panelLeft + Math.round(base * scaleX); }
-    private int y(int base) { return panelTop + Math.round(base * scaleY); }
-    private int w(int base) { return Math.max(1, Math.round(base * scaleX)); }
-    private int h(int base) { return Math.max(1, Math.round(base * scaleY)); }
+    private int x(int base) { return panelLeft + base; }
+    private int y(int base) { return panelTop + base; }
+    private int w(int base) { return Math.max(1, base); }
+    private int h(int base) { return Math.max(1, base); }
 
     private EditBox headingInput() { return java.util.Objects.requireNonNull(headingInput); }
     private EditBox altitudeInput() { return java.util.Objects.requireNonNull(altitudeInput); }

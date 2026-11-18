@@ -6,7 +6,6 @@ import dev.flightline.network.FlightRadarPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
@@ -103,16 +102,22 @@ public final class FlightRadarScreen extends Screen {
     protected void init() {
         super.init();
         scaler.update(width, height);
-        panelWidth = Math.max(Math.min(300, scaler.width() - 16),
-                Math.min(rememberedWidth, scaler.width() - 16));
-        panelHeight = Math.max(Math.min(220, scaler.height() - 16),
-                Math.min(rememberedHeight, scaler.height() - 16));
+        int minLeft = viewportMinX();
+        int maxRight = viewportMaxX();
+        int minTop = viewportMinY();
+        int maxBottom = viewportMaxY();
+        int availableWidth = Math.max(80, maxRight - minLeft);
+        int availableHeight = Math.max(80, maxBottom - minTop);
+        panelWidth = Math.max(Math.min(300, availableWidth),
+                Math.min(rememberedWidth, availableWidth));
+        panelHeight = Math.max(Math.min(220, availableHeight),
+                Math.min(rememberedHeight, availableHeight));
         if (rememberedLeft < 0 || rememberedTop < 0) {
-            panelLeft = (scaler.width() - panelWidth) / 2;
-            panelTop = (scaler.height() - panelHeight) / 2;
+            panelLeft = minLeft + (availableWidth - panelWidth) / 2;
+            panelTop = minTop + (availableHeight - panelHeight) / 2;
         } else {
-            panelLeft = Math.max(4, Math.min(scaler.width() - panelWidth - 4, rememberedLeft));
-            panelTop = Math.max(4, Math.min(scaler.height() - panelHeight - 4, rememberedTop));
+            panelLeft = Math.max(minLeft, Math.min(maxRight - panelWidth, rememberedLeft));
+            panelTop = Math.max(minTop, Math.min(maxBottom - panelHeight, rememberedTop));
         }
         rememberedLeft = panelLeft;
         rememberedTop = panelTop;
@@ -133,42 +138,66 @@ public final class FlightRadarScreen extends Screen {
                 fieldY, fieldWidth, "HDG", selectedHeading);
         int setButtonX = compactLayout ? panelLeft + panelWidth - 68 : panelLeft + 244;
         int setButtonWidth = compactLayout ? 56 : Math.max(58, panelWidth - 324);
-        addRenderableWidget(Button.builder(Component.literal("SET ILS"), button -> setIls())
-                .bounds(setButtonX, fieldY, setButtonWidth, 20).build());
+        addRenderableWidget(FlightLineTheme.button("SET ILS", setButtonX, fieldY,
+                setButtonWidth, 20, this::setIls));
         if (compactLayout) {
             int buttonGap = 3;
             int btnWidth = Math.max(40, (panelWidth - 24 - buttonGap * 4) / 5);
             int btnY = panelTop + 26;
-            addRenderableWidget(Button.builder(thresholdPickButtonLabel(), button -> toggleThresholdPickMode(button))
-                    .bounds(panelLeft + 12, btnY, btnWidth, 18).build());
-            addRenderableWidget(Button.builder(Component.literal("USE"), button -> useSelectedContact())
-                    .bounds(panelLeft + 12 + btnWidth + buttonGap, btnY, btnWidth, 18).build());
-            addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG" : "NORTH"),
-                    button -> toggleOrientation(button)).bounds(panelLeft + 12 + (btnWidth + buttonGap) * 2, btnY, btnWidth, 18).build());
-            addRenderableWidget(Button.builder(weatherLayerLabel(), button -> toggleWeatherLayer(button))
-                    .bounds(panelLeft + 12 + (btnWidth + buttonGap) * 3, btnY, btnWidth, 18).build());
-            addRenderableWidget(Button.builder(rangeLabel(), button -> changeRange(1))
-                    .bounds(panelLeft + 12 + (btnWidth + buttonGap) * 4, btnY, btnWidth, 18).build());
-            addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
-                    .bounds(panelLeft + panelWidth - 68, panelTop + panelHeight - 78, 56, 18).build());
+            var pick = new AbstractWidget[1];
+            pick[0] = FlightLineTheme.button(thresholdPickButtonLabel().getString(),
+                    panelLeft + 12, btnY, btnWidth, 18,
+                    () -> toggleThresholdPickMode(pick[0]));
+            addRenderableWidget(pick[0]);
+            addRenderableWidget(FlightLineTheme.button("USE",
+                    panelLeft + 12 + btnWidth + buttonGap, btnY, btnWidth, 18,
+                    this::useSelectedContact));
+            var orientation = new AbstractWidget[1];
+            orientation[0] = FlightLineTheme.button(headingUp ? "HDG" : "NORTH",
+                    panelLeft + 12 + (btnWidth + buttonGap) * 2, btnY, btnWidth, 18,
+                    () -> toggleOrientation(orientation[0]));
+            addRenderableWidget(orientation[0]);
+            var weather = new AbstractWidget[1];
+            weather[0] = FlightLineTheme.button(weatherLayerLabel().getString(),
+                    panelLeft + 12 + (btnWidth + buttonGap) * 3, btnY, btnWidth, 18,
+                    () -> toggleWeatherLayer(weather[0]));
+            addRenderableWidget(weather[0]);
+            addRenderableWidget(FlightLineTheme.button(rangeLabel().getString(),
+                    panelLeft + 12 + (btnWidth + buttonGap) * 4, btnY, btnWidth, 18,
+                    () -> changeRange(1)));
+            addRenderableWidget(FlightLineTheme.button("CLOSE",
+                    panelLeft + panelWidth - 68, panelTop + panelHeight - 78, 56, 18,
+                    this::onClose));
         } else {
-            addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
-                    .bounds(panelLeft + panelWidth - 222, panelTop + 26, 104, 18).build());
-            addRenderableWidget(Button.builder(Component.literal("USE CONTACT"), button -> useSelectedContact())
-                    .bounds(panelLeft + panelWidth - 112, panelTop + 26, 100, 18).build());
-            addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG UP" : "NORTH UP"),
-                    button -> toggleOrientation(button)).bounds(panelLeft + 12, panelTop + 26, 78, 18).build());
-            addRenderableWidget(Button.builder(weatherLayerLabel(), button -> toggleWeatherLayer(button))
-                    .bounds(panelLeft + 96, panelTop + 26, 74, 18).build());
-            addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
-                    .bounds(panelLeft + panelWidth - 72, fieldY, 60, 20).build());
-            addRenderableWidget(Button.builder(Component.literal("RANGE -"), button -> changeRange(-1))
-                    .bounds(panelLeft + panelWidth - 174, panelTop + panelHeight - 84, 76, 18).build());
-            addRenderableWidget(Button.builder(Component.literal("RANGE +"), button -> changeRange(1))
-                    .bounds(panelLeft + panelWidth - 94, panelTop + panelHeight - 84, 82, 18).build());
-            addRenderableWidget(Button.builder(Component.literal("TCAS TEST"),
-                            button -> FlightLineClient.playTcasTest(Minecraft.getInstance()))
-                    .bounds(panelLeft + panelWidth - 174, panelTop + panelHeight - 108, 164, 18).build());
+            var pick = new AbstractWidget[1];
+            pick[0] = FlightLineTheme.button(pickThresholdLabel().getString(),
+                    panelLeft + panelWidth - 222, panelTop + 26, 104, 18,
+                    () -> toggleThresholdPickMode(pick[0]));
+            addRenderableWidget(pick[0]);
+            addRenderableWidget(FlightLineTheme.button("USE CONTACT",
+                    panelLeft + panelWidth - 112, panelTop + 26, 100, 18,
+                    this::useSelectedContact));
+            var orientation = new AbstractWidget[1];
+            orientation[0] = FlightLineTheme.button(headingUp ? "HDG UP" : "NORTH UP",
+                    panelLeft + 12, panelTop + 26, 78, 18,
+                    () -> toggleOrientation(orientation[0]));
+            addRenderableWidget(orientation[0]);
+            var weather = new AbstractWidget[1];
+            weather[0] = FlightLineTheme.button(weatherLayerLabel().getString(),
+                    panelLeft + 96, panelTop + 26, 74, 18,
+                    () -> toggleWeatherLayer(weather[0]));
+            addRenderableWidget(weather[0]);
+            addRenderableWidget(FlightLineTheme.button("CLOSE",
+                    panelLeft + panelWidth - 72, fieldY, 60, 20, this::onClose));
+            addRenderableWidget(FlightLineTheme.button("RANGE -",
+                    panelLeft + panelWidth - 174, panelTop + panelHeight - 84, 76, 18,
+                    () -> changeRange(-1)));
+            addRenderableWidget(FlightLineTheme.button("RANGE +",
+                    panelLeft + panelWidth - 94, panelTop + panelHeight - 84, 82, 18,
+                    () -> changeRange(1)));
+            addRenderableWidget(FlightLineTheme.button("TCAS TEST",
+                    panelLeft + panelWidth - 174, panelTop + panelHeight - 108, 164, 18,
+                    () -> FlightLineClient.playTcasTest(Minecraft.getInstance())));
         }
     }
 
@@ -186,20 +215,23 @@ public final class FlightRadarScreen extends Screen {
         animateRadar();
         scaler.update(width, height);
         scaler.push(graphics);
-        graphics.fill(0, 0, scaler.width(), scaler.height(), 0xB8000000);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
-        int frameColor = ((long) (System.nanoTime() / 750_000_000L) & 1L) == 0L
-                ? 0xFF4EB8C8 : 0xFF347988;
-        graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, frameColor);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 24, 0xFF1C2733);
-        graphics.centeredText(font, atcSelectionMode ? "SELECT ATC TARGET  ·  AIRCRAFT SCOPE"
-                        : "FLIGHT RADAR  ·  TCAS / TRAFFIC",
-                panelLeft + panelWidth / 2, panelTop + 7, 0xFF72E6F5);
+        scaler.scrim(graphics);
+        FlightLineTheme.panel(graphics, panelLeft, panelTop, panelWidth, panelHeight,
+                FlightLineTheme.PANEL, FlightLineTheme.STONE);
+        // TCAS is advisory traffic, not an alarm: the scope header stays calm and green.
+        int accent = FlightLineTheme.GREEN;
+        graphics.fill(panelLeft + 4, panelTop + 4, panelLeft + panelWidth - 4, panelTop + 6, accent);
+        FlightLineTheme.header(graphics, font, panelLeft + 4, panelTop + 6, panelWidth - 8, 20,
+                "04", atcSelectionMode ? "SELECT ATC TARGET  ·  AIRCRAFT SCOPE"
+                        : "FLIGHT RADAR  ·  TCAS / TRAFFIC", accent);
         int revealWidth = Math.round(panelWidth * openProgress);
-        graphics.fill(panelLeft, panelTop + 23, panelLeft + revealWidth, panelTop + 24, 0xFF72E6F5);
+        graphics.fill(panelLeft + 4, panelTop + 26, panelLeft + 4 + revealWidth, panelTop + 27, accent);
 
-        graphics.fill(scopeLeft, scopeTop, scopeLeft + scopeWidth, scopeTop + scopeHeight, 0xFF08130F);
-        graphics.outline(scopeLeft, scopeTop, scopeWidth, scopeHeight, 0xFF426B5C);
+        graphics.fill(scopeLeft, scopeTop, scopeLeft + scopeWidth, scopeTop + scopeHeight,
+                FlightLineTheme.SCOPE);
+        graphics.outline(scopeLeft, scopeTop, scopeWidth, scopeHeight, FlightLineTheme.CYAN);
+        graphics.outline(scopeLeft + 2, scopeTop + 2, scopeWidth - 4, scopeHeight - 4,
+                FlightLineTheme.STONE);
         int cx = scopeLeft + scopeWidth / 2;
         int cy = scopeTop + scopeHeight / 2;
         int radius = Math.max(14, Math.min(scopeWidth, scopeHeight) / 2 - 12);
@@ -210,37 +242,47 @@ public final class FlightRadarScreen extends Screen {
                     ownX(), ownZ(), headingUp, FlightHud.radarOwnHeadingDegrees(),
                     gameTime, WeatherDisplay.CELL_SEED, FlightHud.weatherGuidance());
         }
-        drawLine(graphics, scopeLeft + 1, cy, scopeLeft + scopeWidth - 1, cy, 0xFF244538);
-        drawLine(graphics, cx, scopeTop + 1, cx, scopeTop + scopeHeight - 1, 0xFF244538);
+        drawLine(graphics, scopeLeft + 3, cy, scopeLeft + scopeWidth - 3, cy, 0xFF315E50);
+        drawLine(graphics, cx, scopeTop + 3, cx, scopeTop + scopeHeight - 3, 0xFF315E50);
         for (int ring = 1; ring <= 3; ring++) {
             int r = radius * ring / 3;
-            drawCircle(graphics, cx, cy, r, 0xFF315E50);
-            graphics.text(font, String.format(Locale.ROOT, "%.0f NM",
-                    RANGES[rangeIndex] * ring / 30.0f), cx + 2, cy - r - 4, 0x9956B9D2, false);
+            drawCircle(graphics, cx, cy, r, ring == 3 ? 0xFF4E8E7C : 0x804E8E7C);
+            String rangeText = String.format(Locale.ROOT, "%.0f NM",
+                    RANGES[rangeIndex] * ring / 30.0f);
+            graphics.fill(cx + 1, cy - r - 5, cx + 3 + font.width(rangeText), cy - r + 4,
+                    FlightLineTheme.VOID);
+            graphics.text(font, rangeText, cx + 2, cy - r - 4, FlightLineTheme.TEXT_DIM, false);
         }
         double scanRadians = Math.toRadians(scanAngle);
         int scanX = cx + (int) Math.round(Math.sin(scanRadians) * radius);
         int scanY = cy - (int) Math.round(Math.cos(scanRadians) * radius);
-        for (int trail = 5; trail >= 1; trail--) {
-            double trailingRadians = scanRadians - Math.toRadians(trail * 3.0);
+        for (int trail = 3; trail >= 1; trail--) {
+            double trailingRadians = scanRadians - Math.toRadians(trail * 4.0);
             int trailX = cx + (int) Math.round(Math.sin(trailingRadians) * radius);
             int trailY = cy - (int) Math.round(Math.cos(trailingRadians) * radius);
-            drawLine(graphics, cx, cy, trailX, trailY, trail <= 2 ? 0x604EA87B : 0x304EA87B);
+            drawLine(graphics, cx, cy, trailX, trailY,
+                    trail <= 2 ? 0x606CC349 : 0x303C8527);
         }
-        drawLine(graphics, cx, cy, scanX, scanY, 0xFF65F2A5);
+        drawLine(graphics, cx, cy, scanX, scanY, FlightLineTheme.GREEN);
 
         if (!compactLayout) {
+            graphics.fill(scopeLeft + 3, scopeTop + 3, scopeLeft + 82, scopeTop + 16,
+                    FlightLineTheme.VOID);
             if (headingUp) {
-                graphics.text(font, "HDG UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
+                graphics.text(font, "HDG UP", scopeLeft + 5, scopeTop + 4, FlightLineTheme.CYAN, false);
                 graphics.text(font, String.format(Locale.ROOT, "%03.0f°", FlightHud.radarOwnHeadingDegrees()),
-                        cx - 10, scopeTop + 3, 0xFFB6C8D1, true);
+                        cx - 10, scopeTop + 4, FlightLineTheme.TEXT_DIM, false);
             } else {
-                graphics.text(font, "NORTH UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
-                graphics.text(font, "N", cx - 2, scopeTop + 3, 0xFFB6C8D1, true);
+                graphics.text(font, "NORTH UP", scopeLeft + 5, scopeTop + 4, FlightLineTheme.CYAN, false);
+                graphics.text(font, "N", cx - 2, scopeTop + 4, FlightLineTheme.PAPER, false);
             }
         }
-        graphics.text(font, String.format(Locale.ROOT, "RANGE %.0f NM", RANGES[rangeIndex] / 10.0f),
-                scopeLeft + 4, scopeTop + scopeHeight - 11, 0xFF86B5A4, true);
+        String radarRange = String.format(Locale.ROOT, "RANGE %.0f NM", RANGES[rangeIndex] / 10.0f);
+        graphics.fill(scopeLeft + 3, scopeTop + scopeHeight - 15,
+                scopeLeft + 7 + font.width(radarRange), scopeTop + scopeHeight - 3,
+                FlightLineTheme.VOID);
+        graphics.text(font, radarRange, scopeLeft + 5, scopeTop + scopeHeight - 14,
+                FlightLineTheme.TEXT_DIM, false);
 
         List<FlightRadarPayload.Contact> contacts = FlightHud.radarContacts();
         for (FlightRadarPayload.Contact contact : contacts) {
@@ -286,13 +328,15 @@ public final class FlightRadarScreen extends Screen {
             int detailX = scopeLeft + scopeWidth + 10;
             int detailWidth = panelLeft + panelWidth - 10 - detailX;
             graphics.text(font, "TRAFFIC " + contacts.size(), detailX, scopeTop + 2,
-                    0xFF72E6F5, true);
+                    FlightLineTheme.CYAN, true);
             graphics.text(font, "OWN " + FlightHud.currentSpeedKnots() + "KT  "
-                    + FlightHud.radarOwnAltitudeFeet() + "FT", detailX, scopeTop + 13, 0xFFD5E0E8, true);
+                    + FlightHud.radarOwnAltitudeFeet() + "FT", detailX, scopeTop + 13,
+                    FlightLineTheme.PAPER, true);
             graphics.text(font, String.format(Locale.ROOT, "RANGE %.0f NM  HDG %03.0f°",
                     RANGES[rangeIndex] / 10.0f, FlightHud.radarOwnHeadingDegrees()),
-                    detailX, scopeTop + 24, 0xFF9BAAB1, true);
-            graphics.horizontalLine(detailX, detailX + detailWidth, scopeTop + 36, 0xFF426B5C);
+                    detailX, scopeTop + 24, FlightLineTheme.MUTED, true);
+            graphics.horizontalLine(detailX, detailX + detailWidth, scopeTop + 36,
+                    FlightLineTheme.CYAN);
 
             int listY = scopeTop + 42;
             int availableRows = Math.max(0, (panelTop + panelHeight - 112 - listY) / 18);
@@ -300,7 +344,8 @@ public final class FlightRadarScreen extends Screen {
             int shown = Math.min(availableRows, Math.max(0, contacts.size() - contactListOffset));
             for (int i = 0; i < shown; i++) {
                 FlightRadarPayload.Contact contact = contacts.get(i + contactListOffset);
-                int color = contact.player() ? 0xFF6BCBFF : contact.airborne() ? 0xFF75E6A5 : 0xFFFFCE52;
+                int color = contact.player() ? FlightLineTheme.BLUE
+                        : contact.airborne() ? FlightLineTheme.GREEN : FlightLineTheme.AMBER;
                 double rangeNm = contactRange(contact) / 10.0f;
                 String name = fit((contact.player() ? "CREW " : "AUTO ") + contact.name()
                         + String.format(Locale.ROOT, "  %.1fNM", rangeNm),
@@ -308,7 +353,8 @@ public final class FlightRadarScreen extends Screen {
                 boolean selected = contact.entityId() == selectedContactId;
                 int rowY = listY + i * 18;
                 if (selected) {
-                    graphics.fill(detailX - 2, rowY - 1, detailX + detailWidth, rowY + 17, 0x8045A7B8);
+                    graphics.fill(detailX - 2, rowY - 1, detailX + detailWidth, rowY + 17, 0x8036E6FF);
+                    graphics.fill(detailX - 2, rowY - 1, detailX + 1, rowY + 17, FlightLineTheme.CYAN);
                 }
                 graphics.text(font, name, detailX, rowY, selected ? 0xFFFFFFFF : color, true);
                 String data = String.format(Locale.ROOT, "%dKT %+dFT %03.0f° %s",
@@ -316,17 +362,17 @@ public final class FlightRadarScreen extends Screen {
                         contact.headingDegrees(),
                         contact.airborne() ? "AIR" : "GND");
                 graphics.text(font, fit(data, Math.max(24, detailWidth - 4)), detailX,
-                        rowY + 9, 0xFFB6C8D1, true);
+                        rowY + 9, FlightLineTheme.TEXT_DIM, true);
             }
             if (contacts.isEmpty()) {
-                graphics.text(font, "No traffic in range.", detailX, listY, 0xFF9BAAB1, true);
+                graphics.text(font, "No traffic in range.", detailX, listY, FlightLineTheme.MUTED, true);
             }
         } else {
             String scopeInfo = "TRAFFIC " + contacts.size()
                     + " · " + (headingUp ? "HDG" : "NORTH") + " · RANGE "
                     + String.format(Locale.ROOT, "%.0f NM", RANGES[rangeIndex] / 10.0f)
                     + " · " + FlightHud.radarOwnAltitudeFeet() + " FT";
-            graphics.text(font, fit(scopeInfo, scopeWidth - 8), scopeLeft + 4, scopeTop + 4, 0xFF72E6F5, true);
+            graphics.text(font, fit(scopeInfo, scopeWidth - 8), scopeLeft + 4, scopeTop + 4, FlightLineTheme.CYAN, true);
         }
         if (selectedContactId >= 0) {
             FlightRadarPayload.Contact selected = findContact(selectedContactId);
@@ -337,7 +383,7 @@ public final class FlightRadarScreen extends Screen {
                                 + String.format(Locale.ROOT, "%03.0f° · %.1f NM",
                                 selected.headingDegrees(), contactRange(selected) / 10.0f),
                         Math.max(1, panelWidth - 24)), panelLeft + 12, panelTop + panelHeight - 98,
-                        0xFFFFB46A, true);
+                        FlightLineTheme.AMBER, true);
             }
         }
 
@@ -345,9 +391,9 @@ public final class FlightRadarScreen extends Screen {
         graphics.text(font, "ILS THRESHOLD  X / Z / HEADING", panelLeft + 12, fieldY,
                 0xFFFF6CD9, true);
         graphics.text(font, fit(status, panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 28,
-                0xFFB6C8D1, true);
+                FlightLineTheme.TEXT_DIM, true);
         graphics.text(font, fit("DRAG HEADER TO MOVE · CORNER TO RESIZE · SCROLL SCOPE TO ZOOM",
-                panelWidth - 40), panelLeft + 12, panelTop + panelHeight - 14, 0xFF71858B, true);
+                panelWidth - 40), panelLeft + 12, panelTop + panelHeight - 14, FlightLineTheme.MUTED, true);
         drawResizeHandle(graphics);
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
         scaler.pop(graphics);
@@ -438,9 +484,9 @@ public final class FlightRadarScreen extends Screen {
             return true;
         }
         if (resizingWindow) {
-            int nextWidth = Math.max(300, Math.min(scaler.width() - panelLeft - 4,
+            int nextWidth = Math.max(300, Math.min(viewportMaxX() - panelLeft,
                     resizeStartWidth + (int) Math.round(event.x()) - resizeStartX));
-            int nextHeight = Math.max(220, Math.min(scaler.height() - panelTop - 4,
+            int nextHeight = Math.max(220, Math.min(viewportMaxY() - panelTop,
                     resizeStartHeight + (int) Math.round(event.y()) - resizeStartY));
             if (nextWidth != panelWidth || nextHeight != panelHeight) {
                 saveIlsInputs();
@@ -507,7 +553,7 @@ public final class FlightRadarScreen extends Screen {
         rangeIndex = Math.max(0, Math.min(RANGES.length - 1, rangeIndex + delta));
         if (compactLayout) {
             for (var child : children()) {
-                if (child instanceof Button button && button.getMessage().getString().startsWith("RNG")) {
+                if (child instanceof AbstractWidget button && button.getMessage().getString().startsWith("RNG")) {
                     button.setMessage(rangeLabel());
                 }
             }
@@ -545,7 +591,7 @@ public final class FlightRadarScreen extends Screen {
         return (int) Math.round(Math.hypot(contact.x() - ownX(), contact.z() - ownZ()));
     }
 
-    private void toggleOrientation(Button button) {
+    private void toggleOrientation(AbstractWidget button) {
         headingUp = !headingUp;
         button.setMessage(Component.literal(headingUp ? "HDG UP" : "NORTH UP"));
     }
@@ -554,7 +600,7 @@ public final class FlightRadarScreen extends Screen {
         return Component.literal(weatherLayer ? "WX ON" : "WX OFF");
     }
 
-    private void toggleWeatherLayer(Button button) {
+    private void toggleWeatherLayer(AbstractWidget button) {
         weatherLayer = !weatherLayer;
         button.setMessage(weatherLayerLabel());
         status = weatherLayer ? "Weather cell layer visible under traffic."
@@ -594,7 +640,7 @@ public final class FlightRadarScreen extends Screen {
         int x = panelLeft + panelWidth - 12;
         int y = panelTop + panelHeight - 12;
         for (int line = 0; line < 3; line++) {
-            drawLine(graphics, x + 5 + line * 3, y + 11, x + 11, y + 5 + line * 3, 0xFF72E6F5);
+            drawLine(graphics, x + 5 + line * 3, y + 11, x + 11, y + 5 + line * 3, FlightLineTheme.CYAN);
         }
     }
 
@@ -603,9 +649,25 @@ public final class FlightRadarScreen extends Screen {
                 && y >= panelTop + panelHeight - 16 && y <= panelTop + panelHeight;
     }
 
+    private int viewportMinX() {
+        return Math.round(scaler.logicalLeft()) + 4;
+    }
+
+    private int viewportMaxX() {
+        return (int) Math.floor(scaler.logicalRight()) - 4;
+    }
+
+    private int viewportMinY() {
+        return Math.round(scaler.logicalTop()) + 4;
+    }
+
+    private int viewportMaxY() {
+        return (int) Math.floor(scaler.logicalBottom()) - 4;
+    }
+
     private void moveWindow(int left, int top) {
-        int nextLeft = Math.max(4, Math.min(scaler.width() - panelWidth - 4, left));
-        int nextTop = Math.max(4, Math.min(scaler.height() - panelHeight - 4, top));
+        int nextLeft = Math.max(viewportMinX(), Math.min(viewportMaxX() - panelWidth, left));
+        int nextTop = Math.max(viewportMinY(), Math.min(viewportMaxY() - panelHeight, top));
         int dx = nextLeft - panelLeft;
         int dy = nextTop - panelTop;
         if (dx == 0 && dy == 0) return;
@@ -699,7 +761,7 @@ public final class FlightRadarScreen extends Screen {
                 : (thresholdPickMode ? "CANCEL PICK" : "PICK THRESHOLD"));
     }
 
-    private void toggleThresholdPickMode(Button button) {
+    private void toggleThresholdPickMode(AbstractWidget button) {
         thresholdPickMode = !thresholdPickMode;
         button.setMessage(thresholdPickButtonLabel());
         status = thresholdPickMode
@@ -748,11 +810,11 @@ public final class FlightRadarScreen extends Screen {
 
         if (isRa) {
             // Resolution Advisory (RA): Red solid square
-            graphics.fill(x - 3, y - 3, x + 4, y + 4, 0xFFFF2525);
+            graphics.fill(x - 3, y - 3, x + 4, y + 4, FlightLineTheme.TCAS_RA);
             graphics.outline(x - 4, y - 4, 8, 8, 0xFFFFFFFF);
         } else if (isTa) {
             // Traffic Advisory (TA): Amber solid circle
-            drawFilledCircle(graphics, x, y, 3, 0xFFFFB000);
+            drawFilledCircle(graphics, x, y, 3, FlightLineTheme.TCAS_TA);
             drawCircle(graphics, x, y, 4, 0xFFFFFFFF);
         } else if (isProximate) {
             // Proximate Traffic: Solid cyan diamond
@@ -771,14 +833,14 @@ public final class FlightRadarScreen extends Screen {
         int leaderLen = Math.max(4, Math.min(12, contact.speedKnots() / 15));
         int lx = x + (int) Math.round(Math.sin(rad) * leaderLen);
         int ly = y - (int) Math.round(Math.cos(rad) * leaderLen);
-        drawLine(graphics, x, y, lx, ly, isRa ? 0xFFFF2525 : isTa ? 0xFFFFB000 : 0xFF75E6A5);
+        drawLine(graphics, x, y, lx, ly, isRa ? FlightLineTheme.TCAS_RA : isTa ? FlightLineTheme.TCAS_TA : 0xFF75E6A5);
 
         // Relative altitude tag and vertical speed trend arrow
         if (contact.airborne() && Math.min(scopeWidth, scopeHeight) >= 60) {
             String altTag = (relAltHundreds >= 0 ? "+" : "") + String.format(Locale.ROOT, "%02d", relAltHundreds);
             String arrow = contact.verticalSpeedFpm() > 100 ? "▲" : contact.verticalSpeedFpm() < -100 ? "▼" : "";
             String fullTag = altTag + arrow;
-            int tagColor = isRa ? 0xFFFF2525 : isTa ? 0xFFFFB000 : 0xFF86B5A4;
+            int tagColor = isRa ? FlightLineTheme.TCAS_RA : isTa ? FlightLineTheme.TCAS_TA : 0xFF86B5A4;
             graphics.text(font, fullTag, x + 5, y - 4, tagColor, false);
         }
     }

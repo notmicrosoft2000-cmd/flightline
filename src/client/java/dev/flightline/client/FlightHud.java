@@ -35,12 +35,21 @@ final class FlightHud {
     private static final int PFD_BASE_HEIGHT = 158;
     private static final int EICAS_WIDTH = 128;
     private static final int EICAS_HEIGHT = 138;
-    private static final int PFD_GREEN = 0xFF55E08B;
-    private static final int PFD_CYAN = 0xFF6FE8FF;
-    private static final int PFD_WHITE = 0xFFF2F7FA;
-    private static final int PFD_AMBER = 0xFFFFC44D;
-    private static final int PFD_RED = 0xFFFF4B42;
-    private static final int PFD_MUTED = 0xFF6F8792;
+    private static final float EICAS_SCALE = 0.84f;
+    private static final int EICAS_DISPLAY_WIDTH = Math.round(EICAS_WIDTH * EICAS_SCALE);
+    private static final int EICAS_DISPLAY_HEIGHT = Math.round(EICAS_HEIGHT * EICAS_SCALE);
+    private static final int TCAS_WARNINGS = FlightWarning.TCAS_TRAFFIC
+            | FlightWarning.TCAS_RESOLUTION
+            | FlightWarning.TCAS_CLIMB
+            | FlightWarning.TCAS_DESCEND
+            | FlightWarning.TCAS_CROSSING
+            | FlightWarning.TCAS_CLEAR;
+    private static final int PFD_GREEN = FlightLineTheme.GREEN;
+    private static final int PFD_CYAN = FlightLineTheme.CYAN;
+    private static final int PFD_WHITE = FlightLineTheme.PAPER;
+    private static final int PFD_AMBER = FlightLineTheme.AMBER;
+    private static final int PFD_RED = FlightLineTheme.WARNING;
+    private static final int PFD_MUTED = FlightLineTheme.MUTED;
     private static boolean enabled;
     private static FlightPhase phase = FlightPhase.OFF;
     private static NavMode navMode = NavMode.HDG;
@@ -440,10 +449,10 @@ final class FlightHud {
         int pfdDisplayWidth = 0;
         int pfdDisplayHeight = 0;
         if (showPfd) {
-            pfdScale = Math.min(0.85f, Math.min(
-                    (screenWidth * 0.40f) / PFD_BASE_WIDTH,
-                    (screenHeight * 0.52f) / PFD_BASE_HEIGHT));
-            pfdScale = Math.max(0.50f, pfdScale);
+            pfdScale = Math.min(0.72f, Math.min(
+                    (screenWidth * 0.34f) / PFD_BASE_WIDTH,
+                    (screenHeight * 0.46f) / PFD_BASE_HEIGHT));
+            pfdScale = Math.max(0.44f, pfdScale);
             pfdDisplayWidth = Math.round(PFD_BASE_WIDTH * pfdScale);
             pfdDisplayHeight = Math.round(PFD_BASE_HEIGHT * pfdScale);
         }
@@ -452,7 +461,7 @@ final class FlightHud {
         int pfdRight = pfdLeft + pfdDisplayWidth;
         int pfdBottom = pfdTop + pfdDisplayHeight;
 
-        int eicasX = screenWidth - EICAS_WIDTH - 6;
+        int eicasX = screenWidth - EICAS_DISPLAY_WIDTH - 6;
         boolean eicasVisible = showEicas && (!showPfd || eicasX >= pfdRight + 6);
 
         int ndWidth = 104;
@@ -485,7 +494,7 @@ final class FlightHud {
 
         if (ndVisible) {
             // Heading-up ND using authoritative TCAS radar payload contacts
-            panel(g, ndX, ndY, ndWidth, ndHeight, 0xAA56B9D2);
+            panel(g, ndX, ndY, ndWidth, ndHeight, FlightLineTheme.CYAN);
             int heading = Math.floorMod(Math.round(visualHeading), 360);
             int ndRangeBlocks = hasRadarData() ? Math.min(256, Math.max(64, radarPayload.scopeBlocks())) : 128;
             var activeLeg = NavigationState.activeLeg();
@@ -498,15 +507,15 @@ final class FlightHud {
                     ? String.format(Locale.ROOT, "TCAS %03d° %dB", heading, ndRangeBlocks)
                     : "NAV " + activeLeg.name();
             g.text(mc.font, fitText(mc.font, ndHeader, ndWidth - 8),
-                    ndX + 4, ndY + 3,
-                    0xFF72E6F5, true);
+                    ndX + 4, ndY + 4,
+                    FlightLineTheme.CYAN, true);
             String legDistance = activeLeg == null
                     ? "GS " + groundSpeedKnots + "KT"
                     : String.format(Locale.ROOT, "BRG %03.0f°  %.0fB",
                             NavGuidance.bearingDegrees(ownX, ownZ, activeLeg.x(), activeLeg.z()),
                             NavGuidance.distanceBlocks(ownX, ownZ, activeLeg.x(), activeLeg.z()));
             g.text(mc.font, fitText(mc.font, legDistance, ndWidth - 8),
-                    ndX + 4, ndY + 13, 0xFFDCE8EE, false);
+                    ndX + 4, ndY + 14, FlightLineTheme.TEXT_DIM, false);
             int eteMinutes = activeLeg == null ? 0 : NavigationState.eteMinutes(ownX, ownZ, groundSpeedKnots);
             String legGuidance = activeLeg == null
                     ? "ROUTE " + NavigationState.statusLabel()
@@ -514,7 +523,7 @@ final class FlightHud {
                             NavigationState.crossTrackBlocks(ownX, ownZ),
                             eteMinutes / 60, eteMinutes % 60);
             g.text(mc.font, fitText(mc.font, legGuidance, ndWidth - 8),
-                    ndX + 4, ndY + 23, 0xFF9BC9AE, false);
+                    ndX + 4, ndY + 24, FlightLineTheme.GREEN, false);
 
             int radarCx = ndX + ndWidth / 2;
             int radarCy = ndY + 45;
@@ -572,19 +581,19 @@ final class FlightHud {
 
                 if (isRa) {
                     // RA: Solid red square
-                    g.fill(px - 2, py - 2, px + 3, py + 3, 0xFFFF2525);
-                    g.outline(px - 2, py - 2, 5, 5, 0xFFFFFFFF);
+                    g.fill(px - 2, py - 2, px + 3, py + 3, FlightLineTheme.TCAS_RA);
+                    g.outline(px - 2, py - 2, 5, 5, FlightLineTheme.PAPER);
                 } else if (isTa) {
                     // TA: Solid amber circle
-                    g.fill(px - 1, py - 2, px + 2, py + 3, 0xFFFFB000);
-                    g.fill(px - 2, py - 1, px + 3, py + 2, 0xFFFFB000);
+                    g.fill(px - 1, py - 2, px + 2, py + 3, FlightLineTheme.TCAS_TA);
+                    g.fill(px - 2, py - 1, px + 3, py + 2, FlightLineTheme.TCAS_TA);
                 } else if (isProximate) {
                     // Proximate: Solid cyan diamond
-                    drawDiamond(g, px, py, 2, 0xFF00E5FF);
-                    g.fill(px, py, px + 1, py + 1, 0xFF00E5FF);
+                    drawDiamond(g, px, py, 2, FlightLineTheme.CYAN);
+                    g.fill(px, py, px + 1, py + 1, FlightLineTheme.CYAN);
                 } else {
                     // Other: Hollow cyan diamond
-                    drawDiamond(g, px, py, 2, contact.player() ? 0xFF6BCBFF : 0xFF75E6A5);
+                    drawDiamond(g, px, py, 2, FlightLineTheme.CYAN);
                 }
 
                 // Altitude tag only for RA, TA, or when <= 2 traffic in scope to keep it clean and readable
@@ -592,31 +601,42 @@ final class FlightHud {
                     int relHundreds = Math.round(relAltFt / 100.0f);
                     String tag = (relHundreds >= 0 ? "+" : "") + String.format(Locale.ROOT, "%02d", relHundreds);
                     g.text(mc.font, tag, px + 4, py - 4,
-                            isRa ? 0xFFFF2525 : isTa ? 0xFFFFB000 : 0xFF86B5A4, false);
+                            isRa ? FlightLineTheme.TCAS_RA
+                                    : isTa ? FlightLineTheme.TCAS_TA : FlightLineTheme.GREEN, false);
                 }
             }
 
             // Clean ND footer rows
             g.text(mc.font, String.format(Locale.ROOT, "AIR %02d", trafficCounts >>> 8), ndX + 6, ndY + 70,
-                    0xFF75E6A5, true);
+                    FlightLineTheme.GREEN, true);
             g.text(mc.font, String.format(Locale.ROOT, "GND %02d", trafficCounts & 0xFF), ndX + 62, ndY + 70,
-                    0xFFFFCE52, true);
+                    FlightLineTheme.AMBER, true);
 
             if (trafficRangeBlocks > 0) {
-                int targetColor = (warnings & FlightWarning.TCAS_RESOLUTION) != 0 ? 0xFFFF5148 : 0xFFFFCE52;
+                int targetColor = (warnings & FlightWarning.TCAS_RESOLUTION) != 0 ? FlightLineTheme.TCAS_RA : FlightLineTheme.TCAS_TA;
                 String target = required(String.format(Locale.ROOT, "TGT %+dFT %dB",
                         trafficAltitudeFeet, trafficRangeBlocks));
                 g.text(mc.font, fitText(mc.font, target, ndWidth - 12),
                         ndX + 6, ndY + 80, targetColor, true);
             } else {
-                g.text(mc.font, "TCAS NORM", ndX + 6, ndY + 80, 0xFF62B0A0, true);
+                g.text(mc.font, "TCAS NORM", ndX + 6, ndY + 80, FlightLineTheme.GREEN_DARK, true);
             }
         }
 
         if (eicasVisible) {
-            drawEicas(g, mc, player, eicasX, 6, clock);
+            var pose = g.pose();
+            pose.pushMatrix();
+            pose.translate(eicasX, 6);
+            pose.scale(EICAS_SCALE, EICAS_SCALE);
+            drawEicas(g, mc, player, 0, 0, clock);
+            pose.popMatrix();
+
             if (emergencyStatus.active()) {
-                drawEmergencyPanel(g, mc, eicasX, 6 + EICAS_HEIGHT + 4, clock);
+                pose.pushMatrix();
+                pose.translate(eicasX, 6 + EICAS_DISPLAY_HEIGHT + 4);
+                pose.scale(EICAS_SCALE, EICAS_SCALE);
+                drawEmergencyPanel(g, mc, 0, 0, clock);
+                pose.popMatrix();
             }
         }
 
@@ -626,66 +646,38 @@ final class FlightHud {
         if (showKeybinds && keybindPanelProgress > 0.01f) {
             drawKeybindList(g, mc, screenWidth, screenHeight);
         }
-        if (enabled && isAtcControlled()) {
-            int bannerWidth = Math.min(screenWidth - 24, 250);
-            int bannerX = (screenWidth - bannerWidth) / 2;
-            g.fill(bannerX, 78, bannerX + bannerWidth, 98, 0xE54A2A12);
-            g.outline(bannerX, 78, bannerWidth, 20, 0xFFFFB14D);
-            g.centeredText(mc.font, "ATC CONTROL ACTIVE  ·  F7 RELEASE",
-                    screenWidth / 2, 84, 0xFFFFD89B);
-        }
-        if (!atcMessage.isEmpty() && System.nanoTime() < atcMessageExpiresNanos) {
-            int messageWidth = Math.min(screenWidth - 24, 260);
-            int messageX = (screenWidth - messageWidth) / 2;
-            g.fill(messageX, 100, messageX + messageWidth, 120, 0xE51A2630);
-            g.outline(messageX, 100, messageWidth, 20, 0xFF72E6F5);
-            g.centeredText(mc.font, fitText(mc.font, atcMessage, messageWidth - 12),
-                    screenWidth / 2, 106, 0xFFD8F4FF);
-        } else {
-            atcMessage = "";
-        }
+        drawAtcBanner(g, mc, screenWidth);
         drawNotice(g, mc, screenWidth);
         FlightTutorial.drawTracker(g, mc, screenWidth, screenHeight);
-
-        List<String> alerts = warningLabels();
-        if (!alerts.isEmpty()) {
-            int maxRows = 4;
-            if (alerts.size() > maxRows) {
-                int hiddenAlerts = alerts.size() - (maxRows - 1);
-                alerts = new ArrayList<>(alerts.subList(0, maxRows - 1));
-                alerts.add("+" + hiddenAlerts + " MORE");
-            }
-            int maxTextWidth = 0;
-            for (String a : alerts) {
-                maxTextWidth = Math.max(maxTextWidth, mc.font.width(a));
-            }
-            int popupWidth = Math.max(90, Math.min(148, maxTextWidth + 20));
-            int rowHeight = 12;
-            int popupHeight = alerts.size() * rowHeight + 14;
-            int alertX = 6;
-            int alertY = screenHeight - popupHeight - 6;
-
-            int blink = ((long)(clock * 2.5) & 1L) == 0L ? 0xFFFF4B42 : 0xFFD83028;
-            int borderColor = phase == FlightPhase.CRASHED ? 0xFFFF4B42 : blink;
-
-            // Small popup card container in bottom left
-            g.fill(alertX, alertY, alertX + popupWidth, alertY + popupHeight, 0xEE120808);
-            g.outline(alertX, alertY, popupWidth, popupHeight, borderColor);
-
-            // Small popup header
-            g.fill(alertX + 1, alertY + 1, alertX + popupWidth - 1, alertY + 11, 0xDD260B0E);
-            g.text(mc.font, "▲ WARNING", alertX + 4, alertY + 2, 0xFFFF6F6F, true);
-
-            // Alert items inside the popup card
-            for (int i = 0; i < alerts.size(); i++) {
-                int rowY = alertY + 13 + i * rowHeight;
-                String alert = fitText(mc.font, alerts.get(i), popupWidth - 14);
-                // Status dot
-                g.fill(alertX + 4, rowY + 3, alertX + 7, rowY + 6, borderColor);
-                g.text(mc.font, alert, alertX + 10, rowY + 1, PFD_WHITE, true);
-            }
-        }
         drawBrakePopup(g, screenWidth, screenHeight);
+
+        // Warnings are conveyed by a wordless edge alarm. TCAS advisories deliberately never
+        // trigger it; they remain on the navigation display as traffic symbols/readouts only.
+        boolean alarm = phase == FlightPhase.CRASHED || (warnings & ~TCAS_WARNINGS) != 0;
+        if (alarm) {
+            boolean blinkOn = ((long) (clock * 2.5) & 1L) == 0L;
+            float intensity = phase == FlightPhase.CRASHED || blinkOn ? 1.0f : 0.32f;
+            FlightLineTheme.alarmFlash(g, 0, 0, screenWidth, screenHeight, intensity);
+        }
+    }
+
+    /** One compact radio/control strip instead of stacked banners. */
+    private static void drawAtcBanner(GuiGraphicsExtractor g, Minecraft mc, int screenWidth) {
+        boolean controlled = enabled && isAtcControlled();
+        boolean hasMessage = !atcMessage.isEmpty() && System.nanoTime() < atcMessageExpiresNanos;
+        if (!controlled && !hasMessage) return;
+        String text = hasMessage ? atcMessage : "ATC ACTIVE · F7 RELEASE";
+        int width = Math.min(screenWidth - 24, 196);
+        int x = (screenWidth - width) / 2;
+        int y = 6;
+        int accent = hasMessage ? FlightLineTheme.CYAN : FlightLineTheme.AMBER;
+        g.fill(x + 3, y + 3, x + width + 3, y + 19, FlightLineTheme.SHADOW);
+        g.fill(x, y, x + width, y + 16, FlightLineTheme.COAL);
+        g.outline(x, y, width, 16, accent);
+        g.fill(x, y, x + 3, y + 16, accent);
+        g.centeredText(mc.font, fitText(mc.font, text, width - 10),
+                screenWidth / 2 + 1, y + 4, hasMessage ? FlightLineTheme.PAPER : accent);
+        if (!hasMessage) atcMessage = "";
     }
 
     /** Optional expanded readout: hidden by default; Y opens it as a compact right-column card. */
@@ -695,16 +687,29 @@ final class FlightHud {
         Font font = mc.font;
         int width = EICAS_WIDTH;
         int height = 70;
-        int x = eicasVisible ? eicasX : screenWidth - width - 6;
-        int y = eicasVisible ? 6 + EICAS_HEIGHT + 4 : 6;
-        if (eicasVisible && emergencyStatus.active()) y += emergencyPanelHeight() + 4;
-        if (y + height > screenHeight - 6) y = Math.max(6, screenHeight - height - 6);
-        if (y + height > screenHeight - 6) return;
+        int displayWidth = Math.round(width * EICAS_SCALE);
+        int displayHeight = Math.round(height * EICAS_SCALE);
+        int screenX = eicasVisible ? eicasX : screenWidth - displayWidth - 6;
+        int screenY = eicasVisible ? 6 + EICAS_DISPLAY_HEIGHT + 4 : 6;
+        if (eicasVisible && emergencyStatus.active()) {
+            screenY += Math.round(emergencyPanelHeight() * EICAS_SCALE) + 4;
+        }
+        if (screenY + displayHeight > screenHeight - 6) {
+            screenY = Math.max(6, screenHeight - displayHeight - 6);
+        }
+        if (screenY + displayHeight > screenHeight - 6) return;
 
-        g.fill(x, y, x + width, y + height, 0xD8091017);
-        g.outline(x, y, width, height, 0xFF3E7D8E);
-        g.fill(x + 1, y + 1, x + width - 1, y + 12, 0xDD111D25);
-        g.text(font, "FLIGHT DATA", x + 4, y + 2, PFD_CYAN, true);
+        g.pose().pushMatrix();
+        g.pose().translate(screenX, screenY);
+        g.pose().scale(EICAS_SCALE, EICAS_SCALE);
+        int x = 0;
+        int y = 0;
+        g.fill(x + 4, y + 4, x + width + 4, y + height + 4, FlightLineTheme.SHADOW);
+        g.fill(x, y, x + width, y + height, FlightLineTheme.PANEL);
+        g.outline(x, y, width, height, FlightLineTheme.CYAN);
+        g.fill(x + 2, y + 2, x + width - 2, y + 12, FlightLineTheme.COAL);
+        g.fill(x + 2, y + 12, x + width - 2, y + 13, FlightLineTheme.CYAN);
+        g.text(font, "FLIGHT DATA", x + 5, y + 2, FlightLineTheme.CYAN, true);
         String key = FlightLineClient.keyName(FlightLineClient.telemetry());
         g.text(font, key, x + width - 4 - font.width(key), y + 2, PFD_MUTED, true);
 
@@ -749,10 +754,11 @@ final class FlightHud {
         if (((long) (clock * 2.0) & 1L) == 0L) {
             g.fill(x + width - 5, y + 4, x + width - 2, y + 7, PFD_GREEN);
         }
+        g.pose().popMatrix();
     }
 
     /**
-     * Compact glass EICAS: engine N1, fuel, configuration, weather and a single alert strip.
+     * Compact glass EICAS: engine N1, fuel, configuration, weather and a status strip.
      * Uses the same palette and panel proportions as the PFD so both displays read as one suite.
      */
     private static void drawEicas(GuiGraphicsExtractor g, Minecraft mc, LocalPlayer player,
@@ -765,18 +771,18 @@ final class FlightHud {
         boolean spoilers = (systems & (1 << 8)) != 0;
         boolean engineFire = e1 == 4 || e2 == 4;
         boolean blinkOn = ((long) (clock * 3.0) & 1L) == 0L;
-        boolean bothEnginesOut = (e1 == 0 || e1 == 3) && (e2 == 0 || e2 == 3);
 
-        g.fill(x, y, x + EICAS_WIDTH, y + EICAS_HEIGHT, 0xF0060A0F);
-        g.outline(x, y, EICAS_WIDTH, EICAS_HEIGHT, 0xFF3E7D8E);
-
-        g.fill(x + 1, y + 1, x + EICAS_WIDTH - 1, y + 15, 0xDD0A1117);
+        g.fill(x + 4, y + 4, x + EICAS_WIDTH + 4, y + EICAS_HEIGHT + 4, FlightLineTheme.SHADOW);
+        g.fill(x, y, x + EICAS_WIDTH, y + EICAS_HEIGHT, FlightLineTheme.PANEL);
+        g.outline(x, y, EICAS_WIDTH, EICAS_HEIGHT, FlightLineTheme.STONE);
+        g.fill(x + 2, y + 2, x + EICAS_WIDTH - 2, y + 16, FlightLineTheme.HEADER);
+        g.fill(x + 2, y + 16, x + EICAS_WIDTH - 2, y + 17, FlightLineTheme.CYAN);
         AircraftType plane = FlightLineClient.getAircraftType();
         String eicasTitle = plane == AircraftType.GINA_787 ? "EICAS · B787" : "EICAS · A380";
-        g.text(font, eicasTitle, x + 5, y + 4, PFD_CYAN, true);
+        g.text(font, eicasTitle, x + 5, y + 5, FlightLineTheme.CYAN, true);
         String apMode = autopilotGuidance.autolandArmed() ? "A/L" : autopilot ? "A/P" : "MAN";
         int apColor = autopilot || autopilotGuidance.autolandArmed() ? PFD_GREEN : PFD_MUTED;
-        g.text(font, apMode, x + EICAS_WIDTH - font.width(apMode) - 5, y + 4, apColor, true);
+        g.text(font, apMode, x + EICAS_WIDTH - font.width(apMode) - 5, y + 5, apColor, true);
 
         if (plane == AircraftType.GINA_787) {
             int tileW = 38;
@@ -813,7 +819,7 @@ final class FlightHud {
         g.text(font, "FLAPS", x + 5, y + 80, PFD_MUTED, true);
         for (int i = 0; i < 4; i++) {
             g.fill(x + 38 + i * 8, y + 80, x + 44 + i * 8, y + 85,
-                    i < flap ? PFD_AMBER : 0xFF364650);
+                    i < flap ? PFD_AMBER : FlightLineTheme.LINE);
         }
         g.text(font, "SPLR", x + 75, y + 80, PFD_MUTED, true);
         g.text(font, spoilers ? "EXT" : "RET", x + 103, y + 80,
@@ -840,54 +846,20 @@ final class FlightHud {
         g.text(font, fitText(font, weatherSeverity, EICAS_WIDTH - 10), x + 5, y + 103,
                 icingColor, true);
 
-        String alert = null;
-        int alertColor = PFD_GREEN;
-        if (engineFire) {
-            alert = "ENG FIRE - " + FlightLineClient.keyName(FlightLineClient.emergencyChecklist());
-            alertColor = blinkOn ? PFD_WHITE : PFD_RED;
-        } else if ((warnings & FlightWarning.ENGINE_FAILURE) != 0) {
-            alert = "ENGINE FAILURE - GLIDE";
-            alertColor = PFD_AMBER;
-        } else if ((warnings & FlightWarning.FUEL_EMPTY) != 0) {
-            alert = "FUEL EMPTY - GLIDE";
-            alertColor = PFD_AMBER;
-        } else if ((warnings & FlightWarning.FUEL_LOW) != 0) {
-            alert = "LOW FUEL";
-            alertColor = PFD_AMBER;
-        } else if ((warnings & FlightWarning.ICE_ACCUMULATION) != 0) {
-            alert = weatherGuidance.antiIceEffective() ? "ICE CLEARING"
-                    : weatherGuidance.antiIceActive() ? "ANTI-ICE SET" : "ICE BUILDUP - A-ICE OFF";
-            alertColor = PFD_CYAN;
-        } else if ((warnings & FlightWarning.HYDRAULIC_FAIL) != 0) {
-            alert = "HYD FAIL - GEAR/FLAP LIMITED";
-            alertColor = PFD_AMBER;
-        } else if ((warnings & FlightWarning.PRESSURISATION) != 0) {
-            alert = "CABIN ALT - EMERGENCY DESCENT";
-            alertColor = blinkOn ? PFD_WHITE : PFD_RED;
-        } else if (bothEnginesOut && !isAirbornePhase()) {
-            alert = "ENGINES OFF - READY";
-            alertColor = PFD_MUTED;
-        } else if (isAirbornePhase() && gearState == 1 && radioAltitudeFeet < 1000) {
-            alert = "GEAR UP - APPROACH";
-            alertColor = PFD_AMBER;
-        } else if (isAirbornePhase() && flap == 0 && radioAltitudeFeet < 500) {
-            alert = "FLAPS RETRACTED";
-            alertColor = PFD_WHITE;
-        } else if (isAirbornePhase() && spoilers) {
-            alert = "SPOILERS EXTENDED";
-            alertColor = PFD_AMBER;
-        } else if (isAirbornePhase() && airbrakes) {
-            alert = "AIRBRAKES EXTENDED";
-            alertColor = PFD_AMBER;
-        }
-        int alertBorder = alert == null ? 0x553E7D8E : alertColor;
+        // Wordless system status: the full-screen edge flash carries the alarm, this strip only
+        // distinguishes normal from caution. TCAS bits never affect it.
+        boolean caution = (warnings & ~TCAS_WARNINGS) != 0 || engineFire || emergencyStatus.active();
+        boolean urgent = engineFire || phase == FlightPhase.CRASHED
+                || (warnings & (FlightWarning.STALL | FlightWarning.FUEL_EMPTY
+                        | FlightWarning.PULL_UP | FlightWarning.WINDSHEAR)) != 0;
+        int statusColor = !caution ? PFD_GREEN
+                : urgent ? (blinkOn ? PFD_RED : PFD_WHITE) : PFD_AMBER;
         g.fill(x + 4, y + 115, x + EICAS_WIDTH - 4, y + 134,
-                alert == null ? 0xFF0B1218 : withAlpha(alertColor, 0.18f));
-        g.outline(x + 4, y + 115, EICAS_WIDTH - 8, 19, alertBorder);
-        String alertText = alert == null ? "SYSTEMS NORMAL" : alert;
-        g.centeredText(font, fitText(font, alertText, EICAS_WIDTH - 16),
-                x + EICAS_WIDTH / 2, y + 120,
-                alert == null ? PFD_MUTED : alertColor);
+                caution ? withAlpha(statusColor, 0.18f) : FlightLineTheme.INSET);
+        g.outline(x + 4, y + 115, EICAS_WIDTH - 8, 19,
+                caution ? statusColor : FlightLineTheme.STONE);
+        int barWidth = Math.round((EICAS_WIDTH - 18) * 0.62f);
+        g.fill(x + 9, y + 122, x + 9 + barWidth, y + 127, statusColor);
     }
 
     /** Compact checklist summary below EICAS; the full procedure list opens with O. */
@@ -920,27 +892,30 @@ final class FlightHud {
 
     private static int emergencyPanelHeight() {
         if (!emergencyStatus.active()) return 0;
-        return 18 + Math.min(4, emergencyLines().size()) * 10
+        return 18 + Math.min(2, emergencyLines().size()) * 10
                 + (emergencyStatus.recommendation().present() ? 20 : 0);
     }
 
     private static void drawEmergencyPanel(GuiGraphicsExtractor g, Minecraft mc, int x, int y, double clock) {
-        Font font = mc.font;
         EmergencyStatusPayload status = emergencyStatus;
+        if (!status.active()) return;
+        Font font = mc.font;
         boolean grouped = FlightLineClient.getAircraftType() == AircraftType.GINA_787;
         List<String> lines = emergencyLines();
         var recommendation = status.recommendation();
-        int rows = Math.min(4, lines.size());
+        int rows = Math.min(2, lines.size());
         int height = 18 + rows * 10 + (recommendation.present() ? 20 : 0);
         boolean urgent = status.hasCondition(EmergencyStatus.FIRE_1 | EmergencyStatus.FIRE_2
                 | EmergencyStatus.FAILURE_1 | EmergencyStatus.FAILURE_2
                 | EmergencyStatus.FUEL_EMPTY);
         int border = urgent && (((long) (clock * 3.0) & 1L) == 0L) ? PFD_RED : PFD_AMBER;
 
-        g.fill(x, y, x + EICAS_WIDTH, y + height, 0xEE1A0B0C);
+        g.fill(x + 4, y + 4, x + EICAS_WIDTH + 4, y + height + 4, FlightLineTheme.SHADOW);
+        g.fill(x, y, x + EICAS_WIDTH, y + height, FlightLineTheme.VOID);
         g.outline(x, y, EICAS_WIDTH, height, border);
+        g.fill(x, y, x + 4, y + height, border);
         String title = "EMERGENCY " + FlightLineClient.keyName(FlightLineClient.emergencyChecklist());
-        g.text(font, fitText(font, title, EICAS_WIDTH - 10), x + 4, y + 3, border, true);
+        g.text(font, fitText(font, title, EICAS_WIDTH - 13), x + 7, y + 3, border, true);
         if (status.hasCondition(EmergencyStatus.FIRE_1 | EmergencyStatus.FIRE_2)) {
             String bottles = "BTL " + status.extinguisherBottles();
             g.text(font, bottles, x + EICAS_WIDTH - font.width(bottles) - 4, y + 3, PFD_WHITE, true);
@@ -948,13 +923,13 @@ final class FlightHud {
         for (int i = 0; i < rows; i++) {
             int rowColor = lines.get(i).contains("FIRE") || lines.get(i).contains("EMPTY")
                     || lines.get(i).contains("FAILED") ? PFD_RED : PFD_AMBER;
-            g.text(font, fitText(font, lines.get(i), EICAS_WIDTH - 10), x + 4, y + 14 + i * 10,
+            g.text(font, fitText(font, lines.get(i), EICAS_WIDTH - 13), x + 7, y + 14 + i * 10,
                     rowColor, true);
         }
         if (recommendation.present()) {
             int actionY = y + height - 18;
-            g.fill(x + 3, actionY, x + EICAS_WIDTH - 3, actionY + 15, 0xFF102022);
-            g.outline(x + 3, actionY, EICAS_WIDTH - 6, 15, PFD_GREEN);
+            g.fill(x + 3, actionY, x + EICAS_WIDTH - 3, actionY + 15, FlightLineTheme.COAL);
+            g.outline(x + 3, actionY, EICAS_WIDTH - 6, 15, FlightLineTheme.GREEN);
             String action = EmergencyStatus.actionLabel(recommendation.action());
             if (recommendation.target() >= 0 && action.startsWith("Extinguish")) {
                 action = EmergencyStatus.engineName(recommendation.target(), grouped) + " FIRE";
@@ -978,10 +953,12 @@ final class FlightHud {
         int width = Math.min(screenWidth - 24, 300);
         int x = (screenWidth - width) / 2;
         int y = 128;
-        g.fill(x, y, x + width, y + 18, withAlpha(0xE51A2630, alpha));
-        g.outline(x, y, width, 18, withAlpha(PFD_CYAN, alpha));
-        g.centeredText(mc.font, fitText(mc.font, cockpitNotice, width - 12), screenWidth / 2,
-                y + 5, withAlpha(PFD_WHITE, alpha));
+        g.fill(x + 4, y + 4, x + width + 4, y + 22, withAlpha(FlightLineTheme.SHADOW, alpha));
+        g.fill(x, y, x + width, y + 18, withAlpha(FlightLineTheme.COAL, alpha));
+        g.outline(x, y, width, 18, withAlpha(FlightLineTheme.CYAN, alpha));
+        g.fill(x, y, x + 4, y + 18, withAlpha(FlightLineTheme.CYAN, alpha));
+        g.centeredText(mc.font, fitText(mc.font, cockpitNotice, width - 12), screenWidth / 2 + 2,
+                y + 5, withAlpha(FlightLineTheme.PAPER, alpha));
     }
 
     private static void drawEicasEngineTile(GuiGraphicsExtractor g, Font font, int x, int y, int width,
@@ -989,9 +966,9 @@ final class FlightHud {
         if (state == 4 && blinkOn) {
             g.fill(x, y, x + width, y + 32, 0xCC701B20);
         } else {
-            g.fill(x, y, x + width, y + 32, 0xDD070C11);
+            g.fill(x, y, x + width, y + 32, FlightLineTheme.INSET);
         }
-        g.outline(x, y, width, 32, state >= 3 ? PFD_RED : 0x553E7D8E);
+        g.outline(x, y, width, 32, state >= 3 ? FlightLineTheme.RED : FlightLineTheme.STONE);
         g.text(font, label, x + 3, y + 2, PFD_CYAN, true);
         String tag = engineTag(state);
         g.text(font, tag, x + width - font.width(tag) - 3, y + 2,
@@ -1006,9 +983,9 @@ final class FlightHud {
         if (state == 4 && blinkOn) {
             g.fill(x, y, x + width, y + height, 0xCC701B20);
         } else {
-            g.fill(x, y, x + width, y + height, 0xDD070C11);
+            g.fill(x, y, x + width, y + height, FlightLineTheme.INSET);
         }
-        g.outline(x, y, width, height, state >= 3 ? PFD_RED : 0x553E7D8E);
+        g.outline(x, y, width, height, state >= 3 ? FlightLineTheme.RED : FlightLineTheme.STONE);
         g.text(font, label, x + 2, y + 1, PFD_CYAN, false);
         String val = String.format(Locale.ROOT, "%d%%", n1);
         g.text(font, val, x + width - font.width(val) - 2, y + 1, n1 > 90 ? PFD_AMBER : PFD_WHITE, false);
@@ -1021,8 +998,10 @@ final class FlightHud {
      */
     private static void drawPfd(GuiGraphicsExtractor g, Minecraft mc, LocalPlayer player) {
         Font font = mc.font;
-        g.fill(0, 0, PFD_BASE_WIDTH, PFD_BASE_HEIGHT, 0xF0060A0F);
-        g.outline(0, 0, PFD_BASE_WIDTH, PFD_BASE_HEIGHT, 0xFF3E7D8E);
+        g.fill(3, 3, PFD_BASE_WIDTH + 3, PFD_BASE_HEIGHT + 3, FlightLineTheme.SHADOW);
+        g.fill(0, 0, PFD_BASE_WIDTH, PFD_BASE_HEIGHT, FlightLineTheme.PANEL);
+        g.outline(0, 0, PFD_BASE_WIDTH, PFD_BASE_HEIGHT, FlightLineTheme.STONE);
+        g.fill(0, 0, PFD_BASE_WIDTH, 2, FlightLineTheme.CYAN);
 
         drawPfdFma(g, font);
 
@@ -1048,7 +1027,6 @@ final class FlightHud {
         }
         drawHeadingTape(g, font, 41, lowerTop, 126, lowerHeight);
         drawPfdStatus(g, font);
-        drawPfdWarnings(g, font, adiCx, adiTop);
     }
 
     private static void drawPfdFma(GuiGraphicsExtractor g, Font font) {
@@ -1075,15 +1053,15 @@ final class FlightHud {
 
     private static void drawFmaCell(GuiGraphicsExtractor g, Font font, int x, int y, int width,
                                     String label, String mode, int modeColor) {
-        g.fill(x, y, x + width, y + 12, 0xDD0A1117);
-        g.outline(x, y, width, 12, 0x663E7D8E);
+        g.fill(x, y, x + width, y + 12, FlightLineTheme.HEADER);
+        g.outline(x, y, width, 12, FlightLineTheme.STONE);
         g.text(font, label, x + 3, y + 2, PFD_MUTED, false);
         g.text(font, mode, x + width - font.width(mode) - 3, y + 2, modeColor, true);
     }
 
     private static void drawSpeedTape(GuiGraphicsExtractor g, Font font, int x, int y, int width, int height) {
-        g.fill(x, y, x + width, y + height, 0xDD070C11);
-        g.outline(x, y, width, height, 0x553E7D8E);
+        g.fill(x, y, x + width, y + height, FlightLineTheme.INSET);
+        g.outline(x, y, width, height, FlightLineTheme.STONE);
         int current = knots(visualSpeed);
         int centerY = y + height / 2;
         double pixelsPerKnot = height / 160.0;
@@ -1124,7 +1102,7 @@ final class FlightHud {
         if (autopilot) {
             int target = autopilotGuidance.targetAirspeedKnots();
             String targetText = Integer.toString(target);
-            g.fill(x + 1, y + 1, x + width - 1, y + 9, 0xEE091924);
+            g.fill(x + 1, y + 1, x + width - 1, y + 9, FlightLineTheme.HEADER);
             g.outline(x + 1, y + 1, width - 2, 9, PFD_CYAN);
             g.centeredText(font, targetText, x + width / 2, y + 2, PFD_CYAN);
         } else {
@@ -1139,7 +1117,7 @@ final class FlightHud {
             String label = Integer.toString(value);
             boolean showLabel = major && Math.abs(value - current) > 12;
             if (!showLabel) {
-                g.fill(x + width - (major ? 8 : 5), tickY, x + width, tickY + 1, 0xFF9FB3BD);
+                g.fill(x + width - (major ? 8 : 5), tickY, x + width, tickY + 1, FlightLineTheme.TEXT_DIM);
             } else {
                 g.text(font, label, x + width - 2 - font.width(label), tickY - 4, PFD_WHITE, false);
             }
@@ -1166,15 +1144,15 @@ final class FlightHud {
         }
 
         // Center rolling drum readout box
-        g.fill(x + 1, centerY - 7, x + width - 1, centerY + 7, 0xFF070C11);
+        g.fill(x + 1, centerY - 7, x + width - 1, centerY + 7, FlightLineTheme.INSET);
         g.outline(x + 1, centerY - 7, width - 2, 14, PFD_WHITE);
         g.centeredText(font, Integer.toString(current), x + width / 2, centerY - 4, PFD_WHITE);
     }
 
     private static void drawAltitudeTape(GuiGraphicsExtractor g, Font font, int x, int y, int width,
                                          int height, LocalPlayer player) {
-        g.fill(x, y, x + width, y + height, 0xDD070C11);
-        g.outline(x, y, width, height, 0x553E7D8E);
+        g.fill(x, y, x + width, y + height, FlightLineTheme.INSET);
+        g.outline(x, y, width, height, FlightLineTheme.STONE);
         int current = (int) Math.round(player.getY() * 3.28084);
         int centerY = y + height / 2;
         double pixelsPerFoot = height / 1200.0;
@@ -1184,7 +1162,7 @@ final class FlightHud {
             String targetText = (selected >= 10000 && selected % 1000 == 0)
                     ? (selected / 1000) + "K"
                     : Integer.toString(selected);
-            g.fill(x + 1, y + 1, x + width - 1, y + 9, 0xEE091924);
+            g.fill(x + 1, y + 1, x + width - 1, y + 9, FlightLineTheme.HEADER);
             g.outline(x + 1, y + 1, width - 2, 9, PFD_CYAN);
             g.centeredText(font, targetText, x + width / 2, y + 2, PFD_CYAN);
         } else {
@@ -1199,7 +1177,7 @@ final class FlightHud {
             String label = Integer.toString(value);
             boolean showLabel = major && Math.abs(value - current) > 90;
             if (!showLabel) {
-                g.fill(x, tickY, x + (major ? 8 : 5), tickY + 1, 0xFF9FB3BD);
+                g.fill(x, tickY, x + (major ? 8 : 5), tickY + 1, FlightLineTheme.TEXT_DIM);
             } else {
                 g.text(font, label, x + width - 2 - font.width(label), tickY - 4, PFD_WHITE, false);
             }
@@ -1223,7 +1201,7 @@ final class FlightHud {
                 verticalSpeedFpm < 0 ? PFD_AMBER : PFD_GREEN);
 
         // Center rolling drum readout box
-        g.fill(x + 1, centerY - 7, x + width - 1, centerY + 7, 0xFF070C11);
+        g.fill(x + 1, centerY - 7, x + width - 1, centerY + 7, FlightLineTheme.INSET);
         g.outline(x + 1, centerY - 7, width - 2, 14, PFD_WHITE);
         g.centeredText(font, Integer.toString(current), x + width / 2, centerY - 4, PFD_WHITE);
         String vsiText = String.format(Locale.ROOT, "%+d", verticalSpeedFpm);
@@ -1234,7 +1212,7 @@ final class FlightHud {
     private static void drawRadioAltitudeBox(GuiGraphicsExtractor g, Font font, int x, int y,
                                              int width, int height) {
         g.fill(x, y, x + width, y + height, 0xDD070C11);
-        g.outline(x, y, width, height, radioAltitudeFeet < 500 ? PFD_AMBER : 0x553E7D8E);
+        g.outline(x, y, width, height, radioAltitudeFeet < 500 ? PFD_AMBER : FlightLineTheme.STONE);
         g.text(font, "RA", x + 3, y + 2, PFD_CYAN, true);
         String text = radioAltitudeFeet < 2500
                 ? String.format(Locale.ROOT, "%04d", radioAltitudeFeet) : "----";
@@ -1244,8 +1222,8 @@ final class FlightHud {
 
     private static void drawHeadingTape(GuiGraphicsExtractor g, Font font, int x, int y, int width,
                                         int height) {
-        g.fill(x, y, x + width, y + height, 0xDD070C11);
-        g.outline(x, y, width, height, 0x553E7D8E);
+        g.fill(x, y, x + width, y + height, FlightLineTheme.INSET);
+        g.outline(x, y, width, height, FlightLineTheme.STONE);
         int centerX = x + width / 2;
         double pixelsPerDegree = 1.6;
         for (int heading = 0; heading < 360; heading += 10) {
@@ -1253,7 +1231,7 @@ final class FlightHud {
             int tickX = centerX + (int) Math.round(relative * pixelsPerDegree);
             if (tickX < x + 2 || tickX > x + width - 2) continue;
             boolean major = heading % 30 == 0;
-            g.fill(tickX, y + 2, tickX + 1, y + (major ? 7 : 5), 0xFF9FB3BD);
+            g.fill(tickX, y + 2, tickX + 1, y + (major ? 7 : 5), FlightLineTheme.TEXT_DIM);
             if (major) {
                 String label = cardinalHeadingOrHeading(heading);
                 // Keep the centre readout box clear: it covers +/-18 px around the centre.
@@ -1283,7 +1261,7 @@ final class FlightHud {
         }
         g.fill(centerX, y + 1, centerX + 1, y + 5, PFD_WHITE);
         int heading = Math.floorMod(Math.round(visualHeading), 360);
-        g.fill(centerX - 17, y + 7, centerX + 17, y + height - 1, 0xFF070C11);
+        g.fill(centerX - 17, y + 7, centerX + 17, y + height - 1, FlightLineTheme.INSET);
         g.outline(centerX - 17, y + 7, 34, height - 8, PFD_WHITE);
         g.centeredText(font, String.format(Locale.ROOT, "%03d", heading), centerX, y + 8, PFD_WHITE);
     }
@@ -1302,7 +1280,7 @@ final class FlightHud {
         int statusTop = 127;
         int statusBottom = PFD_BASE_HEIGHT - 1;
         g.fill(1, statusTop, PFD_BASE_WIDTH - 1, statusBottom, 0xDD070C11);
-        g.outline(1, statusTop, PFD_BASE_WIDTH - 2, statusBottom - statusTop, 0x553E7D8E);
+        g.outline(1, statusTop, PFD_BASE_WIDTH - 2, statusBottom - statusTop, FlightLineTheme.STONE);
         // Row 1: Wind | Attitude or ILS | VS
         String wind = String.format(Locale.ROOT, "W%03d/%02d",
                 weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots());
@@ -1337,22 +1315,6 @@ final class FlightHud {
         g.text(font, fitText(font, gText, 62), 56, statusTop + 22,
                 gLoad() > 2.5f || gLoad() < 0.3f ? PFD_AMBER : PFD_WHITE, true);
         g.text(font, fitText(font, tempStr, 42), 122, statusTop + 22, PFD_MUTED, true);
-    }
-
-    private static void drawPfdWarnings(GuiGraphicsExtractor g, Font font, int centerX, int top) {
-        String warning = null;
-        if ((warnings & FlightWarning.STALL) != 0) warning = "STALL";
-        else if ((warnings & FlightWarning.PULL_UP) != 0) warning = "PULL UP";
-        else if ((warnings & FlightWarning.WINDSHEAR) != 0) warning = "WINDSHEAR";
-        else if ((warnings & FlightWarning.OVERSPEED) != 0) warning = "OVERSPEED";
-        else if ((warnings & FlightWarning.BANK_ANGLE) != 0) warning = "BANK ANGLE";
-        if (warning == null) return;
-        int width = font.width(warning);
-        int x = centerX - width / 2;
-        int y = top + 4;
-        g.fill(x - 3, y - 2, x + width + 3, y + 10, 0xE0140505);
-        g.outline(x - 3, y - 2, width + 6, 12, PFD_RED);
-        g.text(font, warning, x, y, PFD_RED, true);
     }
 
     private static void drawKeybindList(GuiGraphicsExtractor graphics, Minecraft mc,
@@ -1399,12 +1361,21 @@ final class FlightHud {
             bindings.add(binding(FlightLineClient.ackAtc(), "ACK ATC"));
         }
         bindings.sort(String.CASE_INSENSITIVE_ORDER);
-        int contentWidth = Math.min(188, Math.max(70, screenWidth - 12));
+        List<String> compact = new ArrayList<>();
+        if (emergencyStatus.recommendation().present()) {
+            compact.add(binding(FlightLineClient.executeEmergency(), "EXECUTE NEXT ACTION"));
+        }
+        for (String entry : bindings) {
+            if (compact.size() >= 8) break;
+            if (!compact.contains(entry)) compact.add(entry);
+        }
+        bindings = compact;
+        int contentWidth = Math.min(160, Math.max(70, screenWidth - 12));
         int contentHeight = bindings.size() * 9;
         float availableHeight = Math.max(0.0f, screenHeight - 18.0f);
-        float scale = Math.min(0.68f, Math.min(availableHeight / contentHeight,
+        float scale = Math.min(0.56f, Math.min(availableHeight / contentHeight,
                 (screenWidth - 12.0f) / contentWidth));
-        if (scale < 0.34f) return;
+        if (scale < 0.30f) return;
         int x = screenWidth - 6 - Math.round(contentWidth * scale);
         int y = screenHeight - 6 - Math.round(contentHeight * scale);
         int slide = Math.round((1.0f - keybindPanelProgress) * 8.0f);
@@ -1415,7 +1386,7 @@ final class FlightHud {
         for (int i = 0; i < bindings.size(); i++) {
             String text = fitText(mc.font, bindings.get(i), contentWidth);
             graphics.text(mc.font, text, contentWidth - mc.font.width(text), i * 9,
-                    withAlpha(0xFFE0E7EC, keybindPanelProgress), true);
+                    withAlpha(FlightLineTheme.PAPER, keybindPanelProgress), true);
         }
         pose.popMatrix();
     }
@@ -1459,13 +1430,17 @@ final class FlightHud {
         int popupHeight = 17;
         int x = (screenWidth - popupWidth) / 2;
         int y = screenHeight - 44 + Math.round((1.0f - brakePopupProgress) * 8.0f);
+        graphics.fill(x + 4, y + 4, x + popupWidth + 4, y + popupHeight + 4,
+                withAlpha(FlightLineTheme.SHADOW, brakePopupProgress));
         graphics.fill(x, y, x + popupWidth, y + popupHeight,
-                withAlpha(0xE51A1208, brakePopupProgress));
+                withAlpha(FlightLineTheme.COAL, brakePopupProgress));
         graphics.outline(x, y, popupWidth, popupHeight,
-                withAlpha(active ? 0xFFFFCE52 : 0xFF9C7A39, brakePopupProgress));
+                withAlpha(active ? FlightLineTheme.AMBER : FlightLineTheme.STONE, brakePopupProgress));
+        graphics.fill(x, y, x + 4, y + popupHeight,
+                withAlpha(active ? FlightLineTheme.AMBER : FlightLineTheme.STONE, brakePopupProgress));
         graphics.centeredText(Minecraft.getInstance().font, active ? "BRAKES ON" : "BRAKES RELEASED",
-                screenWidth / 2, y + 4,
-                withAlpha(active ? 0xFFFFD66B : 0xFFD8C59B, brakePopupProgress));
+                screenWidth / 2 + 2, y + 4,
+                withAlpha(active ? FlightLineTheme.AMBER : FlightLineTheme.TEXT_DIM, brakePopupProgress));
     }
 
     private static void animateInstruments() {
@@ -1486,30 +1461,30 @@ final class FlightHud {
             for (int ring : new int[]{radius, radius * 2 / 3, radius / 3}) {
                 int px = cx + (int)Math.round(Math.sin(radians) * ring);
                 int py = cy - (int)Math.round(Math.cos(radians) * ring);
-                g.fill(px, py, px + 1, py + 1, ring == radius ? 0xFF315E50 : 0xFF26483D);
+                g.fill(px, py, px + 1, py + 1, ring == radius ? FlightLineTheme.GREEN_DARK : FlightLineTheme.LINE);
             }
         }
-        g.fill(cx - radius, cy, cx + radius + 1, cy + 1, 0xFF26483D);
-        g.fill(cx, cy - radius, cx + 1, cy + radius + 1, 0xFF26483D);
+        g.fill(cx - radius, cy, cx + radius + 1, cy + 1, FlightLineTheme.LINE);
+        g.fill(cx, cy - radius, cx + 1, cy + radius + 1, FlightLineTheme.LINE);
         for (int cardinal = 0; cardinal < 360; cardinal += 90) {
             double relative = Math.toRadians(cardinal - heading);
             int outerX = cx - (int)Math.round(Math.sin(relative) * radius);
             int outerY = cy - (int)Math.round(Math.cos(relative) * radius);
             int innerX = cx - (int)Math.round(Math.sin(relative) * (radius - 3));
             int innerY = cy - (int)Math.round(Math.cos(relative) * (radius - 3));
-            drawLine(g, innerX, innerY, outerX, outerY, 0xFF9BC9AE);
+            drawLine(g, innerX, innerY, outerX, outerY, FlightLineTheme.TEXT_DIM);
         }
         double sweep = clock * Math.PI / 2.2;
         for (int trail = 5; trail >= 1; trail--) {
             double trailingAngle = sweep - Math.toRadians(trail * 3.0);
             int trailX = cx + (int)Math.round(Math.sin(trailingAngle) * radius);
             int trailY = cy - (int)Math.round(Math.cos(trailingAngle) * radius);
-            int trailColor = trail <= 2 ? 0x604EA87B : 0x304EA87B;
+            int trailColor = trail <= 2 ? 0x606CC349 : 0x303C8527;
             drawLine(g, cx, cy, trailX, trailY, trailColor);
         }
         int endX = cx + (int)Math.round(Math.sin(sweep) * radius);
         int endY = cy - (int)Math.round(Math.cos(sweep) * radius);
-        drawLine(g, cx, cy, endX, endY, 0xFF62A97B);
+        drawLine(g, cx, cy, endX, endY, FlightLineTheme.GREEN);
     }
 
     private static void drawLine(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1, int color) {
@@ -1551,7 +1526,7 @@ final class FlightHud {
             int px = cx - (int) Math.round(Math.sin(relative) * radius * scale);
             int py = cy - (int) Math.round(Math.cos(relative) * radius * scale);
             boolean active = i == plan.activeLeg();
-            int color = active ? 0xFF62D89B : leg.airport() ? 0xFFFFC44D : 0xFF72E6F5;
+            int color = active ? FlightLineTheme.GREEN : leg.airport() ? FlightLineTheme.AMBER : FlightLineTheme.CYAN;
             if (visible && previousVisible) drawLine(g, previousX, previousY, px, py, color);
             if (visible) {
                 drawDiamond(g, px, py, 2, color);
@@ -1566,9 +1541,9 @@ final class FlightHud {
     }
 
     private static void drawAircraftSymbol(GuiGraphicsExtractor g, int cx, int cy) {
-        g.fill(cx, cy - 4, cx + 1, cy + 4, 0xFF76E8B0);
-        g.fill(cx - 4, cy, cx + 5, cy + 1, 0xFF76E8B0);
-        g.fill(cx - 2, cy + 2, cx + 3, cy + 3, 0xFF76E8B0);
+        g.fill(cx, cy - 4, cx + 1, cy + 4, FlightLineTheme.PAPER);
+        g.fill(cx - 4, cy, cx + 5, cy + 1, FlightLineTheme.PAPER);
+        g.fill(cx - 2, cy + 2, cx + 3, cy + 3, FlightLineTheme.PAPER);
     }
 
     private static void drawTrafficBlip(GuiGraphicsExtractor g, int cx, int cy, double bearing,
@@ -1616,7 +1591,7 @@ final class FlightHud {
             int dx = px - cx;
             int horizon = Math.max(top, Math.min(bottom,
                     cy + pitchOffset + (int) Math.round(dx * slope)));
-            g.fill(px, top, px + 2, horizon, 0xFF0C6FA8);
+            g.fill(px, top, px + 2, horizon, FlightLineTheme.BLUE);
             g.fill(px, horizon, px + 2, bottom, 0xFF6B4A28);
             g.fill(px, Math.max(top, horizon - 1), px + 2, Math.min(bottom, horizon + 1),
                     0xFFF2F7FA);
@@ -1736,8 +1711,8 @@ final class FlightHud {
             int raBoxHeight = 11;
             int raBoxX = cx - raBoxWidth / 2;
             int raBoxY = bottom - 14;
-            g.fill(raBoxX, raBoxY, raBoxX + raBoxWidth, raBoxY + raBoxHeight, 0xEE080D12);
-            g.outline(raBoxX, raBoxY, raBoxWidth, raBoxHeight, radioAltitudeFeet < 500 ? PFD_AMBER : 0xFF3E7D8E);
+            g.fill(raBoxX, raBoxY, raBoxX + raBoxWidth, raBoxY + raBoxHeight, FlightLineTheme.VOID);
+            g.outline(raBoxX, raBoxY, raBoxWidth, raBoxHeight, radioAltitudeFeet < 500 ? PFD_AMBER : FlightLineTheme.STONE);
             String raText = Integer.toString(radioAltitudeFeet);
             int color = radioAltitudeFeet < 200 ? 0xFFFF3B30 : radioAltitudeFeet < 500 ? PFD_AMBER : PFD_GREEN;
             g.centeredText(font, raText, cx, raBoxY + 2, color);
@@ -1774,15 +1749,14 @@ final class FlightHud {
     }
 
     private static void gauge(GuiGraphicsExtractor g, int x, int y, int width, int height, float value, int color) {
-        g.fill(x, y, x + width, y + height, 0xFF26343D);
-        int fill = Math.max(0, Math.min(width, Math.round(width * value)));
-        g.fill(x, y, x + fill, y + height, color);
-        g.outline(x, y, width, height, 0x805D7781);
+        FlightLineTheme.bar(g, x, y, width, height, value, color, FlightLineTheme.INSET);
     }
 
     private static void panel(GuiGraphicsExtractor g, int x, int y, int width, int height, int borderColor) {
-        g.fill(x, y, x + width, y + height, 0xC8101820);
-        g.outline(x, y, width, height, borderColor);
+        // HUD panels stay compact: hard shadow + 2px frame instead of the full 4px screen frame.
+        g.fill(x + 4, y + 4, x + width + 4, y + height + 4, FlightLineTheme.SHADOW);
+        g.fill(x, y, x + width, y + height, borderColor);
+        g.fill(x + 2, y + 2, x + width - 2, y + height - 2, FlightLineTheme.PANEL);
     }
 
     private static int gearColor() {
@@ -1824,42 +1798,4 @@ final class FlightHud {
         return wrapped;
     }
 
-    private static List<String> warningLabels() {
-        List<String> labels = new ArrayList<>();
-        if (phase == FlightPhase.CRASHED) {
-            labels.add("AIRFRAME CRASH - " + FlightLineClient.keyName(FlightLineClient.inventory()) + " TO RESET");
-        }
-        if ((warnings & FlightWarning.STALL) != 0) labels.add("STALL");
-        if ((warnings & FlightWarning.WINDSHEAR) != 0) labels.add("WINDSHEAR");
-        if ((warnings & FlightWarning.PULL_UP) != 0) labels.add("PULL UP");
-        if ((warnings & FlightWarning.TERRAIN) != 0) labels.add("TERRAIN, TERRAIN");
-        if ((warnings & FlightWarning.TCAS_RESOLUTION) != 0) {
-            String direction = (warnings & FlightWarning.TCAS_DESCEND) != 0 ? "DESCEND NOW" : "CLIMB NOW";
-            labels.add((warnings & FlightWarning.TCAS_CROSSING) != 0
-                    ? "TCAS: " + direction + " - CROSSING" : "TCAS: " + direction);
-        }
-        if ((warnings & FlightWarning.TCAS_CLEAR) != 0) labels.add("CLEAR OF CONFLICT");
-        if ((warnings & FlightWarning.TCAS_TRAFFIC) != 0) labels.add("TRAFFIC, TRAFFIC");
-        if ((warnings & FlightWarning.GEAR_SELECTED_ON_GROUND) != 0) labels.add("GEAR SELECT - AIRBORNE ONLY");
-        if ((warnings & FlightWarning.SINK_RATE) != 0) labels.add("SINK RATE");
-        if ((warnings & FlightWarning.DONT_SINK) != 0) labels.add("DON'T SINK");
-        if ((warnings & FlightWarning.TOO_LOW_TERRAIN) != 0) labels.add("TOO LOW TERRAIN");
-        if ((warnings & FlightWarning.GEAR_UP) != 0) labels.add("TOO LOW GEAR");
-        if ((warnings & FlightWarning.TOO_LOW_FLAPS) != 0) labels.add("TOO LOW FLAPS");
-        if ((warnings & FlightWarning.BANK_ANGLE) != 0) labels.add("BANK ANGLE");
-        if ((warnings & FlightWarning.GLIDESLOPE_HIGH) != 0) labels.add("GLIDESLOPE HIGH");
-        if ((warnings & FlightWarning.GLIDESLOPE_LOW) != 0) labels.add("GLIDESLOPE");
-        if ((warnings & FlightWarning.ENGINE_FIRE) != 0) labels.add("ENGINE FIRE");
-        if ((warnings & FlightWarning.ENGINE_FAILURE) != 0) labels.add("ENGINE FAILURE");
-        if ((warnings & FlightWarning.FUEL_EMPTY) != 0) labels.add("FUEL EMPTY - ENGINES OFF");
-        if ((warnings & FlightWarning.FUEL_LOW) != 0) labels.add("LOW FUEL");
-        if ((warnings & FlightWarning.GEAR_FAILED) != 0) labels.add("GEAR FAILURE");
-        if ((warnings & FlightWarning.GEAR_HOT) != 0) labels.add("GEAR HOT");
-        if ((warnings & FlightWarning.TAKEOFF_CONFIG) != 0) labels.add("TAKEOFF CONFIG");
-        if ((warnings & FlightWarning.AIRFRAME_STRESS) != 0) labels.add("AIRFRAME STRESS");
-        if ((warnings & FlightWarning.OVERSPEED) != 0) labels.add("OVERSPEED");
-        if ((warnings & FlightWarning.HYDRAULIC_FAIL) != 0) labels.add("HYD FAIL - GEAR/FLAP LOCKED");
-        if ((warnings & FlightWarning.PRESSURISATION) != 0) labels.add("CABIN ALTITUDE - DESCEND");
-        return labels;
-    }
 }

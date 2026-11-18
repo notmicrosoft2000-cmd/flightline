@@ -42,6 +42,20 @@ public final class WeatherSimulation {
     }
 
     /**
+     * Natural and operator-forced events share the same storm requirement so debug windshear stays
+     * a natural phenomenon. Forced events skip only the natural interval check.
+     */
+    public static boolean shouldStartWindshear(boolean thundering, long gameTime, long seed,
+                                               boolean forced) {
+        return thundering && (forced || isWindshearEvent(thundering, gameTime, seed));
+    }
+
+    /** Existing windshear severity curve, extracted so forced and natural events match exactly. */
+    public static double windshearSeverity(int gustKnots) {
+        return 0.55 + 0.45 * Math.min(1.0, gustKnots / 70.0);
+    }
+
+    /**
      * Deterministic radar cell with a cluster envelope, lifecycle, motion and storm metadata.
      * Broad guidance still comes from the authoritative cockpit payload, so no extra network field
      * is needed for the display-only structure.
