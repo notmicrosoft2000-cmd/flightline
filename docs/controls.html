@@ -91,6 +91,53 @@
 
         <section class="container section">
             <div class="section-heading">
+                <h2>Flight planner / FPLN tab</h2>
+                <p>Diagram — press <code>H</code>, open <strong>FPLN</strong>, and build a server-validated route.</p>
+            </div>
+            <div class="plate-pair">
+                <figure class="manual-figure">
+                    <img src="img/flight-planner.svg" width="1200" height="600" loading="lazy" alt="Diagram of the flight planner FPLN tab with route fields, fix list and action buttons">
+                    <figcaption><b>DIAGRAM / H → FPLN</b><span>Origin, destination, fixes, alternate, status</span></figcaption>
+                </figure>
+                <div class="plate-notes cyan pixel-box">
+                    <span class="note-index">PLATE 02 / FLIGHT PLAN</span>
+                    <h3>File it, clear it, fly it</h3>
+                    <p>The planner lives on the flight deck. Pick the origin and destination, add up to 16 fixes, set cruise altitude and an alternate, then use the action strip.</p>
+                    <table>
+                        <thead><tr><th>Control</th><th>Server result</th></tr></thead>
+                        <tbody>
+                            <tr><td>FILE</td><td>Validates IDs, altitude and alternate; sends the plan to ATC.</td></tr>
+                            <tr><td>REQUEST CLR</td><td>Asks ATC for a clearance and assigned runways.</td></tr>
+                            <tr><td>CANCEL</td><td>Drops the current plan or request.</td></tr>
+                            <tr><td>LNAV</td><td>Enables server-side fix guidance and auto-sequencing.</td></tr>
+                            <tr><td>ILS APP</td><td>Tunes ILS from the destination runway record.</td></tr>
+                            <tr><td>SYNC ALT</td><td>Loads filed cruise altitude into the MCP. Nav mode is unchanged.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
+                <h2>Route overlay & approach</h2>
+                <p>Diagrams — the same filed route drives the ND, the weather map and the LNAV → ILS handoff.</p>
+            </div>
+            <div class="figure-strip two">
+                <figure class="manual-figure">
+                    <img src="img/nd-route-overlay.svg" width="1200" height="600" loading="lazy" alt="Diagram of navigation display route line, waypoint diamonds and active leg data">
+                    <figcaption><b>DIAGRAM 03 / ND</b><span>B · bearing · distance · XT · ETE · weather-map route</span></figcaption>
+                </figure>
+                <figure class="manual-figure">
+                    <img src="img/lnav-ils-approach.svg" width="1200" height="600" loading="lazy" alt="Diagram of LNAV fix sequencing handing off to an ILS glide slope and assigned runway">
+                    <figcaption><b>DIAGRAM 04 / APPROACH</b><span>Fix sequencing → runway / glide slope</span></figcaption>
+                </figure>
+            </div>
+            <p class="plate-note"><b>KEYS UNCHANGED</b><span>H opens the planner. O / T / E / F7 / L / P / Y keep their existing jobs. LNAV and ILS run on the server; plan, status, active leg, runways and ILS state persist across relog and restart. No new keybind.</span></p>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
                 <h2>Emergencies & ATC</h2>
                 <p>These keys stay readable even when the cockpit is busy.</p>
             </div>

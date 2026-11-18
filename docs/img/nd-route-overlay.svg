@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">Navigation display route overlay diagram</title>
+  <desc id="desc">A blocky navigation display with waypoint diamonds, highlighted active leg, distance, bearing, cross-track error, ETE and a weather-map route inset.</desc>
+  <style>
+    text { font-family: "Courier New", monospace; font-weight: 700; }
+    .tiny { font-size: 14px; letter-spacing: .8px; }
+    .small { font-size: 17px; letter-spacing: .5px; }
+    .mid { font-size: 22px; }
+    .big { font-size: 30px; }
+    .paper { fill: #fcf5f1; }
+    .paper3 { fill: #d0c5c0; }
+    .ink { fill: #171615; }
+    .coal { fill: #262423; }
+    .stone { fill: #3d3938; }
+    .green { fill: #6cc349; }
+    .greenDark { fill: #2a641c; }
+    .amber { fill: #ffc42b; }
+    .red { fill: #b83b2e; }
+    .cyan { fill: #36e6ff; }
+  </style>
+
+  <rect width="1200" height="600" fill="#171615"/>
+  <rect x="0" y="0" width="1200" height="54" fill="#36e6ff"/>
+  <rect x="0" y="50" width="1200" height="4" fill="#000000"/>
+  <text x="22" y="36" class="tiny" fill="#171615">DIAGRAM 03 / NAVIGATION DISPLAY</text>
+  <text x="1178" y="36" text-anchor="end" class="tiny" fill="#171615">B: ND OVERLAY · P: WEATHER MAP ROUTE</text>
+
+  <!-- Main ND -->
+  <rect x="32" y="88" width="804" height="468" fill="#000000"/>
+  <rect x="24" y="80" width="804" height="468" fill="#0b1610"/>
+  <rect x="24" y="80" width="804" height="42" fill="#171615"/>
+  <text x="44" y="108" class="small" fill="#6cc349">ND / ROUTE</text>
+  <text x="808" y="108" text-anchor="end" class="tiny" fill="#d0c5c0">RANGE 64 BLK · NORTH UP</text>
+
+  <path d="M24 246H828M24 412H828M212 122V548M426 122V548M640 122V548" stroke="#3d3938" stroke-width="2"/>
+  <g fill="none" stroke="#3d3938" stroke-width="3">
+    <circle cx="426" cy="334" r="88"/>
+    <circle cx="426" cy="334" r="158"/>
+    <circle cx="426" cy="334" r="228"/>
+  </g>
+  <path d="M426 122V546M24 334H828" stroke="#3d3938" stroke-width="3"/>
+  <g class="tiny" fill="#d0c5c0">
+    <text x="418" y="142">N</text><text x="418" y="542">S</text>
+    <text x="40" y="338">W</text><text x="802" y="338">E</text>
+  </g>
+
+  <!-- Route polyline: active leg amber, remainder green -->
+  <path d="M426 334L558 246" stroke="#ffc42b" stroke-width="10"/>
+  <path d="M558 246L674 296L752 176L766 440" stroke="#6cc349" stroke-width="8"/>
+  <path d="M426 334L558 246" stroke="#171615" stroke-width="2" stroke-dasharray="10 8"/>
+  <path d="M426 334L558 246" stroke="#36e6ff" stroke-width="2" stroke-dasharray="4 10"/>
+
+  <!-- Ownship -->
+  <g fill="#000000">
+    <rect x="416" y="302" width="20" height="64"/>
+    <rect x="386" y="326" width="80" height="16"/>
+    <rect x="402" y="352" width="48" height="12"/>
+  </g>
+  <g fill="#fcf5f1">
+    <rect x="421" y="306" width="10" height="56"/>
+    <rect x="390" y="330" width="72" height="8"/>
+    <rect x="406" y="354" width="40" height="6"/>
+  </g>
+  <rect x="390" y="330" width="8" height="8" fill="#b83b2e"/>
+  <rect x="454" y="330" width="8" height="8" fill="#b83b2e"/>
+
+  <!-- Waypoint diamonds -->
+  <g stroke="#171615" stroke-width="4">
+    <polygon points="558,226 578,246 558,266 538,246" fill="#ffc42b"/>
+    <polygon points="674,276 694,296 674,316 654,296" fill="#6cc349"/>
+    <polygon points="752,156 772,176 752,196 732,176" fill="#6cc349"/>
+    <polygon points="766,420 786,440 766,460 746,440" fill="#36e6ff"/>
+  </g>
+  <g class="small">
+    <text x="590" y="238" fill="#ffc42b">BIRCH</text>
+    <text x="704" y="288" fill="#6cc349">RIDGE</text>
+    <text x="782" y="168" fill="#6cc349">KELSO</text>
+    <text x="700" y="444" fill="#36e6ff">KX04 / DEST</text>
+  </g>
+  <rect x="520" y="278" width="120" height="34" fill="#171615" stroke="#ffc42b" stroke-width="3"/>
+  <text x="580" y="302" text-anchor="middle" class="tiny" fill="#ffc42b">ACTIVE FIX</text>
+
+  <!-- Weather cells as blocky contours -->
+  <g fill="#262423" stroke="#6b6562" stroke-width="3">
+    <rect x="108" y="176" width="96" height="64"/>
+    <rect x="128" y="156" width="56" height="104"/>
+    <rect x="628" y="462" width="112" height="56"/>
+    <rect x="664" y="438" width="56" height="104"/>
+  </g>
+  <text x="112" y="260" class="tiny" fill="#d0c5c0">WX CELL</text>
+
+  <rect x="44" y="506" width="300" height="30" fill="#171615" stroke="#000000" stroke-width="3"/>
+  <text x="58" y="527" class="tiny" fill="#6cc349">ROUTE FROM SERVER NAV DATABASE</text>
+
+  <!-- Telemetry panel -->
+  <rect x="856" y="88" width="320" height="468" fill="#000000"/>
+  <rect x="848" y="80" width="320" height="468" fill="#171615"/>
+  <rect x="848" y="80" width="320" height="42" fill="#ffc42b"/>
+  <text x="866" y="108" class="small" fill="#171615">ACTIVE LEG DATA</text>
+  <text x="1154" y="108" text-anchor="end" class="tiny" fill="#171615">LNAV</text>
+
+  <g class="tiny" fill="#d0c5c0">
+    <rect x="864" y="138" width="288" height="40" fill="#262423"/>
+    <text x="878" y="164">TO FIX</text>
+    <text x="1138" y="164" text-anchor="end" class="small" fill="#ffc42b">BIRCH</text>
+    <rect x="864" y="186" width="288" height="40" fill="#262423"/>
+    <text x="878" y="212">BEARING</text>
+    <text x="1138" y="212" text-anchor="end" class="mid" fill="#fcf5f1">072 DEG</text>
+    <rect x="864" y="234" width="288" height="40" fill="#262423"/>
+    <text x="878" y="260">DISTANCE</text>
+    <text x="1138" y="260" text-anchor="end" class="mid" fill="#fcf5f1">1840 BLK</text>
+    <rect x="864" y="282" width="288" height="40" fill="#262423"/>
+    <text x="878" y="308">X-TRACK</text>
+    <text x="1138" y="308" text-anchor="end" class="mid" fill="#6cc349">+0.4</text>
+    <rect x="864" y="330" width="288" height="40" fill="#262423"/>
+    <text x="878" y="356">ETE / GS</text>
+    <text x="1138" y="356" text-anchor="end" class="mid" fill="#fcf5f1">06:12 / 240</text>
+  </g>
+
+  <rect x="864" y="390" width="288" height="48" fill="#2a641c" stroke="#000000" stroke-width="4"/>
+  <text x="1008" y="421" text-anchor="middle" class="small" fill="#fcf5f1">AUTO SEQUENCE ON CAPTURE</text>
+
+  <!-- Weather map route inset -->
+  <rect x="856" y="464" width="320" height="92" fill="#000000"/>
+  <rect x="848" y="456" width="320" height="92" fill="#262423"/>
+  <rect x="848" y="456" width="320" height="24" fill="#1e6eea"/>
+  <text x="864" y="474" class="tiny" fill="#fcf5f1">WX MAP / ROUTE ON</text>
+  <path d="M866 520L940 494L1018 512L1096 486L1154 520" stroke="#6cc349" stroke-width="6"/>
+  <g fill="#ffc42b" stroke="#171615" stroke-width="3">
+    <rect x="936" y="490" width="10" height="10"/>
+    <rect x="1014" y="508" width="10" height="10"/>
+    <rect x="1092" y="482" width="10" height="10"/>
+  </g>
+  <rect x="858" y="504" width="10" height="10" fill="#fcf5f1"/>
+</svg>

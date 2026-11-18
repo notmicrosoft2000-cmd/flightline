@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">Engine fire checklist diagram</title>
+  <desc id="desc">A blocky emergency panel with an engine fire warning and a numbered extinguisher checklist executed with T and validated by the server.</desc>
+  <style>
+    text { font-family: "Courier New", monospace; font-weight: 700; }
+    .tiny { font-size: 14px; letter-spacing: .8px; }
+    .small { font-size: 17px; letter-spacing: .4px; }
+    .mid { font-size: 22px; }
+    .big { font-size: 30px; }
+    .paper { fill: #fcf5f1; }
+    .paper3 { fill: #d0c5c0; }
+    .ink { fill: #171615; }
+    .coal { fill: #262423; }
+    .stone { fill: #3d3938; }
+    .green { fill: #6cc349; }
+    .greenDark { fill: #2a641c; }
+    .amber { fill: #ffc42b; }
+    .red { fill: #b83b2e; }
+    .cyan { fill: #36e6ff; }
+  </style>
+
+  <rect width="1200" height="600" fill="#171615"/>
+  <rect x="0" y="0" width="1200" height="54" fill="#b83b2e"/>
+  <rect x="0" y="50" width="1200" height="4" fill="#000000"/>
+  <text x="22" y="36" class="tiny" fill="#fcf5f1">DIAGRAM 07 / ENGINE FIRE PROCEDURE</text>
+  <text x="1178" y="36" text-anchor="end" class="tiny" fill="#fcf5f1">O: CHECKLIST · T: NEXT ACTION</text>
+
+  <!-- Condition panel -->
+  <rect x="32" y="88" width="548" height="468" fill="#000000"/>
+  <rect x="24" y="80" width="548" height="468" fill="#171615"/>
+  <rect x="24" y="80" width="548" height="44" fill="#b83b2e"/>
+  <text x="44" y="108" class="small" fill="#fcf5f1">SITUATION / ENGINE 1</text>
+
+  <rect x="48" y="146" width="500" height="78" fill="#000000"/>
+  <rect x="42" y="140" width="500" height="78" fill="#ffc42b"/>
+  <text x="292" y="174" text-anchor="middle" class="big" fill="#171615">ENGINE 1 FIRE</text>
+  <text x="292" y="202" text-anchor="middle" class="tiny" fill="#171615">OVERHEAT DETECTED · FIRE CONFIRMED</text>
+
+  <!-- Blocky engine schematic -->
+  <rect x="48" y="244" width="500" height="176" fill="#262423" stroke="#000000" stroke-width="4"/>
+  <path d="M48 332H548M160 244V420M436 244V420" stroke="#3d3938" stroke-width="3"/>
+  <g fill="#000000">
+    <rect x="198" y="304" width="152" height="56"/>
+    <rect x="226" y="288" width="96" height="88"/>
+  </g>
+  <g fill="#ede5e2">
+    <rect x="204" y="310" width="140" height="44"/>
+    <rect x="232" y="294" width="84" height="76"/>
+  </g>
+  <g fill="#b83b2e" stroke="#000000" stroke-width="3">
+    <rect x="100" y="300" width="54" height="64"/>
+    <rect x="446" y="300" width="54" height="64"/>
+  </g>
+  <rect x="110" y="312" width="34" height="40" fill="#ffc42b"/>
+  <g fill="#ffc42b" stroke="#171615" stroke-width="3">
+    <polygon points="116,286 128,262 140,286"/>
+    <polygon points="134,278 146,248 158,278"/>
+    <polygon points="152,288 164,264 176,288"/>
+  </g>
+  <g fill="#b83b2e" stroke="#000000" stroke-width="3">
+    <polygon points="116,278 124,260 132,278"/>
+    <polygon points="146,272 154,250 162,272"/>
+  </g>
+  <text x="126" y="384" class="tiny" fill="#ffc42b">FIRE</text>
+  <text x="473" y="384" class="tiny" fill="#6cc349">NORMAL</text>
+  <text x="274" y="336" text-anchor="middle" class="small" fill="#171615">ENG 1</text>
+
+  <g class="tiny" fill="#d0c5c0">
+    <rect x="48" y="440" width="158" height="52" fill="#262423"/>
+    <text x="62" y="462">BOTTLES</text><text x="190" y="488" text-anchor="end" class="mid" fill="#ffc42b">02</text>
+    <rect x="218" y="440" width="158" height="52" fill="#262423"/>
+    <text x="232" y="462">WINDOW</text><text x="360" y="488" text-anchor="end" class="mid" fill="#ffc42b">30 S</text>
+    <rect x="388" y="440" width="160" height="52" fill="#262423"/>
+    <text x="402" y="462">SHUTDOWN</text><text x="532" y="488" text-anchor="end" class="tiny" fill="#b83b2e">NOT EXTINGUISH</text>
+  </g>
+
+  <!-- Procedure panel -->
+  <rect x="628" y="88" width="548" height="468" fill="#000000"/>
+  <rect x="620" y="80" width="548" height="468" fill="#171615"/>
+  <rect x="620" y="80" width="548" height="44" fill="#6cc349"/>
+  <text x="640" y="108" class="small" fill="#171615">PROCEDURE / NEXT ACTION</text>
+
+  <g class="small">
+    <rect x="644" y="146" width="500" height="64" fill="#000000"/>
+    <rect x="638" y="140" width="500" height="64" fill="#ffc42b"/>
+    <text x="656" y="164" class="tiny" fill="#171615">01</text>
+    <text x="700" y="180" fill="#171615">DISCHARGE BOTTLE 1</text>
+    <rect x="1060" y="154" width="62" height="36" fill="#171615"/>
+    <text x="1091" y="179" text-anchor="middle" class="tiny" fill="#ffc42b">T</text>
+
+    <rect x="644" y="220" width="500" height="64" fill="#262423"/>
+    <text x="656" y="244" class="tiny" fill="#6cc349">02</text>
+    <text x="700" y="260" fill="#ede5e2">CHECK FIRE · 30 S WINDOW</text>
+    <rect x="1060" y="228" width="62" height="36" fill="#171615"/>
+    <text x="1091" y="253" text-anchor="middle" class="tiny" fill="#ffc42b">T</text>
+
+    <rect x="644" y="294" width="500" height="64" fill="#262423"/>
+    <text x="656" y="318" class="tiny" fill="#6cc349">03</text>
+    <text x="700" y="334" fill="#ede5e2">DISCHARGE BOTTLE 2 IF NEEDED</text>
+    <rect x="1060" y="302" width="62" height="36" fill="#171615"/>
+    <text x="1091" y="327" text-anchor="middle" class="tiny" fill="#ffc42b">T</text>
+
+    <rect x="644" y="368" width="500" height="64" fill="#262423"/>
+    <text x="656" y="392" class="tiny" fill="#6cc349">04</text>
+    <text x="700" y="408" fill="#ede5e2">LAND AND SECURE FIRE</text>
+    <rect x="1060" y="376" width="62" height="36" fill="#171615"/>
+    <text x="1091" y="401" text-anchor="middle" class="tiny" fill="#ffc42b">T</text>
+  </g>
+
+  <rect x="644" y="456" width="500" height="72" fill="#2a641c" stroke="#000000" stroke-width="4"/>
+  <text x="894" y="484" text-anchor="middle" class="tiny" fill="#fcf5f1">T EXECUTES THE HIGHLIGHTED ACTION</text>
+  <text x="894" y="512" text-anchor="middle" class="tiny" fill="#ffc42b">SERVER REVALIDATES BEFORE APPLYING</text>
+
+  <rect x="24" y="536" width="1152" height="42" fill="#3d3938" stroke="#000000" stroke-width="4"/>
+  <text x="600" y="564" text-anchor="middle" class="tiny" fill="#fcf5f1">CLIENTS CANNOT SET EMERGENCY STATE · SCENARIO INJECTION IS OPERATOR-ONLY</text>
+</svg>

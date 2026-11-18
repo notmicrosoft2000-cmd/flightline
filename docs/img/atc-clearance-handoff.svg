@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">ATC clearance and F7 acknowledgement diagram</title>
+  <desc id="desc">A four-stage manual strip: file a plan, operator validation and runway assignment, radio clearance, then F7 acknowledgement and LNAV handoff.</desc>
+  <style>
+    text { font-family: "Courier New", monospace; font-weight: 700; }
+    .tiny { font-size: 14px; letter-spacing: .7px; }
+    .small { font-size: 17px; letter-spacing: .4px; }
+    .mid { font-size: 22px; }
+    .ink { fill: #171615; }
+    .coal { fill: #262423; }
+    .stone { fill: #3d3938; }
+    .paper { fill: #fcf5f1; }
+    .paper3 { fill: #d0c5c0; }
+    .green { fill: #6cc349; }
+    .greenDark { fill: #2a641c; }
+    .amber { fill: #ffc42b; }
+    .red { fill: #b83b2e; }
+    .cyan { fill: #36e6ff; }
+    .blue { fill: #1e6eea; }
+  </style>
+
+  <rect width="1200" height="600" fill="#171615"/>
+  <rect x="0" y="0" width="1200" height="54" fill="#ffc42b"/>
+  <rect x="0" y="50" width="1200" height="4" fill="#000000"/>
+  <text x="22" y="36" class="tiny" fill="#171615">DIAGRAM 05 / ATC CLEARANCE + F7 ACK</text>
+  <text x="1178" y="36" text-anchor="end" class="tiny" fill="#171615">OPERATOR ONLY · SERVER VALIDATION</text>
+
+  <!-- Stage 01 -->
+  <rect x="32" y="112" width="258" height="404" fill="#000000"/>
+  <rect x="24" y="104" width="258" height="404" fill="#171615"/>
+  <rect x="24" y="104" width="258" height="44" fill="#1e6eea"/>
+  <text x="42" y="134" class="small" fill="#fcf5f1">01 / PILOT FILES</text>
+  <g class="tiny" fill="#d0c5c0">
+    <rect x="42" y="168" width="222" height="38" fill="#262423"/>
+    <text x="54" y="193">ORIGIN   KX01</text>
+    <rect x="42" y="214" width="222" height="38" fill="#262423"/>
+    <text x="54" y="239">DEST     KX04</text>
+    <rect x="42" y="260" width="222" height="38" fill="#262423"/>
+    <text x="54" y="285">VIA      BIRCH RIDGE</text>
+    <rect x="42" y="306" width="222" height="38" fill="#262423"/>
+    <text x="54" y="331">ALT      08000 FT</text>
+    <rect x="42" y="352" width="222" height="38" fill="#262423"/>
+    <text x="54" y="377">ALTN    KX03</text>
+  </g>
+  <rect x="42" y="412" width="222" height="46" fill="#3c8527" stroke="#000000" stroke-width="4"/>
+  <text x="153" y="441" text-anchor="middle" class="small" fill="#fcf5f1">FILE</text>
+  <rect x="42" y="468" width="222" height="28" fill="#262423"/>
+  <text x="153" y="487" text-anchor="middle" class="tiny" fill="#ffc42b">STATUS: FILED</text>
+
+  <!-- Arrow 1 -->
+  <polygon points="290,292 326,292 326,274 364,306 326,338 326,320 290,320" fill="#ffc42b" stroke="#000000" stroke-width="4"/>
+
+  <!-- Stage 02 -->
+  <rect x="388" y="112" width="258" height="404" fill="#000000"/>
+  <rect x="380" y="104" width="258" height="404" fill="#171615"/>
+  <rect x="380" y="104" width="258" height="44" fill="#ffc42b"/>
+  <text x="398" y="134" class="small" fill="#171615">02 / SERVER CHECKS</text>
+  <g class="tiny" fill="#ede5e2">
+    <rect x="398" y="168" width="222" height="36" fill="#262423"/>
+    <text x="410" y="192">AIRPORTS / FIXES EXIST</text>
+    <rect x="398" y="212" width="222" height="36" fill="#262423"/>
+    <text x="410" y="236">ALT IN 100 - 40,000 FT</text>
+    <rect x="398" y="256" width="222" height="36" fill="#262423"/>
+    <text x="410" y="280">ALTERNATE IS DIFFERENT</text>
+    <rect x="398" y="300" width="222" height="36" fill="#262423"/>
+    <text x="410" y="324">MAX 16 WAYPOINTS</text>
+  </g>
+  <g fill="#6cc349" stroke="#000000" stroke-width="3">
+    <rect x="404" y="174" width="10" height="10"/><rect x="404" y="218" width="10" height="10"/>
+    <rect x="404" y="262" width="10" height="10"/><rect x="404" y="306" width="10" height="10"/>
+  </g>
+  <rect x="398" y="356" width="222" height="60" fill="#2a641c" stroke="#000000" stroke-width="4"/>
+  <text x="509" y="380" text-anchor="middle" class="tiny" fill="#fcf5f1">WIND-BASED RUNWAYS</text>
+  <text x="509" y="404" text-anchor="middle" class="small" fill="#fcf5f1">DEP 09 / ARR 27</text>
+  <rect x="398" y="428" width="222" height="60" fill="#b83b2e" stroke="#000000" stroke-width="4"/>
+  <text x="509" y="452" text-anchor="middle" class="tiny" fill="#fcf5f1">OPERATOR ONLY</text>
+  <text x="509" y="476" text-anchor="middle" class="tiny" fill="#fcf5f1">ATC / RADIO PHRASEOLOGY</text>
+
+  <!-- Arrow 2 -->
+  <polygon points="650,292 686,292 686,274 724,306 686,338 686,320 650,320" fill="#ffc42b" stroke="#000000" stroke-width="4"/>
+
+  <!-- Stage 03 -->
+  <rect x="748" y="112" width="258" height="404" fill="#000000"/>
+  <rect x="740" y="104" width="258" height="404" fill="#171615"/>
+  <rect x="740" y="104" width="258" height="44" fill="#6cc349"/>
+  <text x="758" y="134" class="small" fill="#171615">03 / RADIO CLEARANCE</text>
+  <rect x="758" y="168" width="222" height="178" fill="#262423" stroke="#36e6ff" stroke-width="3"/>
+  <text x="772" y="196" class="tiny" fill="#36e6ff">ATC &gt; KASA 421</text>
+  <text x="772" y="228" class="tiny" fill="#fcf5f1">CLEARED TO KX04</text>
+  <text x="772" y="256" class="tiny" fill="#fcf5f1">VIA BIRCH, RIDGE</text>
+  <text x="772" y="284" class="tiny" fill="#fcf5f1">DEP RWY 09</text>
+  <text x="772" y="312" class="tiny" fill="#fcf5f1">ARR RWY 27</text>
+  <text x="772" y="336" class="tiny" fill="#ffc42b">ACKNOWLEDGE</text>
+  <rect x="758" y="366" width="222" height="58" fill="#000000"/>
+  <rect x="752" y="360" width="222" height="58" fill="#ffc42b"/>
+  <text x="863" y="396" text-anchor="middle" class="mid" fill="#171615">F7 ACK</text>
+  <rect x="758" y="436" width="222" height="52" fill="#262423"/>
+  <text x="869" y="468" text-anchor="middle" class="tiny" fill="#d0c5c0">PLAN STATUS: CLEARED</text>
+
+  <!-- Arrow 3 -->
+  <polygon points="1008,292 1044,292 1044,274 1082,306 1044,338 1044,320 1008,320" fill="#ffc42b" stroke="#000000" stroke-width="4"/>
+
+  <!-- Stage 04 -->
+  <rect x="1108" y="112" width="68" height="404" fill="#000000"/>
+  <rect x="1100" y="104" width="68" height="404" fill="#171615"/>
+  <rect x="1100" y="104" width="68" height="44" fill="#36e6ff"/>
+  <text x="1134" y="134" text-anchor="middle" class="small" fill="#171615">04</text>
+  <g fill="#6cc349" stroke="#000000" stroke-width="3">
+    <rect x="1112" y="178" width="44" height="44"/>
+    <rect x="1112" y="248" width="44" height="44"/>
+    <rect x="1112" y="318" width="44" height="44"/>
+  </g>
+  <text x="1134" y="402" text-anchor="middle" class="tiny" fill="#fcf5f1">ACK</text>
+  <text x="1134" y="444" text-anchor="middle" class="tiny" fill="#fcf5f1">LNAV</text>
+  <text x="1134" y="486" text-anchor="middle" class="tiny" fill="#fcf5f1">ACTIVE</text>
+
+  <rect x="24" y="536" width="1152" height="42" fill="#3d3938" stroke="#000000" stroke-width="4"/>
+  <text x="600" y="564" text-anchor="middle" class="tiny" fill="#fcf5f1">F7 IS STILL THE SAME KEY: ACKNOWLEDGE CLEARANCE OR RELEASE CONTROL. NO NEW BIND.</text>
+</svg>

@@ -35,6 +35,34 @@
 
         <section class="container section">
             <div class="section-heading">
+                <h2>Engine fire plate</h2>
+                <p>Diagram — the situation panel on the left, the highlighted next action on the right.</p>
+            </div>
+            <div class="plate-pair">
+                <figure class="manual-figure">
+                    <img src="img/engine-fire-checklist.svg" width="1200" height="600" loading="lazy" alt="Diagram of an engine fire warning, extinguisher bottles and a four-step checklist">
+                    <figcaption><b>DIAGRAM / ENGINE FIRE</b><span>O opens the checklist · T executes the next action</span></figcaption>
+                </figure>
+                <div class="plate-notes warn pixel-box">
+                    <span class="note-index">PLATE 07 / FIRE</span>
+                    <h3>Read it left to right</h3>
+                    <p>The left panel names the condition, target engine or Gina group, and the limits. The right panel holds the procedure; the amber row is what <code>T</code> runs next.</p>
+                    <table>
+                        <thead><tr><th>Fact</th><th>Rule</th></tr></thead>
+                        <tbody>
+                            <tr><td>BOTTLES</td><td>Two extinguisher charges.</td></tr>
+                            <tr><td>WINDOW</td><td>30 seconds after ignition.</td></tr>
+                            <tr><td>SHUTDOWN</td><td>Does not extinguish the fire.</td></tr>
+                            <tr><td>AUTHORITY</td><td>Server revalidates every action.</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top:14px">Scenario injection stays operator-only; the client never sets emergency state directly.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
                 <h2>Conditions and procedures</h2>
                 <p>The checklist stays readable in flight, with explanations in plain language.</p>
             </div>

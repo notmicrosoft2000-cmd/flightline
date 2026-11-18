@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">Kasa A380 aircraft icon</title>
+  <desc id="desc">Blocky top-down icon of the twin-engine Kasa A380 in the site palette.</desc>
+  <rect width="160" height="160" fill="#171615"/>
+  <rect x="4" y="4" width="152" height="152" fill="#000000"/>
+  <rect x="8" y="8" width="144" height="144" fill="#1e6eea"/>
+  <path d="M8 56H152M8 84H152M8 112H152M40 40V136M80 40V136M120 40V136" stroke="#171615" stroke-width="2" opacity="0.35"/>
+  <rect x="8" y="8" width="144" height="32" fill="#171615"/>
+  <rect x="14" y="14" width="132" height="20" fill="#36e6ff"/>
+  <text x="80" y="30" text-anchor="middle" font-family="'Courier New', monospace" font-size="17" font-weight="700" fill="#171615">KASA</text>
+  <rect x="8" y="136" width="144" height="16" fill="#171615"/>
+  <text x="80" y="148" text-anchor="middle" font-family="'Courier New', monospace" font-size="11" font-weight="700" fill="#fcf5f1">A380 / 2 ENG</text>
+
+  <rect x="76" y="48" width="8" height="78" fill="#000000"/>
+  <rect x="78" y="50" width="4" height="74" fill="#fcf5f1"/>
+  <rect x="78" y="52" width="4" height="9" fill="#36e6ff"/>
+  <rect x="79" y="64" width="2" height="10" fill="#d0c5c0"/>
+  <polygon points="80,40 87,52 73,52" fill="#fcf5f1" stroke="#000000" stroke-width="4"/>
+
+  <rect x="20" y="79" width="120" height="14" fill="#000000"/>
+  <rect x="24" y="82" width="112" height="8" fill="#fcf5f1"/>
+  <rect x="44" y="82" width="72" height="4" fill="#1e6eea"/>
+  <rect x="20" y="79" width="8" height="14" fill="#b83b2e"/>
+  <rect x="132" y="79" width="8" height="14" fill="#b83b2e"/>
+
+  <rect x="54" y="105" width="52" height="10" fill="#000000"/>
+  <rect x="58" y="108" width="44" height="4" fill="#fcf5f1"/>
+  <rect x="76" y="113" width="8" height="13" fill="#000000"/>
+  <rect x="78" y="115" width="4" height="9" fill="#6cc349"/>
+
+  <rect x="36" y="75" width="13" height="22" fill="#000000"/>
+  <rect x="39" y="79" width="7" height="14" fill="#171615"/>
+  <rect x="40" y="81" width="5" height="10" fill="#6cc349"/>
+  <rect x="111" y="75" width="13" height="22" fill="#000000"/>
+  <rect x="114" y="79" width="7" height="14" fill="#171615"/>
+  <rect x="115" y="81" width="5" height="10" fill="#6cc349"/>
+</svg>

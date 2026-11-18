@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">LNAV and ILS approach diagram</title>
+  <desc id="desc">Two manual plates: a top-down LNAV fix sequence handing off to an ILS runway, and a side profile with glide slope, localizer and assigned runway.</desc>
+  <style>
+    text { font-family: "Courier New", monospace; font-weight: 700; }
+    .tiny { font-size: 14px; letter-spacing: .8px; }
+    .small { font-size: 17px; letter-spacing: .5px; }
+    .mid { font-size: 22px; }
+    .big { font-size: 28px; }
+    .paper { fill: #fcf5f1; }
+    .paper3 { fill: #d0c5c0; }
+    .ink { fill: #171615; }
+    .coal { fill: #262423; }
+    .stone { fill: #3d3938; }
+    .green { fill: #6cc349; }
+    .greenDark { fill: #2a641c; }
+    .amber { fill: #ffc42b; }
+    .red { fill: #b83b2e; }
+    .cyan { fill: #36e6ff; }
+  </style>
+
+  <rect width="1200" height="600" fill="#171615"/>
+  <rect x="0" y="0" width="1200" height="54" fill="#6cc349"/>
+  <rect x="0" y="50" width="1200" height="4" fill="#000000"/>
+  <text x="22" y="36" class="tiny" fill="#171615">DIAGRAM 04 / LNAV TO ILS HANDOFF</text>
+  <text x="1178" y="36" text-anchor="end" class="tiny" fill="#171615">SERVER NAV MODE · HDG / LNAV / ILS</text>
+
+  <!-- Top-down LNAV plate -->
+  <rect x="32" y="88" width="540" height="468" fill="#000000"/>
+  <rect x="24" y="80" width="540" height="468" fill="#171615"/>
+  <rect x="24" y="80" width="540" height="42" fill="#1e6eea"/>
+  <text x="44" y="108" class="small" fill="#fcf5f1">PLATE A / FIX SEQUENCING</text>
+  <text x="550" y="108" text-anchor="end" class="tiny" fill="#fcf5f1">LNAV</text>
+
+  <path d="M24 210H564M24 340H564M24 470H564M160 122V548M300 122V548M440 122V548" stroke="#3d3938" stroke-width="2"/>
+  <path d="M86 470L202 388L330 300L452 336" stroke="#6cc349" stroke-width="8"/>
+  <path d="M330 300L452 336" stroke="#ffc42b" stroke-width="10"/>
+  <path d="M452 336L528 336" stroke="#ffc42b" stroke-width="8" stroke-dasharray="12 8"/>
+
+  <g stroke="#171615" stroke-width="4">
+    <polygon points="202,368 222,388 202,408 182,388" fill="#6cc349"/>
+    <polygon points="330,280 350,300 330,320 310,300" fill="#6cc349"/>
+    <polygon points="452,316 472,336 452,356 432,336" fill="#ffc42b"/>
+  </g>
+  <g class="small">
+    <text x="234" y="380" fill="#6cc349">FIX 02</text>
+    <text x="362" y="292" fill="#6cc349">FAF</text>
+    <text x="484" y="328" fill="#ffc42b">THR</text>
+  </g>
+
+  <!-- Ownship -->
+  <g fill="#000000">
+    <rect x="78" y="452" width="16" height="58"/>
+    <rect x="54" y="468" width="64" height="14"/>
+  </g>
+  <g fill="#fcf5f1">
+    <rect x="83" y="456" width="6" height="50"/>
+    <rect x="58" y="472" width="56" height="6"/>
+  </g>
+  <rect x="58" y="472" width="7" height="6" fill="#b83b2e"/>
+  <rect x="107" y="472" width="7" height="6" fill="#b83b2e"/>
+
+  <!-- Runway top-down -->
+  <rect x="436" y="468" width="112" height="58" fill="#000000"/>
+  <rect x="428" y="460" width="112" height="58" fill="#262423"/>
+  <rect x="434" y="480" width="100" height="6" fill="#fcf5f1"/>
+  <rect x="434" y="492" width="100" height="6" fill="#fcf5f1"/>
+  <text x="484" y="536" text-anchor="middle" class="tiny" fill="#fcf5f1">RWY 27</text>
+
+  <rect x="44" y="150" width="286" height="42" fill="#000000"/>
+  <rect x="40" y="146" width="286" height="42" fill="#171615"/>
+  <text x="56" y="174" class="tiny" fill="#6cc349">ACTIVE LEG 03 / 04</text>
+  <rect x="348" y="146" width="200" height="42" fill="#ffc42b" stroke="#000000" stroke-width="4"/>
+  <text x="448" y="174" text-anchor="middle" class="tiny" fill="#171615">HANDOFF TO ILS</text>
+  <rect x="40" y="504" width="360" height="32" fill="#2a641c" stroke="#000000" stroke-width="3"/>
+  <text x="56" y="526" class="tiny" fill="#fcf5f1">CAPTURE RADIUS AUTO-SEQUENCES FIXES</text>
+
+  <!-- Side profile ILS plate -->
+  <rect x="604" y="88" width="572" height="468" fill="#000000"/>
+  <rect x="596" y="80" width="572" height="468" fill="#0b1610"/>
+  <rect x="596" y="80" width="572" height="42" fill="#ffc42b"/>
+  <text x="616" y="108" class="small" fill="#171615">PLATE B / ILS PROFILE</text>
+  <text x="1154" y="108" text-anchor="end" class="tiny" fill="#171615">ILS 27 · 3.0 DEG</text>
+
+  <path d="M620 180H1148M620 260H1148M620 340H1148M620 420H1148" stroke="#3d3938" stroke-width="2"/>
+  <path d="M620 150V490M720 150V490M820 150V490M920 150V490M1020 150V490M1120 150V490" stroke="#3d3938" stroke-width="2"/>
+  <text x="624" y="172" class="tiny" fill="#d0c5c0">3000</text>
+  <text x="624" y="332" class="tiny" fill="#d0c5c0">1500</text>
+  <text x="624" y="492" class="tiny" fill="#d0c5c0">THR</text>
+
+  <!-- Glide slope and localizer -->
+  <path d="M644 174L1088 466" stroke="#ffc42b" stroke-width="8" stroke-dasharray="16 10"/>
+  <path d="M684 466L1088 466" stroke="#36e6ff" stroke-width="4"/>
+  <path d="M1000 466L1052 392L1104 466" fill="none" stroke="#36e6ff" stroke-width="3" stroke-dasharray="8 6"/>
+  <rect x="1034" y="358" width="112" height="30" fill="#171615" stroke="#36e6ff" stroke-width="3"/>
+  <text x="1090" y="380" text-anchor="middle" class="tiny" fill="#36e6ff">LOCALIZER</text>
+
+  <!-- Aircraft side silhouette -->
+  <g fill="#000000">
+    <rect x="824" y="286" width="74" height="20"/>
+    <rect x="860" y="270" width="22" height="48"/>
+    <rect x="892" y="282" width="34" height="10"/>
+    <rect x="836" y="306" width="18" height="12"/>
+    <rect x="878" y="306" width="18" height="12"/>
+  </g>
+  <g fill="#fcf5f1">
+    <rect x="830" y="290" width="62" height="8"/>
+    <rect x="866" y="274" width="10" height="38"/>
+    <rect x="896" y="285" width="24" height="4"/>
+  </g>
+  <rect x="830" y="290" width="8" height="8" fill="#b83b2e"/>
+
+  <!-- Terrain and runway profile -->
+  <rect x="596" y="466" width="572" height="82" fill="#2a641c"/>
+  <rect x="596" y="466" width="572" height="8" fill="#171615"/>
+  <g fill="#52a535">
+    <rect x="620" y="482" width="48" height="18"/>
+    <rect x="700" y="498" width="64" height="24"/>
+    <rect x="1130" y="486" width="30" height="16"/>
+  </g>
+  <rect x="968" y="456" width="176" height="20" fill="#000000"/>
+  <rect x="960" y="450" width="176" height="20" fill="#262423"/>
+  <rect x="974" y="458" width="148" height="4" fill="#fcf5f1"/>
+  <text x="1048" y="496" text-anchor="middle" class="tiny" fill="#fcf5f1">RWY 27 / ASSIGNED BY ATC</text>
+
+  <rect x="616" y="146" width="240" height="42" fill="#000000"/>
+  <rect x="612" y="142" width="240" height="42" fill="#3c8527"/>
+  <text x="732" y="170" text-anchor="middle" class="tiny" fill="#fcf5f1">ILS APP ENGAGED</text>
+  <rect x="616" y="196" width="286" height="42" fill="#171615" stroke="#ffc42b" stroke-width="3"/>
+  <text x="632" y="223" class="tiny" fill="#ffc42b">AUTOLAND ARMED</text>
+
+  <rect x="616" y="506" width="536" height="30" fill="#171615" stroke="#000000" stroke-width="3"/>
+  <text x="632" y="527" class="tiny" fill="#6cc349">SERVER-SIDE GUIDANCE · ILS REFERENCE PERSISTS</text>
+</svg>

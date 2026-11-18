@@ -31,7 +31,7 @@
                 <article class="airframe-card kasa pixel-box">
                     <div class="airframe-head">
                         <div><span class="tag cyan">STANDARD WIDEBODY</span><h3 style="margin-top:12px">Kasa A380</h3></div>
-                        <div class="feature-icon" aria-hidden="true">K</div>
+                        <img class="aircraft-emblem" src="img/kasa-a380-icon.svg" width="72" height="72" alt="Blocky Kasa A380 aircraft icon">
                     </div>
                     <p>Agile twin-engine handling with a standard cruise envelope. A good first airframe for learning traffic patterns and short-field technique.</p>
                     <ul class="airframe-specs">
@@ -46,7 +46,7 @@
                 <article class="airframe-card gina pixel-box">
                     <div class="airframe-head">
                         <div><span class="tag">MEGA AIRLINER</span><h3 style="margin-top:12px">The Gina 787</h3></div>
-                        <div class="feature-icon" aria-hidden="true">G</div>
+                        <img class="aircraft-emblem" src="img/gina-787-icon.svg" width="72" height="72" alt="Blocky Gina 787 aircraft icon">
                     </div>
                     <p>Six giant high-bypass turbofans, a fast cruise and damped turbulence. Built for long, heavy legs above 250 kt with dedicated airbrakes.</p>
                     <ul class="airframe-specs">
@@ -107,9 +107,29 @@
         </section>
 
         <section class="container section">
-            <div class="callout pixel-box">
-                <h3>Where you fly from</h3>
-                <p>World generation surveys safe Overworld terrain and lays out <strong>400 × 28 block runways</strong>. The server announces them when they are created, so you can navigate to one with the radar or follow ATC vectors.</p>
+            <div class="section-heading">
+                <h2>Generated airfields</h2>
+                <p>Diagram — the server surveys terrain and publishes airport, runway and fix records to clients.</p>
+            </div>
+            <div class="plate-pair">
+                <figure class="manual-figure">
+                    <img src="img/generated-runway.svg" width="1200" height="600" loading="lazy" alt="Diagram of a generated airport, 400 by 28 block runway and nearby navigation fixes">
+                    <figcaption><b>DIAGRAM / WORLD SURVEY</b><span>Runways, airports and fixes from one nav database</span></figcaption>
+                </figure>
+                <div class="plate-notes pixel-box">
+                    <span class="note-index">PLATE 01 / AIRFIELD</span>
+                    <h3>Where you fly from</h3>
+                    <p>World generation surveys safe Overworld terrain and lays out <strong>400 × 28 block runways</strong>. The server announces them when they are created, so you can navigate to one with the radar or follow ATC vectors.</p>
+                    <table>
+                        <thead><tr><th>Record</th><th>Contents</th></tr></thead>
+                        <tbody>
+                            <tr><td>AIRPORT</td><td>ID, name, center and runway IDs</td></tr>
+                            <tr><td>RUNWAY</td><td>Thresholds, headings, ILS course and glide slope</td></tr>
+                            <tr><td>FIX</td><td>Waypoint, VOR or NDB ID with X/Z position</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top:14px">The server owns the database. Clients get a cached snapshot on join or world reload.</p>
+                </div>
             </div>
         </section>
 

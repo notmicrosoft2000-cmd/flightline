@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">Generated runway and Minecraft terrain diagram</title>
+  <desc id="desc">A blocky surveyed Overworld site with a 400 by 28 block runway, airport markers and a navigation database snapshot panel.</desc>
+  <style>
+    text { font-family: "Courier New", monospace; font-weight: 700; }
+    .tiny { font-size: 15px; letter-spacing: 1.2px; }
+    .small { font-size: 18px; letter-spacing: .6px; }
+    .mid { font-size: 24px; }
+    .big { font-size: 30px; }
+    .paper { fill: #fcf5f1; }
+    .paper2 { fill: #ede5e2; }
+    .paper3 { fill: #d0c5c0; }
+    .ink { fill: #171615; }
+    .coal { fill: #262423; }
+    .green { fill: #6cc349; }
+    .greenDark { fill: #2a641c; }
+    .amber { fill: #ffc42b; }
+    .red { fill: #b83b2e; }
+    .cyan { fill: #36e6ff; }
+    .brown { fill: #66412c; }
+  </style>
+
+  <rect width="1200" height="600" fill="#171615"/>
+  <rect x="0" y="0" width="1200" height="54" fill="#ffc42b"/>
+  <rect x="0" y="50" width="1200" height="4" fill="#000000"/>
+  <text x="22" y="36" class="tiny" fill="#171615">DIAGRAM 01 / GENERATED AIRPORT</text>
+  <text x="1178" y="36" text-anchor="end" class="tiny" fill="#171615">SERVER SURVEY · CLIENT SNAPSHOT</text>
+
+  <!-- Terrain plate with hard shadow -->
+  <rect x="28" y="84" width="800" height="460" fill="#000000"/>
+  <rect x="22" y="78" width="800" height="460" fill="#fcf5f1"/>
+  <rect x="34" y="90" width="776" height="436" fill="#3c8527"/>
+  <path d="M34 122H810M34 154H810M34 186H810M34 218H810M34 250H810M34 282H810M34 314H810M34 346H810M34 378H810M34 410H810M34 442H810M34 474H810M34 506H810" stroke="#2a641c" stroke-width="2" opacity="0.55"/>
+  <path d="M66 90V526M98 90V526M130 90V526M162 90V526M194 90V526M226 90V526M258 90V526M290 90V526M322 90V526M354 90V526M386 90V526M418 90V526M450 90V526M482 90V526M514 90V526M546 90V526M578 90V526M610 90V526M642 90V526M674 90V526M706 90V526M738 90V526M770 90V526" stroke="#2a641c" stroke-width="2" opacity="0.42"/>
+
+  <!-- Patchwork terrain -->
+  <rect x="34" y="90" width="160" height="96" fill="#52a535"/>
+  <rect x="450" y="90" width="192" height="64" fill="#52a535"/>
+  <rect x="642" y="154" width="168" height="128" fill="#2a641c"/>
+  <rect x="34" y="346" width="128" height="180" fill="#2a641c"/>
+  <rect x="546" y="378" width="264" height="148" fill="#52a535"/>
+  <rect x="258" y="122" width="96" height="64" fill="#805539"/>
+  <rect x="674" y="410" width="96" height="64" fill="#805539"/>
+
+  <!-- Blocky trees -->
+  <g fill="#2a641c" stroke="#171615" stroke-width="3">
+    <rect x="62" y="182" width="24" height="24"/><rect x="68" y="206" width="12" height="16"/>
+    <rect x="122" y="266" width="24" height="24"/><rect x="128" y="290" width="12" height="16"/>
+    <rect x="706" y="202" width="24" height="24"/><rect x="712" y="226" width="12" height="16"/>
+    <rect x="754" y="322" width="24" height="24"/><rect x="760" y="346" width="12" height="16"/>
+    <rect x="618" y="450" width="24" height="24"/><rect x="624" y="474" width="12" height="16"/>
+  </g>
+
+  <!-- Runway hard shadow and body -->
+  <rect x="96" y="306" width="672" height="72" fill="#000000"/>
+  <rect x="88" y="298" width="672" height="72" fill="#262423"/>
+  <rect x="88" y="298" width="672" height="6" fill="#6b6562"/>
+  <rect x="88" y="364" width="672" height="6" fill="#6b6562"/>
+  <rect x="98" y="330" width="652" height="8" fill="#ede5e2"/>
+  <g fill="#fcf5f1">
+    <rect x="132" y="312" width="36" height="6"/><rect x="132" y="350" width="36" height="6"/>
+    <rect x="180" y="312" width="36" height="6"/><rect x="180" y="350" width="36" height="6"/>
+    <rect x="228" y="312" width="36" height="6"/><rect x="228" y="350" width="36" height="6"/>
+    <rect x="276" y="312" width="36" height="6"/><rect x="276" y="350" width="36" height="6"/>
+    <rect x="660" y="312" width="36" height="6"/><rect x="660" y="350" width="36" height="6"/>
+    <rect x="708" y="312" width="36" height="6"/><rect x="708" y="350" width="36" height="6"/>
+  </g>
+  <g fill="#ffc42b">
+    <rect x="88" y="298" width="12" height="72"/><rect x="748" y="298" width="12" height="72"/>
+  </g>
+  <text x="100" y="292" class="small" fill="#fcf5f1">THR 09</text>
+  <text x="760" y="292" text-anchor="end" class="small" fill="#fcf5f1">THR 27</text>
+
+  <!-- Airport block and fix markers -->
+  <rect x="688" y="94" width="112" height="72" fill="#000000"/>
+  <rect x="682" y="88" width="112" height="72" fill="#fcf5f1"/>
+  <rect x="694" y="100" width="88" height="24" fill="#264b8e"/>
+  <text x="738" y="117" text-anchor="middle" class="tiny" fill="#fcf5f1">KX01</text>
+  <rect x="694" y="132" width="14" height="16" fill="#171615"/>
+  <rect x="722" y="132" width="38" height="16" fill="#805539"/>
+  <rect x="768" y="138" width="6" height="10" fill="#ffc42b"/>
+
+  <g fill="#ffc42b" stroke="#171615" stroke-width="3">
+    <polygon points="188,438 202,424 216,438 202,452"/>
+    <polygon points="420,176 434,162 448,176 434,190"/>
+    <polygon points="598,464 612,450 626,464 612,478"/>
+  </g>
+  <text x="188" y="474" class="tiny" fill="#fcf5f1">FIX: BIRCH</text>
+  <text x="456" y="168" class="tiny" fill="#fcf5f1">FIX: RIDGE</text>
+  <text x="634" y="470" class="tiny" fill="#fcf5f1">FIX: KELSO</text>
+
+  <!-- Callouts -->
+  <rect x="112" y="112" width="234" height="64" fill="#000000"/>
+  <rect x="106" y="106" width="234" height="64" fill="#171615"/>
+  <text x="122" y="130" class="tiny" fill="#ffc42b">RWY 09 / 27</text>
+  <text x="122" y="154" class="tiny" fill="#fcf5f1">400 x 28 BLOCKS</text>
+  <rect x="112" y="398" width="242" height="62" fill="#000000"/>
+  <rect x="106" y="392" width="242" height="62" fill="#171615"/>
+  <text x="122" y="416" class="tiny" fill="#6cc349">SURVEYED OVERWORLD</text>
+  <text x="122" y="440" class="tiny" fill="#fcf5f1">TERRAIN · FLAT SITE</text>
+
+  <!-- Compass -->
+  <rect x="748" y="420" width="52" height="94" fill="#000000"/>
+  <rect x="742" y="414" width="52" height="94" fill="#171615"/>
+  <polygon points="768,426 780,452 756,452" fill="#ffc42b"/>
+  <rect x="764" y="454" width="8" height="42" fill="#d0c5c0"/>
+  <text x="768" y="502" text-anchor="middle" class="tiny" fill="#fcf5f1">N</text>
+
+  <!-- Navigation database snapshot panel -->
+  <rect x="852" y="90" width="326" height="454" fill="#000000"/>
+  <rect x="846" y="84" width="326" height="454" fill="#171615"/>
+  <rect x="846" y="84" width="326" height="48" fill="#6cc349"/>
+  <text x="864" y="114" class="mid" fill="#171615">NAV DATA</text>
+  <text x="1154" y="114" text-anchor="end" class="tiny" fill="#171615">V01</text>
+
+  <g class="tiny" fill="#ede5e2">
+    <rect x="864" y="150" width="290" height="42" fill="#262423"/>
+    <text x="876" y="177">8192 BLOCK SURVEY GRID</text>
+    <rect x="864" y="200" width="290" height="42" fill="#262423"/>
+    <text x="876" y="227">AIRPORTS · 04</text>
+    <rect x="864" y="250" width="290" height="42" fill="#262423"/>
+    <text x="876" y="277">RUNWAYS · 06</text>
+    <rect x="864" y="300" width="290" height="42" fill="#262423"/>
+    <text x="876" y="327">FIXES · 12</text>
+  </g>
+
+  <rect x="864" y="360" width="290" height="106" fill="#0b1610"/>
+  <path d="M884 382H1134M884 410H1134M884 438H1134M910 370V458M960 370V458M1010 370V458M1060 370V458M1110 370V458" stroke="#6cc349" stroke-width="2" opacity="0.35"/>
+  <g fill="#ffc42b" stroke="#171615" stroke-width="3">
+    <rect x="924" y="394" width="12" height="12"/>
+    <rect x="1080" y="424" width="12" height="12"/>
+  </g>
+  <g fill="#36e6ff" stroke="#171615" stroke-width="3">
+    <polygon points="1004,390 1014,400 1004,410 994,400"/>
+    <polygon points="1044,440 1054,450 1044,460 1034,450"/>
+  </g>
+  <rect x="1000" y="396" width="8" height="8" fill="#fcf5f1"/>
+  <text x="876" y="482" class="tiny" fill="#6cc349">SPAWN</text>
+  <text x="1090" y="482" text-anchor="end" class="tiny" fill="#fcf5f1">FIX / AIRPORT IDS</text>
+
+  <rect x="864" y="484" width="290" height="40" fill="#ffc42b"/>
+  <text x="1009" y="511" text-anchor="middle" class="tiny" fill="#171615">SENT ON JOIN / WORLD RELOAD</text>
+</svg>

@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">Flight planner FPLN tab diagram</title>
+  <desc id="desc">A blocky flight deck planner showing origin and destination, fix list, alternate, status, FILE, REQUEST CLR, CANCEL, LNAV, ILS APP and SYNC ALT actions.</desc>
+  <style>
+    text { font-family: "Courier New", monospace; font-weight: 700; }
+    .tiny { font-size: 14px; letter-spacing: .8px; }
+    .small { font-size: 17px; letter-spacing: .5px; }
+    .mid { font-size: 22px; }
+    .big { font-size: 28px; }
+    .paper { fill: #fcf5f1; }
+    .paper3 { fill: #d0c5c0; }
+    .ink { fill: #171615; }
+    .coal { fill: #262423; }
+    .stone { fill: #3d3938; }
+    .green { fill: #6cc349; }
+    .greenDark { fill: #2a641c; }
+    .amber { fill: #ffc42b; }
+    .red { fill: #b83b2e; }
+    .cyan { fill: #36e6ff; }
+  </style>
+
+  <rect width="1200" height="600" fill="#171615"/>
+  <rect x="0" y="0" width="1200" height="54" fill="#ffc42b"/>
+  <rect x="0" y="50" width="1200" height="4" fill="#000000"/>
+  <text x="22" y="36" class="tiny" fill="#171615">DIAGRAM 02 / FLIGHT DECK FPLN TAB</text>
+  <text x="1178" y="36" text-anchor="end" class="tiny" fill="#171615">H OPENS THE PLANNER · NO NEW KEYBIND</text>
+
+  <!-- Tabs -->
+  <g>
+    <rect x="24" y="78" width="150" height="48" fill="#000000"/>
+    <rect x="20" y="74" width="150" height="48" fill="#3d3938"/>
+    <text x="95" y="104" text-anchor="middle" class="small" fill="#ede5e2">MCP</text>
+    <rect x="182" y="78" width="190" height="48" fill="#000000"/>
+    <rect x="178" y="74" width="190" height="48" fill="#3d3938"/>
+    <text x="273" y="104" text-anchor="middle" class="small" fill="#ede5e2">NAV / ILS</text>
+    <rect x="380" y="78" width="150" height="48" fill="#000000"/>
+    <rect x="376" y="74" width="150" height="48" fill="#3d3938"/>
+    <text x="451" y="104" text-anchor="middle" class="small" fill="#ede5e2">WX</text>
+    <rect x="538" y="78" width="150" height="48" fill="#000000"/>
+    <rect x="534" y="74" width="150" height="48" fill="#3d3938"/>
+    <text x="609" y="104" text-anchor="middle" class="small" fill="#ede5e2">SYS</text>
+    <rect x="696" y="78" width="180" height="48" fill="#000000"/>
+    <rect x="692" y="74" width="180" height="48" fill="#ffc42b"/>
+    <text x="782" y="104" text-anchor="middle" class="small" fill="#171615">FPLN</text>
+    <rect x="884" y="78" width="292" height="48" fill="#000000"/>
+    <rect x="880" y="74" width="292" height="48" fill="#171615"/>
+    <text x="1026" y="104" text-anchor="middle" class="tiny" fill="#6cc349">SERVER VALIDATES EVERY REQUEST</text>
+  </g>
+
+  <!-- Route fields -->
+  <rect x="32" y="146" width="296" height="418" fill="#000000"/>
+  <rect x="24" y="138" width="296" height="418" fill="#171615"/>
+  <rect x="24" y="138" width="296" height="44" fill="#3d3938"/>
+  <text x="42" y="167" class="mid" fill="#fcf5f1">ROUTE FIELDS</text>
+
+  <g class="small">
+    <rect x="42" y="200" width="260" height="58" fill="#262423"/>
+    <text x="56" y="224" class="tiny" fill="#d0c5c0">ORIGIN</text>
+    <text x="56" y="248" class="small" fill="#6cc349">KX01</text>
+    <text x="278" y="240" text-anchor="end" class="mid" fill="#ffc42b">&lt; &gt;</text>
+
+    <rect x="42" y="268" width="260" height="58" fill="#262423"/>
+    <text x="56" y="292" class="tiny" fill="#d0c5c0">DESTINATION</text>
+    <text x="56" y="316" class="small" fill="#6cc349">KX04</text>
+    <text x="278" y="308" text-anchor="end" class="mid" fill="#ffc42b">&lt; &gt;</text>
+
+    <rect x="42" y="336" width="260" height="58" fill="#262423"/>
+    <text x="56" y="360" class="tiny" fill="#d0c5c0">CRUISE ALTITUDE</text>
+    <text x="56" y="384" class="small" fill="#6cc349">08000 FT</text>
+    <text x="278" y="376" text-anchor="end" class="mid" fill="#ffc42b">+ -</text>
+
+    <rect x="42" y="404" width="260" height="58" fill="#262423"/>
+    <text x="56" y="428" class="tiny" fill="#d0c5c0">ALTERNATE</text>
+    <text x="56" y="452" class="small" fill="#6cc349">KX03</text>
+    <text x="278" y="444" text-anchor="end" class="mid" fill="#ffc42b">&lt; &gt;</text>
+  </g>
+  <rect x="42" y="484" width="260" height="52" fill="#2a641c" stroke="#000000" stroke-width="4"/>
+  <text x="172" y="516" text-anchor="middle" class="small" fill="#fcf5f1">ALT MUST DIFFER</text>
+
+  <!-- Fix list -->
+  <rect x="344" y="146" width="464" height="418" fill="#000000"/>
+  <rect x="336" y="138" width="464" height="418" fill="#171615"/>
+  <rect x="336" y="138" width="464" height="44" fill="#ffc42b"/>
+  <text x="354" y="167" class="mid" fill="#171615">FIX LIST · 05 / 16</text>
+  <text x="782" y="167" text-anchor="end" class="tiny" fill="#171615">ACTIVE LEG 03</text>
+
+  <g class="small" fill="#ede5e2">
+    <rect x="352" y="198" width="432" height="44" fill="#262423"/>
+    <text x="366" y="227" class="tiny" fill="#ffc42b">01</text><text x="410" y="227">BIRCH</text><text x="766" y="227" text-anchor="end" class="tiny" fill="#d0c5c0">FIX</text>
+    <rect x="352" y="250" width="432" height="44" fill="#262423"/>
+    <text x="366" y="279" class="tiny" fill="#ffc42b">02</text><text x="410" y="279">RIDGE</text><text x="766" y="279" text-anchor="end" class="tiny" fill="#d0c5c0">VOR</text>
+    <rect x="352" y="302" width="432" height="44" fill="#6cc349"/>
+    <text x="366" y="331" class="tiny" fill="#171615">03</text><text x="410" y="331" fill="#171615">KELSO</text><text x="766" y="331" text-anchor="end" class="tiny" fill="#171615">ACTIVE</text>
+    <rect x="352" y="354" width="432" height="44" fill="#262423"/>
+    <text x="366" y="383" class="tiny" fill="#ffc42b">04</text><text x="410" y="383">PINE</text><text x="766" y="383" text-anchor="end" class="tiny" fill="#d0c5c0">NDB</text>
+    <rect x="352" y="406" width="432" height="44" fill="#262423"/>
+    <text x="366" y="435" class="tiny" fill="#ffc42b">05</text><text x="410" y="435">MARSH</text><text x="766" y="435" text-anchor="end" class="tiny" fill="#d0c5c0">FIX</text>
+  </g>
+
+  <rect x="352" y="472" width="205" height="56" fill="#000000"/>
+  <rect x="346" y="466" width="205" height="56" fill="#3c8527"/>
+  <text x="448" y="502" text-anchor="middle" class="small" fill="#fcf5f1">ADD FIX</text>
+  <rect x="583" y="472" width="201" height="56" fill="#000000"/>
+  <rect x="577" y="466" width="201" height="56" fill="#6b6562"/>
+  <text x="677" y="502" text-anchor="middle" class="small" fill="#fcf5f1">REMOVE</text>
+
+  <!-- Status and actions -->
+  <rect x="824" y="146" width="352" height="418" fill="#000000"/>
+  <rect x="816" y="138" width="352" height="418" fill="#171615"/>
+  <rect x="816" y="138" width="352" height="44" fill="#6cc349"/>
+  <text x="834" y="167" class="mid" fill="#171615">STATUS / ACTIONS</text>
+
+  <g class="tiny" text-anchor="middle">
+    <rect x="834" y="200" width="72" height="34" fill="#262423"/>
+    <text x="870" y="223" fill="#d0c5c0">DRAFT</text>
+    <rect x="916" y="200" width="20" height="34" fill="#ffc42b"/>
+    <text x="926" y="223" fill="#171615">&gt;</text>
+    <rect x="946" y="200" width="72" height="34" fill="#ffc42b"/>
+    <text x="982" y="223" fill="#171615">FILED</text>
+    <rect x="1028" y="200" width="20" height="34" fill="#ffc42b"/>
+    <text x="1038" y="223" fill="#171615">&gt;</text>
+    <rect x="1058" y="200" width="96" height="34" fill="#3c8527"/>
+    <text x="1106" y="223" fill="#fcf5f1">CLEARED</text>
+  </g>
+  <rect x="834" y="248" width="320" height="48" fill="#262423" stroke="#ffc42b" stroke-width="3"/>
+  <text x="994" y="278" text-anchor="middle" class="small" fill="#ffc42b">ATC: CLEARED KX01 - KX04</text>
+
+  <g class="small" text-anchor="middle">
+    <rect x="834" y="316" width="152" height="50" fill="#000000"/>
+    <rect x="830" y="312" width="152" height="50" fill="#3c8527"/>
+    <text x="906" y="344" fill="#fcf5f1">FILE</text>
+    <rect x="1002" y="316" width="152" height="50" fill="#000000"/>
+    <rect x="998" y="312" width="152" height="50" fill="#3c8527"/>
+    <text x="1074" y="344" fill="#fcf5f1">REQUEST CLR</text>
+
+    <rect x="834" y="374" width="152" height="50" fill="#000000"/>
+    <rect x="830" y="370" width="152" height="50" fill="#6b6562"/>
+    <text x="906" y="402" fill="#fcf5f1">CANCEL</text>
+    <rect x="1002" y="374" width="152" height="50" fill="#000000"/>
+    <rect x="998" y="370" width="152" height="50" fill="#1e6eea"/>
+    <text x="1074" y="402" fill="#fcf5f1">LNAV</text>
+
+    <rect x="834" y="432" width="152" height="50" fill="#000000"/>
+    <rect x="830" y="428" width="152" height="50" fill="#1e6eea"/>
+    <text x="906" y="460" fill="#fcf5f1">ILS APP</text>
+    <rect x="1002" y="432" width="152" height="50" fill="#000000"/>
+    <rect x="998" y="428" width="152" height="50" fill="#ffc42b"/>
+    <text x="1074" y="460" fill="#171615">SYNC ALT</text>
+  </g>
+
+  <rect x="834" y="498" width="320" height="42" fill="#2a641c" stroke="#000000" stroke-width="4"/>
+  <text x="994" y="526" text-anchor="middle" class="tiny" fill="#fcf5f1">SAVED BY PLAYER UUID · RELOG / RESTART</text>
+</svg>

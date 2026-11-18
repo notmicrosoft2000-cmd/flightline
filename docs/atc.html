@@ -54,6 +54,31 @@
 
         <section class="container section">
             <div class="section-heading">
+                <h2>Filed plan to cleared route</h2>
+                <p>Diagram — ATC checks the flight plan, assigns runways, sends the radio clearance and keeps the F7 handoff intact.</p>
+            </div>
+            <div class="plate-pair">
+                <figure class="manual-figure">
+                    <img src="img/atc-clearance-handoff.svg" width="1200" height="600" loading="lazy" alt="Diagram of a filed flight plan being validated by ATC, cleared by radio and acknowledged with F7">
+                    <figcaption><b>DIAGRAM / CLEARANCE</b><span>File → validate → radio → F7 ACK</span></figcaption>
+                </figure>
+                <div class="plate-notes warn pixel-box">
+                    <span class="note-index">PLATE 05 / ATC LOOP</span>
+                    <h3>What clearance adds</h3>
+                    <ol class="priority-list">
+                        <li>Pilot files the FPLN route from the server nav database.</li>
+                        <li>ATC checks airports, fixes, altitude range and alternate. Invalid plans are rejected by radio.</li>
+                        <li>Departure and arrival runways are chosen from the airport wind field.</li>
+                        <li>The clearance arrives through the existing radio channel. <code>F7</code> acknowledges it.</li>
+                        <li>LNAV or ILS APP can then follow the cleared route. Control authority stays server-side.</li>
+                    </ol>
+                    <p style="margin-top:14px">Operator-only access still applies. A release with <code>F7</code> or <code>RELEASE CTRL</code> returns command to the pilot.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="container section">
+            <div class="section-heading">
                 <h2>What the controller sees</h2>
                 <p>One authoritative contact snapshot is built per dimension and sent to radar clients.</p>
             </div>
