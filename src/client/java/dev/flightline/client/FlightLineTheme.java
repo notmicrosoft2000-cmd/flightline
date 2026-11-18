@@ -171,19 +171,26 @@ final class FlightLineTheme {
     /* ── Custom flat button (same bounds + callback as vanilla Button) ─ */
 
     static AbstractWidget button(String label, int x, int y, int w, int h, Runnable onPress) {
-        return new FlatButton(x, y, w, h, Component.literal(label), onPress);
+        return new FlatButton(x, y, w, h, Component.literal(label), onPress, GREEN);
     }
 
     static AbstractWidget button(Component label, int x, int y, int w, int h, Runnable onPress) {
-        return new FlatButton(x, y, w, h, label, onPress);
+        return new FlatButton(x, y, w, h, label, onPress, GREEN);
+    }
+
+    /** Same geometry and behaviour as a regular button, with an amber accent for a primary step. */
+    static AbstractWidget primaryButton(String label, int x, int y, int w, int h, Runnable onPress) {
+        return new FlatButton(x, y, w, h, Component.literal(label), onPress, AMBER);
     }
 
     static final class FlatButton extends AbstractWidget {
         private final Runnable onPress;
+        private final int accent;
 
-        FlatButton(int x, int y, int w, int h, Component message, Runnable onPress) {
+        FlatButton(int x, int y, int w, int h, Component message, Runnable onPress, int accent) {
             super(x, y, w, h, message);
             this.onPress = onPress;
+            this.accent = accent;
         }
 
         @Override
@@ -196,12 +203,12 @@ final class FlightLineTheme {
                                                 float delta) {
             int x = getX(), y = getY(), w = getWidth(), h = getHeight();
             boolean lit = isHoveredOrFocused() && active;
-            int bg = !active ? COAL : lit ? GREEN : CARD;
+            int bg = !active ? COAL : lit ? accent : CARD;
             int fg = !active ? LINE : lit ? VOID : TEXT;
             g.fill(x + 4, y + 4, x + w + 4, y + h + 4, SHADOW);
             g.fill(x, y, x + w, y + h, bg);
             g.outline(x, y, w, h, !active ? LINE : lit ? VOID : STONE);
-            g.fill(x + 2, y + 2, x + 5, y + h - 2, !active ? LINE : lit ? VOID : GREEN);
+            g.fill(x + 2, y + 2, x + 5, y + h - 2, !active ? LINE : lit ? VOID : accent);
             Font font = Minecraft.getInstance().font;
             g.centeredText(font, fit(font, getMessage().getString(), w - 14),
                            x + w / 2 + 3, y + (h - 8) / 2, fg);

@@ -34,6 +34,7 @@ public final class FlightTutorialScreen extends Screen {
     private int panelWidth;
     private int panelHeight;
     private String status = "Use the live instruments to complete each training objective.";
+    private String nextStepLabel = "";
     private long lastFrameNanos = System.nanoTime();
     private float openProgress;
 
@@ -73,6 +74,11 @@ public final class FlightTutorialScreen extends Screen {
                     rebuild();
                 }));
 
+        FlightTutorial.Objective next = FlightTutorial.firstPending();
+        nextStepLabel = next == null ? "LESSON COMPLETE" : next.label();
+        addRenderableWidget(FlightLineTheme.primaryButton(fit("GO TO THIS STEP", w(348) - 8),
+                x(28), y(312), w(348), h(24), this::goToStep));
+
         initActions();
         addRenderableWidget(actionButton("RESET LESSON", 12, 378, 112, () -> {
                     FlightTutorial.reset();
@@ -106,13 +112,8 @@ public final class FlightTutorialScreen extends Screen {
             }
             case AUTOPILOT -> {
                 addRenderableWidget(actionButton("SYNC + ENGAGE AP", 412, 150, 216, this::engageAutopilot));
-                addRenderableWidget(actionButton("OPEN FLIGHT DECK", 412, 178, 216, () ->
-                        Minecraft.getInstance().gui.setScreen(new AutopilotScreen(
-                                FlightHud.isAutopilotEngaged(),
-                                Math.round(FlightHud.currentHeading()),
-                                FlightHud.currentAltitudeFeet(),
-                                FlightHud.currentVsFpm(),
-                                FlightHud.currentSpeedKnots()))));
+                addRenderableWidget(actionButton("OPEN FLIGHT DECK", 412, 178, 216,
+                        () -> openFlightDeck(0)));
                 addRenderableWidget(actionButton(FlightHud.isAutopilotEngaged() ? "AP DISCONNECT" : "MANUAL CONTROL",
                         412, 206, 216, FlightHud.isAutopilotEngaged() ? this::disconnectAutopilot : this::flyManually));
             }
@@ -130,6 +131,37 @@ public final class FlightTutorialScreen extends Screen {
     private AbstractWidget actionButton(String label, int x, int y, int width, Runnable action) {
         return FlightLineTheme.button(fit(label, w(width) - 8),
                 x(x), y(y), w(width), h(22), action);
+    }
+
+    /** Deep-link the first unfinished objective to the panel that actually handles it. */
+    private void goToStep() {
+        FlightTutorial.Objective next = FlightTutorial.firstPending();
+        if (next == null) {
+            status = "Lesson complete. Reopen the flight deck or radar to keep practising.";
+            return;
+        }
+        switch (next.shortcut()) {
+            case "MCP" -> openFlightDeck(0);
+            case "AUTOLAND" -> openFlightDeck(2);
+            case "ILS_SETUP" -> Minecraft.getInstance().gui.setScreen(new FlightRadarScreen());
+            case "ENGINES" -> startEngines();
+            case "GEAR" -> toggleGear();
+            case "FLAPS" -> flapsUp();
+            default -> flyManually();
+        }
+        if (Minecraft.getInstance().gui.screen() == this) {
+            status = "Go to this step: " + next.label();
+        }
+    }
+
+    private void openFlightDeck(int initialPage) {
+        Minecraft.getInstance().gui.setScreen(new AutopilotScreen(
+                FlightHud.isAutopilotEngaged(),
+                Math.round(FlightHud.currentHeading()),
+                FlightHud.currentAltitudeFeet(),
+                FlightHud.currentVsFpm(),
+                FlightHud.currentSpeedKnots(),
+                initialPage));
     }
 
     private void startEngines() {
@@ -285,6 +317,10 @@ public final class FlightTutorialScreen extends Screen {
                     cardX + w(30), rowY + h(10), MUTED, false);
             rowY += step;
         }
+        int nextY = cardY + cardHeight - h(56);
+        graphics.fill(cardX + w(10), nextY, cardX + cardWidth - w(10), nextY + 1, AMBER);
+        graphics.text(font, fit("NEXT · " + nextStepLabel, cardWidth - w(20)),
+                cardX + w(10), nextY + h(7), AMBER, true);
     }
 
     private int firstPending(List<FlightTutorial.Objective> objectives) {

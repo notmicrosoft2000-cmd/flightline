@@ -3,6 +3,7 @@ package dev.flightline.client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.Font;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +34,11 @@ final class FlightTutorial {
         }
     }
 
-    record Objective(String label, String detail, boolean done) {
+    /** The shortcut code tells the lesson screen where a pending objective can be handled. */
+    record Objective(String label, String detail, boolean done, String shortcut) {
+        Objective(String label, String detail, boolean done) {
+            this(label, detail, done, "");
+        }
     }
 
     private static final Stage[] STAGES = Stage.values();
@@ -107,6 +112,14 @@ final class FlightTutorial {
         return objectivesFor(STAGES[stageIndex]);
     }
 
+    /** First unfinished objective in the stage currently shown to the player. */
+    static @Nullable Objective firstPending() {
+        for (Objective objective : objectives()) {
+            if (!objective.done()) return objective;
+        }
+        return null;
+    }
+
     private static List<Objective> objectivesFor(Stage stage) {
         int speed = FlightHud.currentSpeedKnots();
         int altitude = FlightHud.currentAltitudeFeet();
@@ -114,43 +127,43 @@ final class FlightTutorial {
         return switch (stage) {
             case TAKEOFF -> List.of(
                     new Objective("START ENGINES", "Press E at the aircraft to spool both engines.",
-                            FlightHud.anyEngineRunning()),
+                            FlightHud.anyEngineRunning(), "ENGINES"),
                     new Objective("ADVANCE THROTTLE", "Hold W until the airspeed needle climbs.",
-                            FlightHud.throttle() > 0.35f || speed > 35),
+                            FlightHud.throttle() > 0.35f || speed > 35, "FLY"),
                     new Objective("ROTATE AND LIFT OFF", "Ease the nose up near rotate speed.",
-                            airborne || FlightHud.phase() == dev.flightline.flight.FlightPhase.ROTATE),
+                            airborne || FlightHud.phase() == dev.flightline.flight.FlightPhase.ROTATE, "FLY"),
                     new Objective("RAISE LANDING GEAR", "Press G after a positive climb.",
-                            airborne && !FlightHud.gearDown()));
+                            airborne && !FlightHud.gearDown(), "GEAR"));
             case CRUISE -> List.of(
                     new Objective("CLIMB TO 1,000 FT", "Use gentle nose-up input; avoid a stall.",
-                            altitude >= 1000),
+                            altitude >= 1000, "FLY"),
                     new Objective("SETTLE AT 120-300 KT", "Adjust throttle with W / S.",
-                            speed >= 120 && speed <= 300),
+                            speed >= 120 && speed <= 300, "FLY"),
                     new Objective("LEVEL THE WINGS", "Keep bank under 15 degrees.",
-                            Math.abs(FlightHud.currentBank()) < 15.0f),
+                            Math.abs(FlightHud.currentBank()) < 15.0f, "FLY"),
                     new Objective("HOLD A STABLE PATH", "Keep a small vertical speed, not a dive.",
-                            Math.abs(FlightHud.currentVsFpm()) < 1200));
+                            Math.abs(FlightHud.currentVsFpm()) < 1200, "FLY"));
             case AUTOPILOT -> List.of(
                     new Objective("OPEN THE FLIGHT DECK", "Press H or use SYNC AP to configure targets.",
-                            FlightHud.isAutopilotEngaged()),
+                            FlightHud.isAutopilotEngaged(), "MCP"),
                     new Objective("SET A TARGET ALTITUDE", "Choose a safe altitude above 1,000 ft.",
-                            FlightHud.autopilotGuidance().targetAltitudeFeet() >= 1000),
+                            FlightHud.autopilotGuidance().targetAltitudeFeet() >= 1000, "MCP"),
                     new Objective("VERIFY ALTITUDE CAPTURE", "Watch the PFD altitude tape settle.",
-                            Math.abs(altitude - FlightHud.autopilotGuidance().targetAltitudeFeet()) < 400),
+                            Math.abs(altitude - FlightHud.autopilotGuidance().targetAltitudeFeet()) < 400, "FLY"),
                     new Objective("VERIFY SPEED CONTROL", "The autothrottle should hold the selected IAS.",
-                            Math.abs(speed - FlightHud.autopilotGuidance().targetAirspeedKnots()) < 30));
+                            Math.abs(speed - FlightHud.autopilotGuidance().targetAirspeedKnots()) < 30, "FLY"));
             case LANDING -> List.of(
                     new Objective("LOWER LANDING GEAR", "Press G before entering the approach.",
-                            FlightHud.gearDown()),
+                            FlightHud.gearDown(), "GEAR"),
                     new Objective("EXTEND FLAPS", "Use C at least twice for approach configuration.",
-                            FlightHud.flapDetent() >= 2),
+                            FlightHud.flapDetent() >= 2, "FLAPS"),
                     new Objective("SET AN ILS RUNWAY", "Use R to pick a threshold and heading, then SET ILS.",
-                            FlightHud.isIlsActive()),
+                            FlightHud.isIlsActive(), "ILS_SETUP"),
                     new Objective("ARM AUTOLAND OR FLY MANUALLY", "H → NAV/ILS → ARM, or hand-fly below 1,500 ft.",
                             FlightHud.autopilotGuidance().autolandArmed()
-                                    || (airborne && altitude < 1500)),
+                                    || (airborne && altitude < 1500), "AUTOLAND"),
                     new Objective("TOUCH DOWN", "Complete a landing roll without crashing.",
-                            FlightHud.phase() == dev.flightline.flight.FlightPhase.LANDING_ROLL));
+                            FlightHud.phase() == dev.flightline.flight.FlightPhase.LANDING_ROLL, "FLY"));
         };
     }
 

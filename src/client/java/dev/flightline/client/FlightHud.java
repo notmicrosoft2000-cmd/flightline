@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
@@ -44,6 +45,17 @@ final class FlightHud {
             | FlightWarning.TCAS_DESCEND
             | FlightWarning.TCAS_CROSSING
             | FlightWarning.TCAS_CLEAR;
+    private static final long ALARM_ONSET_NANOS = 800_000_000L;
+
+    /** ND-only proximity tiers; TCAS styling is advisory and never drives the red alarm. */
+    private enum TrafficTier { RA, TA, PROXIMATE, FAR }
+
+    record TrafficAdvisory(String label, int color) {}
+
+    private record TrafficInfo(FlightRadarPayload.Contact contact, TrafficTier tier,
+                               int distanceBlocks, int relativeAltitudeFeet,
+                               int closingKnots, int verticalClosingFpm) {}
+
     private static final int PFD_GREEN = FlightLineTheme.GREEN;
     private static final int PFD_CYAN = FlightLineTheme.CYAN;
     private static final int PFD_WHITE = FlightLineTheme.PAPER;
@@ -60,6 +72,9 @@ final class FlightHud {
     private static float lastGVerticalSpeed;
     private static long lastGUpdateNanos;
     private static int radioAltitudeFeet, verticalSpeedFpm, gearState, systems, warnings;
+    private static int previousNonTcasWarnings;
+    private static boolean previousCrashed;
+    private static long alarmOnsetExpiresNanos;
     private static int fuelPercent;
     private static boolean airbrakes;
     private static boolean autopilot;
@@ -227,6 +242,122 @@ final class FlightHud {
         radarPayload = payload;
         radarDataReceived = true;
         lastRadarUpdateNanos = System.nanoTime();
+    }
+
+    /** Short neutral rows for the flight-deck ALERT tab, derived only from radar contacts. */
+    static List<TrafficAdvisory> trafficAdvisories() {
+        if (!hasRadarData()) return List.of();
+        List<TrafficInfo> ranked = rankTraffic(radarPayload.ownX(), radarPayload.ownZ(),
+                radarPayload.ownAltitudeFeet(), ndRangeBlocks());
+        List<TrafficAdvisory> advisories = new ArrayList<>();
+        for (TrafficInfo info : ranked) {
+            if (advisories.size() >= 4) break;
+            if (info.tier() == TrafficTier.FAR) continue;
+            String altitude = String.format(Locale.ROOT, "%+d", Math.round(info.relativeAltitudeFeet() / 100.0f));
+            String label = switch (info.tier()) {
+                case RA -> "TCAS RA " + info.distanceBlocks() + "B " + altitude + "00";
+                case TA -> "TCAS TA " + info.distanceBlocks() + "B " + altitude + "00";
+                case PROXIMATE -> "PROX " + info.distanceBlocks() + "B " + altitude + "00";
+                case FAR -> "";
+            };
+            int color = info.tier() == TrafficTier.RA ? FlightLineTheme.TCAS_RA
+                    : info.tier() == TrafficTier.TA ? FlightLineTheme.TCAS_TA : FlightLineTheme.CYAN;
+            advisories.add(new TrafficAdvisory(label, color));
+        }
+        return advisories;
+    }
+
+    private static int ndRangeBlocks() {
+        return Math.min(256, Math.max(64, radarPayload.scopeBlocks()));
+    }
+
+    private static List<TrafficInfo> rankTraffic(int ownX, int ownZ, int ownAltFt, double rangeBlocks) {
+        List<TrafficInfo> ranked = new ArrayList<>();
+        if (!hasRadarData()) return ranked;
+        for (FlightRadarPayload.Contact contact : radarPayload.contacts()) {
+            double dx = contact.x() - ownX;
+            double dz = contact.z() - ownZ;
+            double distance = Math.hypot(dx, dz);
+            if (distance > rangeBlocks) continue;
+            int relativeAltitude = contact.altitudeFeet() - ownAltFt;
+            int closingKnots = closingKnots(contact, dx, dz, distance);
+            int verticalClosing = -Integer.signum(relativeAltitude)
+                    * (contact.verticalSpeedFpm() - verticalSpeedFpm);
+            TrafficTier tier = contact.airborne()
+                    ? classifyAirborne(distance, relativeAltitude, closingKnots, verticalClosing)
+                    : TrafficTier.FAR;
+            ranked.add(new TrafficInfo(contact, tier, (int) Math.round(distance), relativeAltitude,
+                    closingKnots, verticalClosing));
+        }
+        ranked.sort(Comparator.comparingInt((TrafficInfo info) -> info.tier().ordinal())
+                .thenComparingInt(TrafficInfo::distanceBlocks));
+        return ranked;
+    }
+
+    private static TrafficTier classifyAirborne(double distance, int relativeAltitude,
+                                                int closingKnots, int verticalClosingFpm) {
+        int altitudeGap = Math.abs(relativeAltitude);
+        if (distance < 120 && altitudeGap < 600) return TrafficTier.RA;
+        if (distance < 160 && altitudeGap < 350 && closingKnots > 60 && verticalClosingFpm > 200) {
+            return TrafficTier.RA;
+        }
+        if (distance < 250 && altitudeGap < 850) return TrafficTier.TA;
+        if (distance < 300 && altitudeGap < 550 && (closingKnots > 40 || verticalClosingFpm > 250)) {
+            return TrafficTier.TA;
+        }
+        if (distance < 450 && altitudeGap < 1200) return TrafficTier.PROXIMATE;
+        if (distance < 600 && altitudeGap < 800 && closingKnots > 30) return TrafficTier.PROXIMATE;
+        return TrafficTier.FAR;
+    }
+
+    /** Closing speed along the line of sight; positive means the separation is shrinking. */
+    private static int closingKnots(FlightRadarPayload.Contact contact, double dx, double dz,
+                                    double distance) {
+        if (distance < 0.001) return 0;
+        float ownHeading = hasRadarData() ? radarPayload.ownHeadingDegrees() : visualHeading;
+        double ownSpeed = Math.max(0.0, groundSpeedKnots());
+        double ownVx = Math.sin(Math.toRadians(ownHeading)) * ownSpeed;
+        double ownVz = Math.cos(Math.toRadians(ownHeading)) * ownSpeed;
+        double otherVx = Math.sin(Math.toRadians(contact.headingDegrees())) * contact.speedKnots();
+        double otherVz = Math.cos(Math.toRadians(contact.headingDegrees())) * contact.speedKnots();
+        double separating = (otherVx - ownVx) * (dx / distance) + (otherVz - ownVz) * (dz / distance);
+        return (int) Math.round(-separating);
+    }
+
+    private static int[] ndPoint(TrafficInfo info, int cx, int cy, double rangeBlocks,
+                                 float heading, int ownX, int ownZ) {
+        double dx = info.contact().x() - ownX;
+        double dz = info.contact().z() - ownZ;
+        double relative = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - heading);
+        double scale = Math.min(1.0, info.distanceBlocks() / Math.max(1.0, rangeBlocks));
+        return new int[]{
+                cx - (int) Math.round(Math.sin(relative) * 17.0 * scale),
+                cy - (int) Math.round(Math.cos(relative) * 17.0 * scale)
+        };
+    }
+
+    private static boolean overlaps(List<int[]> points, int x, int y, int radius) {
+        for (int[] point : points) {
+            if (Math.abs(point[0] - x) <= radius && Math.abs(point[1] - y) <= radius) return true;
+        }
+        return false;
+    }
+
+    private static void drawTrafficVelocity(GuiGraphicsExtractor g, int px, int py, float contactHeading,
+                                            float ownHeading, int speedKnots, int color) {
+        double relative = Math.toRadians(contactHeading - ownHeading);
+        int length = Math.max(3, Math.min(9, speedKnots / 25));
+        int endX = px - (int) Math.round(Math.sin(relative) * length);
+        int endY = py - (int) Math.round(Math.cos(relative) * length);
+        drawLine(g, px, py, endX, endY, color);
+    }
+
+    private static void drawVerticalTrend(GuiGraphicsExtractor g, int px, int py,
+                                          int verticalSpeedFpm, int color) {
+        int direction = verticalSpeedFpm > 0 ? -1 : 1;
+        int tipY = py + direction * 5;
+        drawLine(g, px - 2, tipY - direction * 2, px, tipY, color);
+        drawLine(g, px + 2, tipY - direction * 2, px, tipY, color);
     }
 
     static void showAtcMessage(String message, int controllerEntityId) {
@@ -411,6 +542,9 @@ final class FlightHud {
         lastGVerticalSpeed = 0.0f;
         lastGUpdateNanos = 0L;
         radioAltitudeFeet = verticalSpeedFpm = gearState = systems = warnings = 0;
+        previousNonTcasWarnings = 0;
+        previousCrashed = false;
+        alarmOnsetExpiresNanos = 0L;
         fuelPercent = 0;
         airbrakes = false;
         autopilot = false;
@@ -448,7 +582,9 @@ final class FlightHud {
         int screenWidth = g.guiWidth();
         int screenHeight = g.guiHeight();
         if (screenWidth < 240 || screenHeight < 184) return;
-        double clock = System.nanoTime() / 1_000_000_000.0;
+        long nowNanos = System.nanoTime();
+        double clock = nowNanos / 1_000_000_000.0;
+        updateAlarmOnset(nowNanos);
 
         float pfdScale = 1.0f;
         int pfdDisplayWidth = 0;
@@ -537,78 +673,70 @@ final class FlightHud {
 
             drawRouteOverlay(g, mc, radarCx, radarCy, 16, ndRangeBlocks, visualHeading, ownX, ownZ);
 
-            // Threat filtering to avoid cluttered text/dots
-            List<FlightRadarPayload.Contact> allContacts = radarPayload.contacts();
-            List<FlightRadarPayload.Contact> visibleAirborne = new ArrayList<>();
-            List<FlightRadarPayload.Contact> visibleGround = new ArrayList<>();
-
-            for (FlightRadarPayload.Contact contact : allContacts) {
-                double distance = Math.hypot(contact.x() - ownX, contact.z() - ownZ);
-                if (distance > ndRangeBlocks) continue;
-                if (contact.airborne()) {
-                    visibleAirborne.add(contact);
-                } else {
-                    visibleGround.add(contact);
-                }
+            // Rank the payload contacts, then drop overlapping blips so the small ND stays readable.
+            List<TrafficInfo> ranked = rankTraffic(ownX, ownZ, ownAltFt, ndRangeBlocks);
+            List<TrafficInfo> airborne = new ArrayList<>();
+            List<TrafficInfo> ground = new ArrayList<>();
+            for (TrafficInfo info : ranked) {
+                if (info.contact().airborne()) airborne.add(info);
+                else ground.add(info);
             }
+            List<int[]> drawnPixels = new ArrayList<>();
 
-            // Draw up to 3 closest ground contacts as small subtle yellow dots
             int groundCount = 0;
-            for (FlightRadarPayload.Contact contact : visibleGround) {
-                if (++groundCount > 3) break;
-                double dx = contact.x() - ownX;
-                double dz = contact.z() - ownZ;
-                double distance = Math.hypot(dx, dz);
-                double relativeBearingRad = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
-                double scale = Math.min(1.0, distance / ndRangeBlocks);
-                int px = radarCx - (int) Math.round(Math.sin(relativeBearingRad) * 17.0 * scale);
-                int py = radarCy - (int) Math.round(Math.cos(relativeBearingRad) * 17.0 * scale);
-                g.fill(px - 1, py - 1, px + 1, py + 1, 0x80C8B060);
+            for (TrafficInfo info : ground) {
+                if (groundCount >= 3) break;
+                int[] point = ndPoint(info, radarCx, radarCy, ndRangeBlocks, visualHeading, ownX, ownZ);
+                if (overlaps(drawnPixels, point[0], point[1], 2)) continue;
+                g.fill(point[0] - 1, point[1] - 1, point[0] + 1, point[1] + 1, 0x80C8B060);
+                drawnPixels.add(point);
+                groundCount++;
             }
 
-            // Draw airborne contacts (max 8 most relevant)
             int airborneDrawn = 0;
-            for (FlightRadarPayload.Contact contact : visibleAirborne) {
-                if (++airborneDrawn > 8) break;
-                double dx = contact.x() - ownX;
-                double dz = contact.z() - ownZ;
-                double distance = Math.hypot(dx, dz);
-                double relativeBearingRad = Math.toRadians(Math.toDegrees(Math.atan2(-dx, dz)) - visualHeading);
-                double scale = Math.min(1.0, distance / ndRangeBlocks);
-                int px = radarCx - (int) Math.round(Math.sin(relativeBearingRad) * 17.0 * scale);
-                int py = radarCy - (int) Math.round(Math.cos(relativeBearingRad) * 17.0 * scale);
-                int relAltFt = contact.altitudeFeet() - ownAltFt;
-                int distBlocks = (int) Math.round(distance);
+            for (TrafficInfo info : airborne) {
+                if (airborneDrawn >= 8) break;
+                int[] point = ndPoint(info, radarCx, radarCy, ndRangeBlocks, visualHeading, ownX, ownZ);
+                if (overlaps(drawnPixels, point[0], point[1], 3)) continue;
+                int px = point[0];
+                int py = point[1];
+                var contact = info.contact();
+                TrafficTier tier = info.tier();
+                int tierColor = tier == TrafficTier.RA ? FlightLineTheme.TCAS_RA
+                        : tier == TrafficTier.TA ? FlightLineTheme.TCAS_TA : FlightLineTheme.CYAN;
 
-                boolean isRa = distBlocks < 120 && Math.abs(relAltFt) < 600;
-                boolean isTa = !isRa && distBlocks < 250 && Math.abs(relAltFt) < 850;
-                boolean isProximate = !isRa && !isTa && distBlocks < 450 && Math.abs(relAltFt) < 1200;
-
-                if (isRa) {
-                    // RA: Solid red square
-                    g.fill(px - 2, py - 2, px + 3, py + 3, FlightLineTheme.TCAS_RA);
-                    g.outline(px - 2, py - 2, 5, 5, FlightLineTheme.PAPER);
-                } else if (isTa) {
-                    // TA: Solid amber circle
-                    g.fill(px - 1, py - 2, px + 2, py + 3, FlightLineTheme.TCAS_TA);
-                    g.fill(px - 2, py - 1, px + 3, py + 2, FlightLineTheme.TCAS_TA);
-                } else if (isProximate) {
-                    // Proximate: Solid cyan diamond
-                    drawDiamond(g, px, py, 2, FlightLineTheme.CYAN);
-                    g.fill(px, py, px + 1, py + 1, FlightLineTheme.CYAN);
-                } else {
-                    // Other: Hollow cyan diamond
-                    drawDiamond(g, px, py, 2, FlightLineTheme.CYAN);
+                switch (tier) {
+                    case RA -> {
+                        g.fill(px - 2, py - 2, px + 3, py + 3, FlightLineTheme.TCAS_RA);
+                        g.outline(px - 2, py - 2, 5, 5, FlightLineTheme.PAPER);
+                    }
+                    case TA -> {
+                        g.fill(px - 1, py - 2, px + 2, py + 3, FlightLineTheme.TCAS_TA);
+                        g.fill(px - 2, py - 1, px + 3, py + 2, FlightLineTheme.TCAS_TA);
+                    }
+                    case PROXIMATE -> {
+                        drawDiamond(g, px, py, 2, FlightLineTheme.CYAN);
+                        g.fill(px, py, px + 1, py + 1, FlightLineTheme.CYAN);
+                    }
+                    case FAR -> drawDiamond(g, px, py, 2, FlightLineTheme.CYAN);
                 }
 
-                // Altitude tag only for RA, TA, or when <= 2 traffic in scope to keep it clean and readable
-                if (isRa || isTa || visibleAirborne.size() <= 2) {
-                    int relHundreds = Math.round(relAltFt / 100.0f);
+                if (tier == TrafficTier.RA || tier == TrafficTier.TA) {
+                    drawTrafficVelocity(g, px, py, contact.headingDegrees(), visualHeading,
+                            contact.speedKnots(), tierColor);
+                    if (Math.abs(contact.verticalSpeedFpm()) >= 300) {
+                        drawVerticalTrend(g, px, py, contact.verticalSpeedFpm(), tierColor);
+                    }
+                }
+
+                if (tier == TrafficTier.RA || tier == TrafficTier.TA
+                        || (tier == TrafficTier.PROXIMATE && airborne.size() <= 3)) {
+                    int relHundreds = Math.round(info.relativeAltitudeFeet() / 100.0f);
                     String tag = (relHundreds >= 0 ? "+" : "") + String.format(Locale.ROOT, "%02d", relHundreds);
-                    g.text(mc.font, tag, px + 4, py - 4,
-                            isRa ? FlightLineTheme.TCAS_RA
-                                    : isTa ? FlightLineTheme.TCAS_TA : FlightLineTheme.GREEN, false);
+                    g.text(mc.font, tag, px + 4, py - 4, tierColor, false);
                 }
+                drawnPixels.add(point);
+                airborneDrawn++;
             }
 
             // Clean ND footer rows
@@ -658,12 +786,43 @@ final class FlightHud {
 
         // Warnings are conveyed by a wordless edge alarm. TCAS advisories deliberately never
         // trigger it; they remain on the navigation display as traffic symbols/readouts only.
-        boolean alarm = phase == FlightPhase.CRASHED || (warnings & ~TCAS_WARNINGS) != 0;
+        boolean alarm = phase == FlightPhase.CRASHED || nonTcasWarnings() != 0;
         if (alarm) {
-            boolean blinkOn = ((long) (clock * 2.5) & 1L) == 0L;
-            float intensity = phase == FlightPhase.CRASHED || blinkOn ? 1.0f : 0.32f;
-            FlightLineTheme.alarmFlash(g, 0, 0, screenWidth, screenHeight, intensity);
+            FlightLineTheme.alarmFlash(g, 0, 0, screenWidth, screenHeight,
+                    alarmIntensity(nowNanos, clock));
         }
+    }
+
+    private static int nonTcasWarnings() {
+        return warnings & ~TCAS_WARNINGS;
+    }
+
+    /** One two-pulse cue on onset or a newly arrived warning, then the established slow blink. */
+    private static void updateAlarmOnset(long nowNanos) {
+        int nonTcas = nonTcasWarnings();
+        boolean crashed = phase == FlightPhase.CRASHED;
+        boolean wasActive = previousNonTcasWarnings != 0 || previousCrashed;
+        boolean active = nonTcas != 0 || crashed;
+        boolean newWarning = (nonTcas & ~previousNonTcasWarnings) != 0 || (crashed && !previousCrashed);
+        if (active && (!wasActive || newWarning)) {
+            alarmOnsetExpiresNanos = nowNanos + ALARM_ONSET_NANOS;
+        } else if (!active) {
+            alarmOnsetExpiresNanos = 0L;
+        }
+        previousNonTcasWarnings = nonTcas;
+        previousCrashed = crashed;
+    }
+
+    private static float alarmIntensity(long nowNanos, double clock) {
+        long remaining = alarmOnsetExpiresNanos - nowNanos;
+        if (remaining > 0) {
+            long elapsed = ALARM_ONSET_NANOS - remaining;
+            boolean pulse = elapsed < 180_000_000L
+                    || (elapsed >= 320_000_000L && elapsed < 500_000_000L);
+            return pulse ? 1.0f : 0.18f;
+        }
+        boolean blinkOn = ((long) (clock * 2.5) & 1L) == 0L;
+        return phase == FlightPhase.CRASHED || blinkOn ? 1.0f : 0.32f;
     }
 
     /** One compact radio/control strip instead of stacked banners. */
@@ -853,7 +1012,7 @@ final class FlightHud {
 
         // Wordless system status: the full-screen edge flash carries the alarm, this strip only
         // distinguishes normal from caution. TCAS bits never affect it.
-        boolean caution = (warnings & ~TCAS_WARNINGS) != 0 || engineFire || emergencyStatus.active();
+        boolean caution = nonTcasWarnings() != 0 || engineFire || emergencyStatus.active();
         boolean urgent = engineFire || phase == FlightPhase.CRASHED
                 || (warnings & (FlightWarning.STALL | FlightWarning.FUEL_EMPTY
                         | FlightWarning.PULL_UP | FlightWarning.WINDSHEAR)) != 0;
@@ -1324,59 +1483,67 @@ final class FlightHud {
 
     private static void drawKeybindList(GuiGraphicsExtractor graphics, Minecraft mc,
                                         int screenWidth, int screenHeight) {
-        List<String> bindings = new ArrayList<>(List.of(
-                pairBinding(FlightLineClient.throttleUp(), FlightLineClient.throttleDown(), "THROTTLE"),
-                pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(), "RUDDER"),
-                binding(FlightLineClient.brakes(), "BRAKES"),
-                binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT PANEL"),
-                binding(FlightLineClient.telemetry(), "FLIGHT DATA PANEL"),
-                binding(FlightLineClient.flightTutorial(), "FLIGHT TUTORIAL"),
-                binding(FlightLineClient.emergencyChecklist(), "EMERGENCY CHECKLIST"),
-                binding(FlightLineClient.openControls(), "ALL CONTROLS"),
-                binding(FlightLineClient.toggleKeybindHints(), "HIDE PROMPTS")));
-        if (emergencyStatus.recommendation().present()) {
-            bindings.add(binding(FlightLineClient.executeEmergency(), "EXECUTE NEXT ACTION"));
+        final int maxRows = 13;
+        boolean airborne = FlightLineClient.isAirborne();
+        boolean emergencyAction = emergencyStatus.recommendation().present();
+        boolean atcControlled = isAtcControlled();
+        boolean atcMessage = hasAtcMessage();
+
+        // Priority rows survive phase changes and alphabetical sorting would otherwise hide them.
+        List<String> rows = new ArrayList<>(maxRows);
+        addUniqueHint(rows, pairBinding(FlightLineClient.throttleUp(), FlightLineClient.throttleDown(),
+                "THROTTLE"));
+        addUniqueHint(rows, pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(),
+                "RUDDER"));
+        addUniqueHint(rows, binding(FlightLineClient.brakes(), "BRAKES"));
+        addUniqueHint(rows, binding(FlightLineClient.toggleGear(), "LANDING GEAR"));
+        if (airborne) {
+            addUniqueHint(rows, pairBinding(FlightLineClient.flapsIncrease(),
+                    FlightLineClient.flapsDecrease(), "FLAPS (+ / -)"));
         }
-        if (FlightLineClient.isAirborne()) {
-            bindings.addAll(List.of(
-                    pairBinding(FlightLineClient.flapsIncrease(), FlightLineClient.flapsDecrease(),
-                            "FLAPS (+ / -)"),
+        addUniqueHint(rows, binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT PANEL"));
+        addUniqueHint(rows, binding(FlightLineClient.emergencyChecklist(), "EMERGENCY CHECKLIST"));
+        if (emergencyAction) {
+            addUniqueHint(rows, binding(FlightLineClient.executeEmergency(), "EXECUTE NEXT ACTION"));
+        }
+        if (airborne) {
+            addUniqueHint(rows, binding(FlightLineClient.flightRadar(), "FLIGHT RADAR"));
+            addUniqueHint(rows, binding(FlightLineClient.weatherMap(), "WEATHER MAP"));
+        }
+        if (atcControlled || atcMessage) {
+            addUniqueHint(rows, binding(FlightLineClient.ackAtc(),
+                    atcControlled ? "RELEASE ATC" : "ACK ATC"));
+        }
+        addUniqueHint(rows, binding(FlightLineClient.openControls(), "ALL CONTROLS"));
+        addUniqueHint(rows, binding(FlightLineClient.toggleKeybindHints(), "HIDE PROMPTS"));
+
+        // Everything else fills the remaining rows in a stable, readable order.
+        List<String> remaining = new ArrayList<>();
+        remaining.add(binding(FlightLineClient.telemetry(), "FLIGHT DATA PANEL"));
+        remaining.add(binding(FlightLineClient.flightTutorial(), "FLIGHT TUTORIAL"));
+        if (airborne) {
+            remaining.addAll(List.of(
                     binding(FlightLineClient.spoilersToggle(), "SPOILERS"),
                     binding(FlightLineClient.airbrakeToggle(), "AIRBRAKES"),
-                    binding(FlightLineClient.toggleGear(), "LANDING GEAR"),
                     binding(FlightLineClient.antiIce(), "ANTI-ICE")));
         } else {
-            bindings.add(binding(FlightLineClient.toggleGear(), "LANDING GEAR"));
-            bindings.add(binding(FlightLineClient.pushback(), "PUSHBACK"));
+            remaining.add(binding(FlightLineClient.pushback(), "PUSHBACK"));
             if (FlightLineClient.areEnginesActive()) {
-                bindings.add(binding(FlightLineClient.shutdownEngines(), "SHUT DOWN ENGINES"));
+                remaining.add(binding(FlightLineClient.shutdownEngines(), "SHUT DOWN ENGINES"));
             } else if (isCrashed()) {
-                bindings.add(binding(FlightLineClient.inventory(), "RECONFIGURE AIRCRAFT"));
+                remaining.add(binding(FlightLineClient.inventory(), "RECONFIGURE AIRCRAFT"));
             } else {
-                bindings.add(binding(FlightLineClient.inventory(), "START ENGINES"));
+                remaining.add(binding(FlightLineClient.inventory(), "START ENGINES"));
             }
         }
-        if (FlightLineClient.isAirborne()) {
-            bindings.add(binding(FlightLineClient.flightRadar(), "FLIGHT RADAR"));
-            bindings.add(binding(FlightLineClient.weatherMap(), "WEATHER MAP"));
+        remaining.sort(String.CASE_INSENSITIVE_ORDER);
+        for (String hint : remaining) {
+            if (rows.size() >= maxRows) break;
+            addUniqueHint(rows, hint);
         }
-        if (isAtcControlled()) {
-            bindings.add(binding(FlightLineClient.ackAtc(), "RELEASE ATC"));
-        } else if (hasAtcMessage()) {
-            bindings.add(binding(FlightLineClient.ackAtc(), "ACK ATC"));
-        }
-        bindings.sort(String.CASE_INSENSITIVE_ORDER);
-        List<String> compact = new ArrayList<>();
-        if (emergencyStatus.recommendation().present()) {
-            compact.add(binding(FlightLineClient.executeEmergency(), "EXECUTE NEXT ACTION"));
-        }
-        for (String entry : bindings) {
-            if (compact.size() >= 8) break;
-            if (!compact.contains(entry)) compact.add(entry);
-        }
-        bindings = compact;
+
         int contentWidth = Math.min(160, Math.max(70, screenWidth - 12));
-        int contentHeight = bindings.size() * 9;
+        int contentHeight = rows.size() * 9;
         float availableHeight = Math.max(0.0f, screenHeight - 18.0f);
         float scale = Math.min(0.56f, Math.min(availableHeight / contentHeight,
                 (screenWidth - 12.0f) / contentWidth));
@@ -1388,12 +1555,16 @@ final class FlightHud {
         pose.pushMatrix();
         pose.translate(x + slide, y);
         pose.scale(scale, scale);
-        for (int i = 0; i < bindings.size(); i++) {
-            String text = fitText(mc.font, bindings.get(i), contentWidth);
+        for (int i = 0; i < rows.size(); i++) {
+            String text = fitText(mc.font, rows.get(i), contentWidth);
             graphics.text(mc.font, text, contentWidth - mc.font.width(text), i * 9,
                     withAlpha(FlightLineTheme.PAPER, keybindPanelProgress), true);
         }
         pose.popMatrix();
+    }
+
+    private static void addUniqueHint(List<String> hints, String hint) {
+        if (!hints.contains(hint)) hints.add(hint);
     }
 
     private static String binding(net.minecraft.client.KeyMapping mapping, String label) {

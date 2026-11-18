@@ -65,6 +65,8 @@ public class AutopilotScreen extends Screen {
 
     private record AdvisoryEntry(String label, int color) {}
 
+    private record FocusSnapshot(int page, int field, int cursor) {}
+
     /** Priority order for the flight-deck alert list; TCAS is handled separately. */
     private static final List<AlertEntry> ALERT_ENTRIES = List.of(
             new AlertEntry(FlightWarning.STALL, "STALL", true),
@@ -124,6 +126,31 @@ public class AutopilotScreen extends Screen {
     private List<Integer> fplnWaypoints = new ArrayList<>();
     private String fplnMessage = "";
 
+    // Page-local drafts. Widgets are rebuilt often; these plain fields stay authoritative.
+    private String mcpHeadingText = "";
+    private String mcpAltitudeText = "";
+    private String mcpVsText = "";
+    private String mcpSpeedText = "";
+    private String appliedMcpHeadingText = "";
+    private String appliedMcpAltitudeText = "";
+    private String appliedMcpVsText = "";
+    private String appliedMcpSpeedText = "";
+    private String ilsXText = "";
+    private String ilsZText = "";
+    private String ilsHeadingText = "";
+    private String appliedIlsXText = "";
+    private String appliedIlsZText = "";
+    private String appliedIlsHeadingText = "";
+    private float appliedGlideSlope = 3.0f;
+    private int appliedFplnOrigin;
+    private int appliedFplnDestination;
+    private int appliedFplnAlternate;
+    private int appliedFplnAltitude = 12_000;
+    private List<Integer> appliedFplnWaypoints = new ArrayList<>();
+    private @Nullable List<NavDataPayload.Airport> knownAirports;
+    private String knownPlanSignature = "";
+    private @Nullable EditBox lastFocusedBox;
+
     private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int panelLeft;
     private int panelTop;
@@ -154,7 +181,29 @@ public class AutopilotScreen extends Screen {
             }
             thresholdDefaultsInitialized = true;
         }
+        initializeDrafts();
+    }
+
+    private void initializeDrafts() {
+        mcpHeadingText = String.format(Locale.ROOT, "%03d", cachedHeading);
+        mcpAltitudeText = String.valueOf(cachedAltitude);
+        mcpVsText = String.valueOf(cachedVs);
+        mcpSpeedText = String.valueOf(cachedSpeed);
+        appliedMcpHeadingText = mcpHeadingText;
+        appliedMcpAltitudeText = mcpAltitudeText;
+        appliedMcpVsText = mcpVsText;
+        appliedMcpSpeedText = mcpSpeedText;
+        ilsXText = String.valueOf(cachedThresholdX);
+        ilsZText = String.valueOf(cachedThresholdZ);
+        ilsHeadingText = String.valueOf(cachedRunwayHeading);
+        appliedIlsXText = ilsXText;
+        appliedIlsZText = ilsZText;
+        appliedIlsHeadingText = ilsHeadingText;
+        appliedGlideSlope = cachedGlideSlope;
         resetFlightPlanDraft();
+        captureAppliedFlightPlan();
+        knownAirports = NavigationState.airports();
+        knownPlanSignature = planSignature();
     }
 
     @Override
@@ -192,10 +241,10 @@ public class AutopilotScreen extends Screen {
     }
 
     private void initMcpPage() {
-        headingBox = numberInput(mcpColumnCenter(0) - 29, 274, 58, "HDG", cachedHeading, 3);
-        altitudeBox = numberInput(mcpColumnCenter(1) - 29, 274, 58, "ALT", cachedAltitude, 5);
-        vsBox = numberInput(mcpColumnCenter(2) - 29, 274, 58, "V/S", cachedVs, 5);
-        speedBox = numberInput(mcpColumnCenter(3) - 29, 274, 58, "IAS", cachedSpeed, 3);
+        headingBox = numberInput(mcpColumnCenter(0) - 29, 274, 58, "HDG", mcpHeadingText, 3);
+        altitudeBox = numberInput(mcpColumnCenter(1) - 29, 274, 58, "ALT", mcpAltitudeText, 5);
+        vsBox = numberInput(mcpColumnCenter(2) - 29, 274, 58, "V/S", mcpVsText, 5);
+        speedBox = numberInput(mcpColumnCenter(3) - 29, 274, 58, "IAS", mcpSpeedText, 3);
 
         addRenderableWidget(stepButton("-10", mcpColumnX(0) + 7, 298, 55, () -> adjustHeading(-10)));
         addRenderableWidget(stepButton("+10", mcpColumnX(0) + 66, 298, 55, () -> adjustHeading(10)));
@@ -262,9 +311,9 @@ public class AutopilotScreen extends Screen {
     }
 
     private void initNavPage() {
-        thresholdXBox = numberInput(382, 124, 76, "X", cachedThresholdX, 10);
-        thresholdZBox = numberInput(466, 124, 76, "Z", cachedThresholdZ, 10);
-        runwayHeadingBox = numberInput(382, 188, 76, "HDG", cachedRunwayHeading, 3);
+        thresholdXBox = numberInput(382, 124, 76, "X", ilsXText, 10);
+        thresholdZBox = numberInput(466, 124, 76, "Z", ilsZText, 10);
+        runwayHeadingBox = numberInput(382, 188, 76, "HDG", ilsHeadingText, 3);
 
         addRenderableWidget(compactActionButton("- 0.1°", 382, 156, 76, () -> adjustGlideSlope(-0.1f)));
         addRenderableWidget(compactActionButton("+ 0.1°", 466, 156, 76, () -> adjustGlideSlope(0.1f)));
@@ -317,9 +366,9 @@ public class AutopilotScreen extends Screen {
         return FlightLineTheme.button(fit(label, w(width) - 8), x(x), y(y), w(width), h(18), action);
     }
 
-    private EditBox numberInput(int x, int y, int width, String label, int value, int maxLength) {
+    private EditBox numberInput(int x, int y, int width, String label, String value, int maxLength) {
         EditBox input = new EditBox(font, x(x), y(y), w(width), h(20), Component.literal(label));
-        input.setValue(String.valueOf(value));
+        input.setValue(value);
         input.setMaxLength(maxLength);
         addRenderableWidget(input);
         return input;
@@ -327,31 +376,208 @@ public class AutopilotScreen extends Screen {
 
     private void switchPage(int page) {
         if (activePage == page) return;
-        if (activePage == 0) saveAutopilotValues();
-        if (activePage == 2) saveIlsValues();
+        FocusSnapshot focus = captureFocus();
+        commitPage(activePage);
         activePage = page;
         ilsMessage = "";
-        if (page == 1) resetFlightPlanDraft();
-        clearWidgets();
-        init();
+        syncAuthoritativeDraft();
+        rebuild();
+        restoreFocus(focus);
+    }
+
+    private void commitPage(int page) {
+        if (page == 0) saveAutopilotValues();
+        else if (page == 2) commitIlsValues();
     }
 
     private void saveAutopilotValues() {
+        if (headingBox == null) return;
+        mcpHeadingText = headingInput().getValue();
+        mcpAltitudeText = altitudeInput().getValue();
+        mcpVsText = verticalSpeedInput().getValue();
+        mcpSpeedText = speedInput().getValue();
         cachedHeading = parseHeading();
         cachedAltitude = parseAltitude();
         cachedVs = parseVs();
         cachedSpeed = parseSpeed();
     }
 
+    /** Strict save used by SET RUNWAY so invalid text still gets the existing message. */
     private void saveIlsValues() {
+        if (thresholdXBox == null) return;
+        ilsXText = thresholdXInput().getValue();
+        ilsZText = thresholdZInput().getValue();
+        ilsHeadingText = runwayHeadingInput().getValue();
         cachedThresholdX = parseCoordinate(thresholdXInput(), "THRESHOLD X");
         cachedThresholdZ = parseCoordinate(thresholdZInput(), "THRESHOLD Z");
         cachedRunwayHeading = Math.floorMod(parseCoordinate(runwayHeadingInput(), "RWY HDG"), 360);
     }
 
+    /** Quiet save for focus loss and tab changes: keep the last good numbers on bad text. */
+    private void commitIlsValues() {
+        if (thresholdXBox == null) return;
+        ilsXText = thresholdXInput().getValue();
+        ilsZText = thresholdZInput().getValue();
+        ilsHeadingText = runwayHeadingInput().getValue();
+        try {
+            cachedThresholdX = parseCoordinate(thresholdXInput(), "THRESHOLD X");
+            cachedThresholdZ = parseCoordinate(thresholdZInput(), "THRESHOLD Z");
+            cachedRunwayHeading = Math.floorMod(parseCoordinate(runwayHeadingInput(), "RWY HDG"), 360);
+        } catch (IllegalArgumentException ignored) {
+            // The text draft survives; the next explicit SET RUNWAY will report the problem.
+        }
+    }
+
     private void rebuild() {
+        clearFocus();
         clearWidgets();
+        headingBox = null;
+        altitudeBox = null;
+        vsBox = null;
+        speedBox = null;
+        thresholdXBox = null;
+        thresholdZBox = null;
+        runwayHeadingBox = null;
+        apMasterBtn = null;
+        lastFocusedBox = null;
         init();
+    }
+
+    private @Nullable EditBox focusedInput() {
+        for (EditBox box : editBoxes()) {
+            if (box.isFocused()) return box;
+        }
+        return null;
+    }
+
+    private List<EditBox> editBoxes() {
+        List<EditBox> boxes = new ArrayList<>();
+        if (headingBox != null) boxes.add(headingBox);
+        if (altitudeBox != null) boxes.add(altitudeBox);
+        if (vsBox != null) boxes.add(vsBox);
+        if (speedBox != null) boxes.add(speedBox);
+        if (thresholdXBox != null) boxes.add(thresholdXBox);
+        if (thresholdZBox != null) boxes.add(thresholdZBox);
+        if (runwayHeadingBox != null) boxes.add(runwayHeadingBox);
+        return boxes;
+    }
+
+    private int fieldIndex(EditBox box) {
+        if (box == headingBox) return 0;
+        if (box == altitudeBox) return 1;
+        if (box == vsBox) return 2;
+        if (box == speedBox) return 3;
+        if (box == thresholdXBox) return 0;
+        if (box == thresholdZBox) return 1;
+        if (box == runwayHeadingBox) return 2;
+        return -1;
+    }
+
+    private @Nullable EditBox inputFor(int page, int field) {
+        if (page == 0) {
+            return switch (field) {
+                case 0 -> headingBox;
+                case 1 -> altitudeBox;
+                case 2 -> vsBox;
+                case 3 -> speedBox;
+                default -> null;
+            };
+        }
+        if (page == 2) {
+            return switch (field) {
+                case 0 -> thresholdXBox;
+                case 1 -> thresholdZBox;
+                case 2 -> runwayHeadingBox;
+                default -> null;
+            };
+        }
+        return null;
+    }
+
+    private @Nullable FocusSnapshot captureFocus() {
+        EditBox box = focusedInput();
+        if (box == null) return null;
+        return new FocusSnapshot(activePage, fieldIndex(box), box.getCursorPosition());
+    }
+
+    private void restoreFocus(@Nullable FocusSnapshot focus) {
+        if (focus == null || focus.page() != activePage || focus.field() < 0) return;
+        EditBox box = inputFor(focus.page(), focus.field());
+        if (box == null) return;
+        setInitialFocus(box);
+        box.setFocused(true);
+        int cursor = Math.max(0, Math.min(focus.cursor(), box.getValue().length()));
+        box.setCursorPosition(cursor);
+        box.setHighlightPos(cursor);
+        lastFocusedBox = box;
+    }
+
+    private void updateFocusCommit() {
+        EditBox focused = focusedInput();
+        if (focused == lastFocusedBox) return;
+        if (lastFocusedBox != null) commitPage(activePage);
+        lastFocusedBox = focused;
+    }
+
+    private String planSignature() {
+        var plan = NavigationState.plan();
+        if (plan == null) return "none";
+        return plan.revision() + ":" + plan.originId() + ":" + plan.destinationId() + ":"
+                + plan.alternateId() + ":" + plan.cruiseAltitudeFeet() + ":" + plan.waypointIds();
+    }
+
+    /** A fresh nav snapshot or an authoritative plan revision replaces stale local drafts. */
+    private boolean syncAuthoritativeDraft() {
+        List<NavDataPayload.Airport> airports = NavigationState.airports();
+        String signature = planSignature();
+        if (airports == knownAirports && signature.equals(knownPlanSignature)) return false;
+        knownAirports = airports;
+        knownPlanSignature = signature;
+        resetFlightPlanDraft();
+        captureAppliedFlightPlan();
+        fplnMessage = "NAV DATA UPDATED";
+        return true;
+    }
+
+    private void captureAppliedFlightPlan() {
+        appliedFplnOrigin = fplnOrigin;
+        appliedFplnDestination = fplnDestination;
+        appliedFplnAlternate = fplnAlternate;
+        appliedFplnAltitude = fplnAltitude;
+        appliedFplnWaypoints = new ArrayList<>(fplnWaypoints);
+    }
+
+    private void captureAppliedIls() {
+        appliedIlsXText = ilsXText;
+        appliedIlsZText = ilsZText;
+        appliedIlsHeadingText = ilsHeadingText;
+        appliedGlideSlope = cachedGlideSlope;
+    }
+
+    private void captureAppliedMcp() {
+        appliedMcpHeadingText = mcpHeadingText;
+        appliedMcpAltitudeText = mcpAltitudeText;
+        appliedMcpVsText = mcpVsText;
+        appliedMcpSpeedText = mcpSpeedText;
+    }
+
+    private boolean hasUnsentChanges() {
+        return switch (activePage) {
+            case 0 -> !mcpHeadingText.equals(appliedMcpHeadingText)
+                    || !mcpAltitudeText.equals(appliedMcpAltitudeText)
+                    || !mcpVsText.equals(appliedMcpVsText)
+                    || !mcpSpeedText.equals(appliedMcpSpeedText);
+            case 1 -> fplnOrigin != appliedFplnOrigin
+                    || fplnDestination != appliedFplnDestination
+                    || fplnAlternate != appliedFplnAlternate
+                    || fplnAltitude != appliedFplnAltitude
+                    || !fplnWaypoints.equals(appliedFplnWaypoints);
+            case 2 -> !ilsXText.equals(appliedIlsXText)
+                    || !ilsZText.equals(appliedIlsZText)
+                    || !ilsHeadingText.equals(appliedIlsHeadingText)
+                    || Float.compare(cachedGlideSlope, appliedGlideSlope) != 0;
+            default -> false;
+        };
     }
 
     private void resetFlightPlanDraft() {
@@ -496,6 +722,7 @@ public class AutopilotScreen extends Screen {
         ClientPlayNetworking.send(new FileFlightPlanPayload(airportId(fplnOrigin),
                 airportId(fplnDestination), List.copyOf(fplnWaypoints), fplnAltitude,
                 airportId(fplnAlternate), action));
+        captureAppliedFlightPlan();
         fplnMessage = switch (action) {
             case FILE -> "PLAN SENT TO ATC";
             case CLEARANCE -> "CLEARANCE REQUESTED";
@@ -520,9 +747,12 @@ public class AutopilotScreen extends Screen {
             ilsMessage = "NO POSITION FIX";
             return;
         }
-        thresholdXInput().setValue(String.valueOf(player.blockPosition().getX()));
-        thresholdZInput().setValue(String.valueOf(player.blockPosition().getZ()));
-        runwayHeadingInput().setValue(String.valueOf(Math.floorMod(Math.round(player.getYRot()), 360)));
+        ilsXText = String.valueOf(player.blockPosition().getX());
+        ilsZText = String.valueOf(player.blockPosition().getZ());
+        ilsHeadingText = String.valueOf(Math.floorMod(Math.round(player.getYRot()), 360));
+        thresholdXInput().setValue(ilsXText);
+        thresholdZInput().setValue(ilsZText);
+        runwayHeadingInput().setValue(ilsHeadingText);
         ilsMessage = "ILS REFERENCE UPDATED";
     }
 
@@ -543,6 +773,7 @@ public class AutopilotScreen extends Screen {
         }
         ClientPlayNetworking.send(new ConfigureIlsPayload(true, cachedGlideSlope,
                 cachedThresholdX, cachedThresholdZ, cachedRunwayHeading));
+        captureAppliedIls();
         ilsMessage = "ILS TUNED";
     }
 
@@ -553,6 +784,7 @@ public class AutopilotScreen extends Screen {
         }
         ClientPlayNetworking.send(new ConfigureIlsPayload(false, cachedGlideSlope,
                 cachedThresholdX, cachedThresholdZ, cachedRunwayHeading));
+        captureAppliedIls();
         ilsMessage = "ILS CLEARED";
     }
 
@@ -620,7 +852,18 @@ public class AutopilotScreen extends Screen {
     }
 
     @Override
+    public void tick() {
+        super.tick();
+        if (!syncAuthoritativeDraft()) return;
+        FocusSnapshot focus = captureFocus();
+        commitPage(activePage);
+        rebuild();
+        restoreFocus(focus);
+    }
+
+    @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        updateFocusCommit();
         updateGeometry();
         scaler.update(width, height);
         scaler.push(graphics);
@@ -672,6 +915,16 @@ public class AutopilotScreen extends Screen {
             color = MUTED;
         }
         fittedText(graphics, label, panelLeft + x(464), panelTop + y(20), color, w(136), true);
+        drawUnsentMark(graphics);
+    }
+
+    /** Small amber index in the header: only the active page's shown values are compared. */
+    private void drawUnsentMark(GuiGraphicsExtractor graphics) {
+        if (!hasUnsentChanges()) return;
+        int markX = panelLeft + x(294);
+        int markY = panelTop + y(19);
+        graphics.fill(markX, markY, markX + 2, markY + 12, AMBER);
+        fittedText(graphics, "UNSENT CHANGES", markX + 7, markY + 1, AMBER, w(112), true);
     }
 
     private static int mcpColumnX(int index) {
@@ -997,6 +1250,15 @@ public class AutopilotScreen extends Screen {
         }
         if ((warnings & FlightWarning.TCAS_CLEAR) != 0) {
             advisories.add(new AdvisoryEntry("CLEAR OF CONFLICT", TCAS_TA));
+        }
+        boolean raBit = (warnings & (FlightWarning.TCAS_RESOLUTION | FlightWarning.TCAS_CLIMB
+                | FlightWarning.TCAS_DESCEND | FlightWarning.TCAS_CROSSING)) != 0;
+        boolean taBit = (warnings & FlightWarning.TCAS_TRAFFIC) != 0;
+        for (FlightHud.TrafficAdvisory advisory : FlightHud.trafficAdvisories()) {
+            if (advisories.size() >= 7) break;
+            if (raBit && advisory.label().startsWith("TCAS RA")) continue;
+            if (taBit && advisory.label().startsWith("TCAS TA")) continue;
+            advisories.add(new AdvisoryEntry(advisory.label(), advisory.color()));
         }
         return advisories;
     }
@@ -1596,8 +1858,9 @@ public class AutopilotScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (headingBox != null) saveAutopilotValues();
-        if (activePage == 2 && thresholdXBox != null) saveIlsValues();
+        if (activePage == 0 && headingBox != null) saveAutopilotValues();
+        else if (activePage == 2 && thresholdXBox != null) commitIlsValues();
+        captureAppliedMcp();
         ClientPlayNetworking.send(new ConfigureAutopilotPayload(
                 engaged, cachedHeading, cachedAltitude, cachedVs, cachedSpeed
         ));
