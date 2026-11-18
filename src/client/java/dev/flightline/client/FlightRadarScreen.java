@@ -19,7 +19,10 @@ import java.util.Map;
 import java.util.Locale;
 
 public final class FlightRadarScreen extends Screen {
+    private static final int BASE_WIDTH = 560;
+    private static final int BASE_HEIGHT = 360;
     private static final int[] RANGES = {64, 128, 256, 512, 1024, 2048, 4096};
+    private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private static int rememberedLeft = -1;
     private static int rememberedTop = -1;
     private static int rememberedWidth = 500;
@@ -99,14 +102,17 @@ public final class FlightRadarScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        panelWidth = Math.max(Math.min(300, width - 16), Math.min(rememberedWidth, width - 16));
-        panelHeight = Math.max(Math.min(220, height - 16), Math.min(rememberedHeight, height - 16));
+        scaler.update(width, height);
+        panelWidth = Math.max(Math.min(300, scaler.width() - 16),
+                Math.min(rememberedWidth, scaler.width() - 16));
+        panelHeight = Math.max(Math.min(220, scaler.height() - 16),
+                Math.min(rememberedHeight, scaler.height() - 16));
         if (rememberedLeft < 0 || rememberedTop < 0) {
-            panelLeft = (width - panelWidth) / 2;
-            panelTop = (height - panelHeight) / 2;
+            panelLeft = (scaler.width() - panelWidth) / 2;
+            panelTop = (scaler.height() - panelHeight) / 2;
         } else {
-            panelLeft = Math.max(4, Math.min(width - panelWidth - 4, rememberedLeft));
-            panelTop = Math.max(4, Math.min(height - panelHeight - 4, rememberedTop));
+            panelLeft = Math.max(4, Math.min(scaler.width() - panelWidth - 4, rememberedLeft));
+            panelTop = Math.max(4, Math.min(scaler.height() - panelHeight - 4, rememberedTop));
         }
         rememberedLeft = panelLeft;
         rememberedTop = panelTop;
@@ -178,7 +184,9 @@ public final class FlightRadarScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         animateRadar();
-        graphics.fill(0, 0, width, height, 0xB8000000);
+        scaler.update(width, height);
+        scaler.push(graphics);
+        graphics.fill(0, 0, scaler.width(), scaler.height(), 0xB8000000);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         int frameColor = ((long) (System.nanoTime() / 750_000_000L) & 1L) == 0L
                 ? 0xFF4EB8C8 : 0xFF347988;
@@ -338,11 +346,18 @@ public final class FlightRadarScreen extends Screen {
         graphics.text(font, fit("Drag header to move · corner to resize · scroll scope to zoom",
                 panelWidth - 40), panelLeft + 12, panelTop + panelHeight - 14, 0xFF71858B, true);
         drawResizeHandle(graphics);
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
+        scaler.pop(graphics);
+    }
+
+    @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        super.mouseMoved(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        event = scaler.map(event);
         double mouseX = event.x();
         double mouseY = event.y();
         if (event.button() == 0 && inResizeHandle(mouseX, mouseY)) {
@@ -412,6 +427,7 @@ public final class FlightRadarScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+        event = scaler.map(event);
         if (draggingWindow) {
             int newLeft = (int) Math.round(event.x() - dragOffsetX);
             int newTop = (int) Math.round(event.y() - dragOffsetY);
@@ -419,9 +435,9 @@ public final class FlightRadarScreen extends Screen {
             return true;
         }
         if (resizingWindow) {
-            int nextWidth = Math.max(300, Math.min(width - panelLeft - 4,
+            int nextWidth = Math.max(300, Math.min(scaler.width() - panelLeft - 4,
                     resizeStartWidth + (int) Math.round(event.x()) - resizeStartX));
-            int nextHeight = Math.max(220, Math.min(height - panelTop - 4,
+            int nextHeight = Math.max(220, Math.min(scaler.height() - panelTop - 4,
                     resizeStartHeight + (int) Math.round(event.y()) - resizeStartY));
             if (nextWidth != panelWidth || nextHeight != panelHeight) {
                 saveIlsInputs();
@@ -431,30 +447,37 @@ public final class FlightRadarScreen extends Screen {
             }
             return true;
         }
-        return super.mouseDragged(event, deltaX, deltaY);
+        return super.mouseDragged(event, deltaX / scaler.scale(), deltaY / scaler.scale());
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         draggingWindow = false;
         resizingWindow = false;
-        return super.mouseReleased(event);
+        return super.mouseReleased(scaler.map(event));
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (mouseX >= scopeLeft && mouseX <= scopeLeft + scopeWidth
-                && mouseY >= scopeTop && mouseY <= scopeTop + scopeHeight) {
+        int logicalX = scaler.mouseX(mouseX);
+        int logicalY = scaler.mouseY(mouseY);
+        if (logicalX >= scopeLeft && logicalX <= scopeLeft + scopeWidth
+                && logicalY >= scopeTop && logicalY <= scopeTop + scopeHeight) {
             changeRange(deltaY > 0 ? -1 : 1);
             return true;
         }
-        if (!compactLayout && mouseX > scopeLeft + scopeWidth && mouseY >= scopeTop + 58) {
+        if (!compactLayout && logicalX > scopeLeft + scopeWidth && logicalY >= scopeTop + 58) {
             int maxRows = Math.max(0, FlightHud.radarContacts().size() - 1);
             contactListOffset = Math.max(0, Math.min(maxRows,
                     contactListOffset + (deltaY < 0 ? 1 : -1)));
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
+        return super.mouseScrolled(logicalX, logicalY, deltaX, deltaY);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return super.isMouseOver(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     private void setIls() {
@@ -578,8 +601,8 @@ public final class FlightRadarScreen extends Screen {
     }
 
     private void moveWindow(int left, int top) {
-        int nextLeft = Math.max(4, Math.min(width - panelWidth - 4, left));
-        int nextTop = Math.max(4, Math.min(height - panelHeight - 4, top));
+        int nextLeft = Math.max(4, Math.min(scaler.width() - panelWidth - 4, left));
+        int nextTop = Math.max(4, Math.min(scaler.height() - panelHeight - 4, top));
         int dx = nextLeft - panelLeft;
         int dy = nextTop - panelTop;
         if (dx == 0 && dy == 0) return;

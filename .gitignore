@@ -1,10 +1,12 @@
-# Gradle
+# Gradle / generated output
 .gradle/
 build/
+bin/
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.iml
 
 # Fabric

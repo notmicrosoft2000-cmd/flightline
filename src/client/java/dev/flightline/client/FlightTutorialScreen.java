@@ -11,6 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -30,6 +31,7 @@ public final class FlightTutorialScreen extends Screen {
     private static final int CARD = 0xE3101920;
     private static final int BORDER = 0xFF2A3D49;
 
+    private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int panelLeft;
     private int panelTop;
     private int panelWidth;
@@ -47,12 +49,13 @@ public final class FlightTutorialScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        panelWidth = Math.max(1, Math.min(BASE_WIDTH, width - 16));
-        panelHeight = Math.max(1, Math.min(BASE_HEIGHT, height - 16));
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
-        scaleX = panelWidth / (float) BASE_WIDTH;
-        scaleY = panelHeight / (float) BASE_HEIGHT;
+        scaler.update(width, height);
+        panelWidth = BASE_WIDTH;
+        panelHeight = BASE_HEIGHT;
+        panelLeft = 8;
+        panelTop = 8;
+        scaleX = 1.0f;
+        scaleY = 1.0f;
 
         String[] labels = {"TAKEOFF", "CRUISE", "AUTOPILOT", "LANDING"};
         int[] positions = {12, 126, 252, 388};
@@ -209,12 +212,14 @@ public final class FlightTutorialScreen extends Screen {
         lastFrameNanos = now;
         openProgress += (1.0f - openProgress) * (1.0f - (float) Math.exp(-delta * 10.0f));
 
-        graphics.fill(0, 0, width, height, 0x30000000);
+        scaler.update(width, height);
+        scaler.push(graphics);
+        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
         var pose = graphics.pose();
         pose.pushMatrix();
-        pose.translate(width / 2.0f, height / 2.0f);
+        pose.translate(scaler.width() / 2.0f, scaler.height() / 2.0f);
         pose.scale(0.96f + openProgress * 0.04f, 0.96f + openProgress * 0.04f);
-        pose.translate(-width / 2.0f, -height / 2.0f);
+        pose.translate(-scaler.width() / 2.0f, -scaler.height() / 2.0f);
 
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN);
@@ -237,8 +242,39 @@ public final class FlightTutorialScreen extends Screen {
         graphics.fill(barX, barY, barX + filled, barY + 6, FlightTutorial.allCompleted() ? GREEN : CYAN);
         graphics.text(font, fit(status, barWidth), barX, barY - 12, MUTED, true);
 
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
         pose.popMatrix();
+        scaler.pop(graphics);
+    }
+
+    @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        super.mouseMoved(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        return super.mouseClicked(scaler.map(event), doubleClick);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return super.mouseReleased(scaler.map(event));
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+        return super.mouseDragged(scaler.map(event), deltaX / scaler.scale(), deltaY / scaler.scale());
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+        return super.mouseScrolled(scaler.mouseX(mouseX), scaler.mouseY(mouseY), deltaX, deltaY);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return super.isMouseOver(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     private void drawObjectives(GuiGraphicsExtractor graphics) {

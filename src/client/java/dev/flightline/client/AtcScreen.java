@@ -29,6 +29,7 @@ public final class AtcScreen extends Screen {
     private static final int AMBER = 0xFFFFCE52;
     private static final int PLAYER = 0xFF6BCBFF;
 
+    private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int selectedEntityId = FlightLineClient.atcSelectedTarget();
     private int leadEntityId = -1;
     private int contactOffset;
@@ -61,13 +62,14 @@ public final class AtcScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        panelWidth = Math.max(1, Math.min(BASE_WIDTH, width - 16));
-        panelHeight = Math.max(1, Math.min(BASE_HEIGHT, height - 16));
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
-        scaleX = panelWidth / (float) BASE_WIDTH;
-        scaleY = panelHeight / (float) BASE_HEIGHT;
-        rowHeight = Math.max(20, h(30));
+        scaler.update(width, height);
+        panelWidth = BASE_WIDTH;
+        panelHeight = BASE_HEIGHT;
+        panelLeft = 8;
+        panelTop = 8;
+        scaleX = 1.0f;
+        scaleY = 1.0f;
+        rowHeight = 30;
         listLeft = x(12);
         listTop = y(54);
         listWidth = w(286);
@@ -241,13 +243,15 @@ public final class AtcScreen extends Screen {
             return;
         }
 
-        graphics.fill(0, 0, width, height, 0x30000000);
+        scaler.update(width, height);
+        scaler.push(graphics);
+        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
         var pose = graphics.pose();
         pose.pushMatrix();
         float scale = 0.96f + openProgress * 0.04f;
-        pose.translate(width / 2.0f, height / 2.0f);
+        pose.translate(scaler.width() / 2.0f, scaler.height() / 2.0f);
         pose.scale(scale, scale);
-        pose.translate(-width / 2.0f, -height / 2.0f);
+        pose.translate(-scaler.width() / 2.0f, -scaler.height() / 2.0f);
 
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
@@ -272,8 +276,9 @@ public final class AtcScreen extends Screen {
         graphics.text(font, fit("Click a card to target · scroll to browse · F7 releases pilot control",
                 panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 12, MUTED, true);
 
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
         pose.popMatrix();
+        scaler.pop(graphics);
     }
 
     private void drawContactList(GuiGraphicsExtractor graphics, List<FlightRadarPayload.Contact> contacts) {
@@ -339,6 +344,7 @@ public final class AtcScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        event = scaler.map(event);
         if (event.button() == 0 && event.x() >= listLeft && event.x() <= listLeft + listWidth
                 && event.y() >= listTop + 18 && event.y() < listTop + 18 + visibleRows * rowHeight) {
             int row = (int) ((event.y() - listTop - 18) / rowHeight) + contactOffset;
@@ -373,14 +379,36 @@ public final class AtcScreen extends Screen {
     }
 
     @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        super.mouseMoved(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return super.mouseReleased(scaler.map(event));
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+        return super.mouseDragged(scaler.map(event), deltaX / scaler.scale(), deltaY / scaler.scale());
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (mouseX >= listLeft && mouseX <= listLeft + listWidth
-                && mouseY >= listTop && mouseY <= listTop + 18 + visibleRows * rowHeight) {
+        int logicalX = scaler.mouseX(mouseX);
+        int logicalY = scaler.mouseY(mouseY);
+        if (logicalX >= listLeft && logicalX <= listLeft + listWidth
+                && logicalY >= listTop && logicalY <= listTop + 18 + visibleRows * rowHeight) {
             contactOffset = Math.max(0, Math.min(Math.max(0, filteredContacts().size() - visibleRows),
                     contactOffset + (deltaY < 0 ? 1 : -1)));
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
+        return super.mouseScrolled(logicalX, logicalY, deltaX, deltaY);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return super.isMouseOver(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     private FlightRadarPayload.Contact findContact(int id) {

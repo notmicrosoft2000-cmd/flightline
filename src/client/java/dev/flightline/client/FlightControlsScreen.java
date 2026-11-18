@@ -7,6 +7,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.Map;
 public final class FlightControlsScreen extends Screen {
     private static final int PANEL_WIDTH = 460;
     private static final int PANEL_HEIGHT = 320;
+    private final ScreenScaler scaler = new ScreenScaler(PANEL_WIDTH, PANEL_HEIGHT);
     private KeyMapping listeningFor;
     private final Map<KeyMapping, Button> bindingButtons = new HashMap<>();
     private float openProgress;
@@ -37,10 +39,11 @@ public final class FlightControlsScreen extends Screen {
     protected void init() {
         super.init();
         bindingButtons.clear();
-        panelWidth = Math.max(1, Math.min(PANEL_WIDTH, width - 16));
-        panelHeight = Math.max(1, Math.min(PANEL_HEIGHT, height - 16));
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
+        scaler.update(width, height);
+        panelWidth = PANEL_WIDTH;
+        panelHeight = PANEL_HEIGHT;
+        panelLeft = 8;
+        panelTop = 8;
         rowsPerColumn = Math.max(1, (panelHeight - 78) / 19);
         List<KeyMapping> bindings = FlightLineClient.controlScreenBindings();
         int pageSize = rowsPerColumn * 2;
@@ -93,17 +96,19 @@ public final class FlightControlsScreen extends Screen {
             return;
         }
 
-        graphics.fill(0, 0, width, height, 0x30000000);
+        scaler.update(width, height);
+        scaler.push(graphics);
+        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
         float scale = 0.96f + openProgress * 0.04f;
         var pose = graphics.pose();
         pose.pushMatrix();
-        pose.translate(width / 2.0f, height / 2.0f);
+        pose.translate(scaler.width() / 2.0f, scaler.height() / 2.0f);
         pose.scale(scale, scale);
-        pose.translate(-width / 2.0f, -height / 2.0f);
+        pose.translate(-scaler.width() / 2.0f, -scaler.height() / 2.0f);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 25, 0xFF1C2733);
-        graphics.centeredText(font, "FLIGHT LINE CONTROLS", width / 2, panelTop + 8, 0xFF72E6F5);
+        graphics.centeredText(font, "FLIGHT LINE CONTROLS", scaler.width() / 2, panelTop + 8, 0xFF72E6F5);
         graphics.text(font, fit(listeningFor == null
                         ? "Select a key to rebind · page " + (page + 1) + "/" + pageCount
                         : "Waiting for a key · Esc cancels · Backspace unbinds", panelWidth - 24),
@@ -122,8 +127,39 @@ public final class FlightControlsScreen extends Screen {
             graphics.text(font, fit(bindingName(bindings.get(i)), columnWidth - 72),
                     x, y + 4, 0xFFD5E0E8, true);
         }
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
         pose.popMatrix();
+        scaler.pop(graphics);
+    }
+
+    @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        super.mouseMoved(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        return super.mouseClicked(scaler.map(event), doubleClick);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return super.mouseReleased(scaler.map(event));
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+        return super.mouseDragged(scaler.map(event), deltaX / scaler.scale(), deltaY / scaler.scale());
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+        return super.mouseScrolled(scaler.mouseX(mouseX), scaler.mouseY(mouseY), deltaX, deltaY);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return super.isMouseOver(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     @Override

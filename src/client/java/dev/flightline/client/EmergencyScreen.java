@@ -11,6 +11,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
@@ -47,6 +48,7 @@ public final class EmergencyScreen extends Screen {
     };
 
     private final List<ActionButton> actionButtons = new ArrayList<>();
+    private final ScreenScaler scaler = new ScreenScaler(PANEL_WIDTH, PANEL_HEIGHT);
     private int panelLeft;
     private int panelTop;
     private int panelWidth;
@@ -74,12 +76,13 @@ public final class EmergencyScreen extends Screen {
     protected void init() {
         super.init();
         actionButtons.clear();
-        panelWidth = Math.max(1, Math.min(PANEL_WIDTH, width - 24));
-        panelHeight = Math.max(1, Math.min(PANEL_HEIGHT, height - 24));
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
-        scaleX = panelWidth / (float) PANEL_WIDTH;
-        scaleY = panelHeight / (float) PANEL_HEIGHT;
+        scaler.update(width, height);
+        panelWidth = PANEL_WIDTH;
+        panelHeight = PANEL_HEIGHT;
+        panelLeft = 8;
+        panelTop = 8;
+        scaleX = 1.0f;
+        scaleY = 1.0f;
 
         infoLeft = x(12);
         infoRight = x(396);
@@ -168,7 +171,9 @@ public final class EmergencyScreen extends Screen {
                     runFixButton.getWidth() - 10)));
         }
 
-        graphics.fill(0, 0, width, height, 0x30000000);
+        scaler.update(width, height);
+        scaler.push(graphics);
+        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL_FILL);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN_TEXT);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, y(28), 0xFF1C2733);
@@ -197,7 +202,8 @@ public final class EmergencyScreen extends Screen {
         graphics.centeredText(font, fitText(
                 checklistKey + " closes · " + fixKey + " runs the fix · scroll conditions · every action is server-checked",
                 panelWidth - w(20)), panelLeft + panelWidth / 2, y(578), MUTED_TEXT);
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
+        scaler.pop(graphics);
     }
 
     private void drawSeverityBanner(GuiGraphicsExtractor graphics, EmergencyStatusPayload status,
@@ -513,13 +519,41 @@ public final class EmergencyScreen extends Screen {
     }
 
     @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        super.mouseMoved(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        return super.mouseClicked(scaler.map(event), doubleClick);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return super.mouseReleased(scaler.map(event));
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+        return super.mouseDragged(scaler.map(event), deltaX / scaler.scale(), deltaY / scaler.scale());
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (mouseX >= infoLeft - 2 && mouseX <= infoRight + 2 && mouseY >= infoTop && mouseY <= infoBottom) {
+        int logicalX = scaler.mouseX(mouseX);
+        int logicalY = scaler.mouseY(mouseY);
+        if (logicalX >= infoLeft - 2 && logicalX <= infoRight + 2
+                && logicalY >= infoTop && logicalY <= infoBottom) {
             int maxScroll = Math.max(0, cards.size() - visibleCards);
             cardScroll = Math.max(0, Math.min(maxScroll, cardScroll + (deltaY < 0 ? 1 : -1)));
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
+        return super.mouseScrolled(logicalX, logicalY, deltaX, deltaY);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return super.isMouseOver(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     @Override

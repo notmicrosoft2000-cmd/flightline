@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
@@ -54,6 +55,7 @@ public class AutopilotScreen extends Screen {
     private int activePage;
     private String ilsMessage = "";
 
+    private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int panelLeft;
     private int panelTop;
     private int panelWidth;
@@ -84,12 +86,13 @@ public class AutopilotScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        panelWidth = Math.max(1, Math.min(BASE_WIDTH, width - 16));
-        panelHeight = Math.max(1, Math.min(BASE_HEIGHT, height - 16));
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
-        scaleX = panelWidth / (float) BASE_WIDTH;
-        scaleY = panelHeight / (float) BASE_HEIGHT;
+        scaler.update(width, height);
+        panelWidth = BASE_WIDTH;
+        panelHeight = BASE_HEIGHT;
+        panelLeft = 8;
+        panelTop = 8;
+        scaleX = 1.0f;
+        scaleY = 1.0f;
 
         addRenderableWidget(tabButton("MCP", 0, 12, 108));
         addRenderableWidget(tabButton("NAV / ILS", 1, 126, 112));
@@ -337,7 +340,9 @@ public class AutopilotScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         updateGeometry();
-        graphics.fill(0, 0, width, height, 0x30000000);
+        scaler.update(width, height);
+        scaler.push(graphics);
+        graphics.fill(0, 0, scaler.width(), scaler.height(), 0x30000000);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL_FILL);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + h(24), 0xFF1C2733);
@@ -356,16 +361,17 @@ public class AutopilotScreen extends Screen {
 
         graphics.text(font, fit("MODE: " + activePageName() + "  ·  ALL CHANGES ARE SERVER-AUTHORITATIVE",
                 w(470)), panelLeft + x(12), panelTop + y(377), MUTED, true);
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
+        scaler.pop(graphics);
     }
 
     private void updateGeometry() {
-        panelWidth = Math.max(1, Math.min(BASE_WIDTH, width - 16));
-        panelHeight = Math.max(1, Math.min(BASE_HEIGHT, height - 16));
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
-        scaleX = panelWidth / (float) BASE_WIDTH;
-        scaleY = panelHeight / (float) BASE_HEIGHT;
+        panelWidth = BASE_WIDTH;
+        panelHeight = BASE_HEIGHT;
+        panelLeft = 8;
+        panelTop = 8;
+        scaleX = 1.0f;
+        scaleY = 1.0f;
     }
 
     private void drawFma(GuiGraphicsExtractor graphics) {
@@ -940,6 +946,36 @@ public class AutopilotScreen extends Screen {
 
     private EditBox runwayHeadingInput() {
         return Objects.requireNonNull(runwayHeadingBox, "NAV page is not initialized");
+    }
+
+    @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        super.mouseMoved(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        return super.mouseClicked(scaler.map(event), doubleClick);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return super.mouseReleased(scaler.map(event));
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+        return super.mouseDragged(scaler.map(event), deltaX / scaler.scale(), deltaY / scaler.scale());
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+        return super.mouseScrolled(scaler.mouseX(mouseX), scaler.mouseY(mouseY), deltaX, deltaY);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return super.isMouseOver(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     @Override

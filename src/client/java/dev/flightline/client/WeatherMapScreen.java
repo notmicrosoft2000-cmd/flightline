@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -11,7 +12,10 @@ import java.util.Locale;
 
 /** Standalone weather map using the same deterministic cells as the radar weather layer. */
 public final class WeatherMapScreen extends Screen {
+    private static final int BASE_WIDTH = 560;
+    private static final int BASE_HEIGHT = 380;
     private static final int[] RANGES = {512, 1024, 2048, 4096};
+    private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int rangeIndex = 1;
     private boolean headingUp;
     private int panelLeft;
@@ -32,38 +36,39 @@ public final class WeatherMapScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        panelWidth = Math.max(1, Math.min(560, width - 16));
-        panelHeight = Math.max(1, Math.min(380, height - 16));
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
+        scaler.update(width, height);
+        panelWidth = BASE_WIDTH;
+        panelHeight = BASE_HEIGHT;
+        panelLeft = 8;
+        panelTop = 8;
         scopeLeft = panelLeft + 12;
         scopeTop = panelTop + 40;
         scopeWidth = panelWidth - 24;
-        boolean stacked = panelWidth < 430;
-        scopeHeight = Math.max(40, panelHeight - (stacked ? 126 : 104));
+        scopeHeight = panelHeight - 104;
 
         int bottomRow = panelTop + panelHeight - 54;
         addRenderableWidget(Button.builder(Component.literal("RANGE -"), b -> changeRange(-1))
-                .bounds(panelLeft + 12, bottomRow, stacked ? 64 : 74, 18).build());
+                .bounds(panelLeft + 12, bottomRow, 74, 18).build());
         addRenderableWidget(Button.builder(Component.literal("RANGE +"), b -> changeRange(1))
-                .bounds(panelLeft + (stacked ? 80 : 92), bottomRow, stacked ? 64 : 74, 18).build());
+                .bounds(panelLeft + 92, bottomRow, 74, 18).build());
         addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG" : "NORTH"), b -> {
                     headingUp = !headingUp;
                     b.setMessage(Component.literal(headingUp ? "HDG" : "NORTH"));
                 })
-                .bounds(panelLeft + (stacked ? 148 : 172), bottomRow, stacked ? 60 : 84, 18).build());
-        int secondRow = stacked ? bottomRow - 22 : bottomRow;
+                .bounds(panelLeft + 172, bottomRow, 84, 18).build());
         addRenderableWidget(Button.builder(Component.literal("RADAR"), b ->
                         Minecraft.getInstance().gui.setScreen(new FlightRadarScreen()))
-                .bounds(panelLeft + (stacked ? 12 : panelWidth - 158), secondRow, 70, 18).build());
+                .bounds(panelLeft + panelWidth - 158, bottomRow, 70, 18).build());
         addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
-                .bounds(panelLeft + (stacked ? 86 : panelWidth - 82), secondRow, 70, 18).build());
+                .bounds(panelLeft + panelWidth - 82, bottomRow, 70, 18).build());
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         animate();
-        graphics.fill(0, 0, width, height, 0xB8000000);
+        scaler.update(width, height);
+        scaler.push(graphics);
+        graphics.fill(0, 0, scaler.width(), scaler.height(), 0xB8000000);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 24, 0xFF1C2733);
@@ -138,7 +143,28 @@ public final class WeatherMapScreen extends Screen {
                 panelTop + panelHeight - 34, 0xFFB6C8D1, true);
         graphics.text(font, fit("Cells drift with world time · scroll to zoom · shared with flight radar",
                 panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 18, 0xFF71858B, true);
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
+        scaler.pop(graphics);
+    }
+
+    @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        super.mouseMoved(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        return super.mouseClicked(scaler.map(event), doubleClick);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return super.mouseReleased(scaler.map(event));
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+        return super.mouseDragged(scaler.map(event), deltaX / scaler.scale(), deltaY / scaler.scale());
     }
 
     private void drawLegend(GuiGraphicsExtractor graphics) {
@@ -238,12 +264,19 @@ public final class WeatherMapScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (mouseX >= scopeLeft && mouseX <= scopeLeft + scopeWidth
-                && mouseY >= scopeTop && mouseY <= scopeTop + scopeHeight) {
+        int logicalX = scaler.mouseX(mouseX);
+        int logicalY = scaler.mouseY(mouseY);
+        if (logicalX >= scopeLeft && logicalX <= scopeLeft + scopeWidth
+                && logicalY >= scopeTop && logicalY <= scopeTop + scopeHeight) {
             changeRange(deltaY > 0 ? -1 : 1);
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
+        return super.mouseScrolled(logicalX, logicalY, deltaX, deltaY);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return super.isMouseOver(scaler.mouseX(mouseX), scaler.mouseY(mouseY));
     }
 
     @Override
