@@ -178,6 +178,11 @@ final class FlightHud {
         return fuelPercent;
     }
 
+    /** Authoritative warning bits for in-flight panels; the HUD itself stays wordless. */
+    static int activeWarnings() {
+        return warnings;
+    }
+
     static boolean isCrashed() {
         return phase == FlightPhase.CRASHED;
     }

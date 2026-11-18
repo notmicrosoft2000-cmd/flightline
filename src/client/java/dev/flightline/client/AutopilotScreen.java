@@ -1,5 +1,6 @@
 package dev.flightline.client;
 
+import dev.flightline.flight.FlightWarning;
 import dev.flightline.flight.NavMode;
 import dev.flightline.flight.WeatherSimulation;
 import dev.flightline.network.ConfigureAutopilotPayload;
@@ -38,6 +39,60 @@ public class AutopilotScreen extends Screen {
     private static final int PANEL_FILL = FlightLineTheme.PANEL;
     private static final int CARD_FILL = FlightLineTheme.CARD;
     private static final int BORDER = FlightLineTheme.STONE;
+    private static final int ALARM = FlightLineTheme.WARNING;
+    private static final int ALARM_DARK = FlightLineTheme.WARNING_DARK;
+    private static final int TCAS_RA = FlightLineTheme.TCAS_RA;
+    private static final int TCAS_TA = FlightLineTheme.TCAS_TA;
+
+    private static final int PAGE_ALERTS = 5;
+
+    private static final int MCP_COLUMN_X = 24;
+    private static final int MCP_COLUMN_WIDTH = 129;
+    private static final int MCP_COLUMN_GAP = 12;
+    private static final int MCP_INSTRUMENT_TOP = 100;
+    private static final int MCP_INSTRUMENT_HEIGHT = 140;
+    private static final int MCP_SELECT_TOP = 250;
+    private static final int MCP_SELECT_HEIGHT = 90;
+
+    private static final int TCAS_WARNINGS = FlightWarning.TCAS_TRAFFIC
+            | FlightWarning.TCAS_RESOLUTION
+            | FlightWarning.TCAS_CLIMB
+            | FlightWarning.TCAS_DESCEND
+            | FlightWarning.TCAS_CROSSING
+            | FlightWarning.TCAS_CLEAR;
+
+    private record AlertEntry(int bit, String label, boolean urgent) {}
+
+    private record AdvisoryEntry(String label, int color) {}
+
+    /** Priority order for the flight-deck alert list; TCAS is handled separately. */
+    private static final List<AlertEntry> ALERT_ENTRIES = List.of(
+            new AlertEntry(FlightWarning.STALL, "STALL", true),
+            new AlertEntry(FlightWarning.WINDSHEAR, "WINDSHEAR", true),
+            new AlertEntry(FlightWarning.PULL_UP, "PULL UP", true),
+            new AlertEntry(FlightWarning.TERRAIN, "TERRAIN", true),
+            new AlertEntry(FlightWarning.TOO_LOW_TERRAIN, "TOO LOW TERRAIN", true),
+            new AlertEntry(FlightWarning.SINK_RATE, "SINK RATE", true),
+            new AlertEntry(FlightWarning.DONT_SINK, "DON'T SINK", true),
+            new AlertEntry(FlightWarning.BANK_ANGLE, "BANK ANGLE", true),
+            new AlertEntry(FlightWarning.GEAR_UP, "TOO LOW GEAR", true),
+            new AlertEntry(FlightWarning.TOO_LOW_FLAPS, "TOO LOW FLAPS", true),
+            new AlertEntry(FlightWarning.OVERSPEED, "OVERSPEED", true),
+            new AlertEntry(FlightWarning.AIRFRAME_STRESS, "AIRFRAME STRESS", true),
+            new AlertEntry(FlightWarning.ENGINE_FIRE, "ENGINE FIRE", true),
+            new AlertEntry(FlightWarning.ENGINE_FAILURE, "ENGINE FAILURE", true),
+            new AlertEntry(FlightWarning.FUEL_EMPTY, "FUEL EMPTY", true),
+            new AlertEntry(FlightWarning.FUEL_LOW, "LOW FUEL", false),
+            new AlertEntry(FlightWarning.GEAR_FAILED, "GEAR FAILURE", true),
+            new AlertEntry(FlightWarning.GEAR_HOT, "GEAR HOT", false),
+            new AlertEntry(FlightWarning.GEAR_SELECTED_ON_GROUND, "GEAR SELECT ON GROUND", false),
+            new AlertEntry(FlightWarning.TAKEOFF_CONFIG, "TAKEOFF CONFIG", false),
+            new AlertEntry(FlightWarning.GLIDESLOPE_HIGH, "GLIDESLOPE HIGH", false),
+            new AlertEntry(FlightWarning.GLIDESLOPE_LOW, "GLIDESLOPE LOW", false),
+            new AlertEntry(FlightWarning.ICE_ACCUMULATION, "AIRFRAME ICE", false),
+            new AlertEntry(FlightWarning.HYDRAULIC_FAIL, "HYDRAULIC FAIL", false),
+            new AlertEntry(FlightWarning.PRESSURISATION, "CABIN ALTITUDE", false)
+    );
 
     private static int cachedHeading;
     private static int cachedAltitude = 2000;
@@ -84,7 +139,7 @@ public class AutopilotScreen extends Screen {
                            int currentVsFpm, int currentSpeedKnots, int initialPage) {
         super(Component.literal("Mode Control Panel"));
         this.engaged = currentlyEngaged;
-        this.activePage = Math.max(0, Math.min(4, initialPage));
+        this.activePage = Math.max(0, Math.min(PAGE_ALERTS, initialPage));
         cachedGlideSlope = FlightHud.ilsReferenceGlideSlope();
         if (currentHeading >= 0) cachedHeading = Math.floorMod(currentHeading, 360);
         if (currentAltitudeFeet > 0) cachedAltitude = clamp(currentAltitudeFeet, 100, 35000);
@@ -111,11 +166,12 @@ public class AutopilotScreen extends Screen {
         panelLeft = 8;
         panelTop = 8;
 
-        addRenderableWidget(tabButton("MCP", 0, 12, 100));
-        addRenderableWidget(tabButton("FPLN", 1, 116, 80));
-        addRenderableWidget(tabButton("NAV / ILS", 2, 200, 112));
+        addRenderableWidget(tabButton("MCP", 0, 12, 96));
+        addRenderableWidget(tabButton("FPLN", 1, 114, 78));
+        addRenderableWidget(tabButton("NAV / ILS", 2, 198, 112));
         addRenderableWidget(tabButton("WX", 3, 316, 70));
-        addRenderableWidget(tabButton("SYS", 4, 390, 84));
+        addRenderableWidget(tabButton("SYS", 4, 392, 84));
+        addRenderableWidget(tabButton("ALERT", PAGE_ALERTS, 482, 100));
 
         if (activePage == 0) {
             initMcpPage();
@@ -125,6 +181,8 @@ public class AutopilotScreen extends Screen {
             initNavPage();
         } else if (activePage == 3) {
             initWeatherPage();
+        } else if (activePage == PAGE_ALERTS) {
+            initAlertsPage();
         } else {
             initSystemsPage();
         }
@@ -134,29 +192,35 @@ public class AutopilotScreen extends Screen {
     }
 
     private void initMcpPage() {
-        headingBox = numberInput(24, 282, 58, "HDG", cachedHeading, 3);
-        altitudeBox = numberInput(176, 282, 60, "ALT", cachedAltitude, 5);
-        vsBox = numberInput(320, 282, 60, "V/S", cachedVs, 5);
-        speedBox = numberInput(464, 282, 58, "IAS", cachedSpeed, 3);
+        headingBox = numberInput(mcpColumnCenter(0) - 29, 274, 58, "HDG", cachedHeading, 3);
+        altitudeBox = numberInput(mcpColumnCenter(1) - 29, 274, 58, "ALT", cachedAltitude, 5);
+        vsBox = numberInput(mcpColumnCenter(2) - 29, 274, 58, "V/S", cachedVs, 5);
+        speedBox = numberInput(mcpColumnCenter(3) - 29, 274, 58, "IAS", cachedSpeed, 3);
 
-        addRenderableWidget(stepButton("-10", 24, 304, 27, () -> adjustHeading(-10)));
-        addRenderableWidget(stepButton("+10", 55, 304, 27, () -> adjustHeading(10)));
-        addRenderableWidget(compactActionButton("SYNC", 24, 326, 58, this::syncHeading));
+        addRenderableWidget(stepButton("-10", mcpColumnX(0) + 7, 298, 55, () -> adjustHeading(-10)));
+        addRenderableWidget(stepButton("+10", mcpColumnX(0) + 66, 298, 55, () -> adjustHeading(10)));
+        addRenderableWidget(compactActionButton("SYNC", mcpColumnX(0) + 26, 320, 76,
+                this::syncHeading));
 
-        addRenderableWidget(stepButton("-500", 176, 304, 28, () -> adjustAltitude(-500)));
-        addRenderableWidget(stepButton("+500", 208, 304, 28, () -> adjustAltitude(500)));
-        addRenderableWidget(compactActionButton("SYNC", 176, 326, 60, this::syncAltitude));
+        addRenderableWidget(stepButton("-500", mcpColumnX(1) + 7, 298, 55,
+                () -> adjustAltitude(-500)));
+        addRenderableWidget(stepButton("+500", mcpColumnX(1) + 66, 298, 55,
+                () -> adjustAltitude(500)));
+        addRenderableWidget(compactActionButton("SYNC", mcpColumnX(1) + 26, 320, 76,
+                this::syncAltitude));
 
-        addRenderableWidget(stepButton("-500", 320, 304, 28, () -> adjustVs(-500)));
-        addRenderableWidget(stepButton("+500", 352, 304, 28, () -> adjustVs(500)));
-        addRenderableWidget(compactActionButton("LEVEL", 320, 326, 60, this::setVsZero));
+        addRenderableWidget(stepButton("-500", mcpColumnX(2) + 7, 298, 55, () -> adjustVs(-500)));
+        addRenderableWidget(stepButton("+500", mcpColumnX(2) + 66, 298, 55, () -> adjustVs(500)));
+        addRenderableWidget(compactActionButton("LEVEL", mcpColumnX(2) + 26, 320, 76,
+                this::setVsZero));
 
-        addRenderableWidget(stepButton("-10", 464, 304, 27, () -> adjustSpeed(-10)));
-        addRenderableWidget(stepButton("+10", 495, 304, 27, () -> adjustSpeed(10)));
-        addRenderableWidget(compactActionButton("SYNC", 464, 326, 58, this::syncSpeed));
+        addRenderableWidget(stepButton("-10", mcpColumnX(3) + 7, 298, 55, () -> adjustSpeed(-10)));
+        addRenderableWidget(stepButton("+10", mcpColumnX(3) + 66, 298, 55, () -> adjustSpeed(10)));
+        addRenderableWidget(compactActionButton("SYNC", mcpColumnX(3) + 26, 320, 76,
+                this::syncSpeed));
 
-        apMasterBtn = FlightLineTheme.button(apButtonText(), x(12), y(350), w(180), h(20),
-                this::toggleAp);
+        apMasterBtn = FlightLineTheme.button(apButtonText(), x(mcpColumnX(0)), y(350),
+                w(MCP_COLUMN_WIDTH), h(20), this::toggleAp);
         addRenderableWidget(apMasterBtn);
     }
 
@@ -225,6 +289,10 @@ public class AutopilotScreen extends Screen {
 
     private void initSystemsPage() {
         // The systems page is a live aircraft schematic with no editable controls.
+    }
+
+    private void initAlertsPage() {
+        // The alerts page is a readonly EICAS/TCAS readout with no editable controls.
     }
 
     private net.minecraft.client.gui.components.AbstractWidget tabButton(String label, int page, int x, int width) {
@@ -560,8 +628,7 @@ public class AutopilotScreen extends Screen {
         FlightLineTheme.panel(graphics, panelLeft, panelTop, panelWidth, panelHeight, PANEL_FILL, BORDER);
         FlightLineTheme.header(graphics, font, panelLeft + 4, panelTop + 4, panelWidth - 8, h(24),
                 "01", "AUTOPILOT / FLIGHT DIRECTOR", GREEN);
-        fittedText(graphics, "ILS SETUP: NAV/ILS 1-4", panelLeft + x(486), panelTop + y(36),
-                MUTED, w(112), true);
+        drawHeaderStatus(graphics);
 
         drawFma(graphics);
         FlightLineTheme.card(graphics, panelLeft + x(12), panelTop + y(92), w(576), h(280), GREEN);
@@ -571,6 +638,7 @@ public class AutopilotScreen extends Screen {
             case 1 -> drawFlightPlanPage(graphics);
             case 2 -> drawNavPage(graphics);
             case 3 -> drawWeatherPage(graphics);
+            case PAGE_ALERTS -> drawAlertsPage(graphics);
             default -> drawSystemsPage(graphics);
         }
 
@@ -584,6 +652,34 @@ public class AutopilotScreen extends Screen {
         panelHeight = BASE_HEIGHT;
         panelLeft = 8;
         panelTop = 8;
+    }
+
+    /** Small header readout: alerts live on their own tab, not over the HUD. */
+    private void drawHeaderStatus(GuiGraphicsExtractor graphics) {
+        int warnings = FlightHud.activeWarnings();
+        int nonTcas = Integer.bitCount(warnings & ~TCAS_WARNINGS) + (FlightHud.isCrashed() ? 1 : 0);
+        int tcas = Integer.bitCount(warnings & TCAS_WARNINGS);
+        String label;
+        int color;
+        if (nonTcas > 0) {
+            label = "ALERTS " + nonTcas;
+            color = ALARM;
+        } else if (tcas > 0) {
+            label = "TCAS " + tcas;
+            color = TCAS_TA;
+        } else {
+            label = "ILS SETUP: NAV/ILS 1-4";
+            color = MUTED;
+        }
+        fittedText(graphics, label, panelLeft + x(464), panelTop + y(20), color, w(136), true);
+    }
+
+    private static int mcpColumnX(int index) {
+        return MCP_COLUMN_X + index * (MCP_COLUMN_WIDTH + MCP_COLUMN_GAP);
+    }
+
+    private static int mcpColumnCenter(int index) {
+        return mcpColumnX(index) + MCP_COLUMN_WIDTH / 2;
     }
 
     private void drawFma(GuiGraphicsExtractor graphics) {
@@ -633,36 +729,51 @@ public class AutopilotScreen extends Screen {
         int currentSpeed = FlightHud.currentSpeedKnots();
         int currentVs = FlightHud.currentVsFpm();
 
-        panel(graphics, 18, 100, 132, 154, "HEADING / HDG");
-        drawHeadingDial(graphics, 84, 183, 48, currentHeading, parseHeading());
+        panel(graphics, mcpColumnX(0), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
+                MCP_INSTRUMENT_HEIGHT, "HEADING");
+        drawHeadingDial(graphics, mcpColumnCenter(0), 174, 40, currentHeading, parseHeading());
         fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %03d°  SEL %03d°",
-                currentHeading, parseHeading()), panelLeft + x(84), panelTop + y(240), TEXT, w(124));
+                currentHeading, parseHeading()), panelLeft + x(mcpColumnCenter(0)),
+                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 6));
 
-        panel(graphics, 158, 100, 128, 154, "ALTITUDE / ALT");
-        drawTape(graphics, 172, 126, 100, 104, currentAltitude, parseAltitude(), 500, "FT", 1000);
+        panel(graphics, mcpColumnX(1), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
+                MCP_INSTRUMENT_HEIGHT, "ALTITUDE");
+        drawTape(graphics, mcpColumnX(1) + 14, 126, 101, 84, currentAltitude, parseAltitude(),
+                500, "FT", 1000);
         fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %,d  SEL %,d",
-                currentAltitude, parseAltitude()), panelLeft + x(222), panelTop + y(240), TEXT, w(120));
+                currentAltitude, parseAltitude()), panelLeft + x(mcpColumnCenter(1)),
+                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 6));
 
-        panel(graphics, 294, 100, 128, 154, "AIRSPEED / IAS");
-        drawTape(graphics, 308, 126, 100, 104, currentSpeed, parseSpeed(), 10, "KT", 50);
-        fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %d  SEL %d",
-                currentSpeed, parseSpeed()), panelLeft + x(358), panelTop + y(240), TEXT, w(120));
-
-        panel(graphics, 430, 100, 152, 154, "VERTICAL SPEED / V/S");
-        drawVerticalSpeed(graphics, 506, 183, 104, currentVs, parseVs());
+        panel(graphics, mcpColumnX(2), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
+                MCP_INSTRUMENT_HEIGHT, "VERTICAL SPEED");
+        drawVerticalSpeed(graphics, mcpColumnCenter(2), 168, 84, currentVs, parseVs());
         fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %+d  SEL %+d FPM",
-                currentVs, parseVs()), panelLeft + x(506), panelTop + y(240), TEXT, w(144));
+                currentVs, parseVs()), panelLeft + x(mcpColumnCenter(2)),
+                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 4));
 
-        panel(graphics, 18, 264, 132, 86, "HEADING SELECT");
-        panel(graphics, 158, 264, 128, 86, "ALTITUDE SELECT");
-        panel(graphics, 294, 264, 128, 86, "VERTICAL SELECT");
-        panel(graphics, 430, 264, 152, 86, "SPEED SELECT");
+        panel(graphics, mcpColumnX(3), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
+                MCP_INSTRUMENT_HEIGHT, "AIRSPEED");
+        drawTape(graphics, mcpColumnX(3) + 14, 126, 101, 84, currentSpeed, parseSpeed(),
+                10, "KT", 50);
+        fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %d  SEL %d",
+                currentSpeed, parseSpeed()), panelLeft + x(mcpColumnCenter(3)),
+                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 6));
+
+        panel(graphics, mcpColumnX(0), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
+                MCP_SELECT_HEIGHT, "HDG SELECT");
+        panel(graphics, mcpColumnX(1), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
+                MCP_SELECT_HEIGHT, "ALT SELECT");
+        panel(graphics, mcpColumnX(2), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
+                MCP_SELECT_HEIGHT, "V/S SELECT");
+        panel(graphics, mcpColumnX(3), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
+                MCP_SELECT_HEIGHT, "IAS SELECT");
 
         var guidance = FlightHud.autopilotGuidance();
         String config = String.format(Locale.ROOT, "A/T %s  ·  THRUST ±%.0f KT  ·  N1 %d%%",
                 FlightHud.isAutopilotEngaged() ? "AUTO" : "STBY",
                 guidance.autoThrottleDeadbandKnots(), FlightHud.engineN1());
-        fittedCenteredText(graphics, config, panelLeft + x(394), panelTop + y(358), MUTED, freeWidth(200, 588));
+        fittedCenteredText(graphics, config, panelLeft + x(mcpColumnCenter(2)),
+                panelTop + y(354), MUTED, freeWidth(mcpColumnX(1), mcpColumnX(3) + MCP_COLUMN_WIDTH));
     }
 
     private void drawHeadingDial(GuiGraphicsExtractor graphics, int cx, int cy, int radius,
@@ -761,6 +872,133 @@ public class AutopilotScreen extends Screen {
                 panelLeft + x(cx), panelTop + y(top + 6), CYAN, w(64));
         fittedCenteredText(graphics, String.format(Locale.ROOT, "SEL %+d", selected),
                 panelLeft + x(cx), panelTop + y(top + height - 12), AMBER, w(64));
+    }
+
+    /** Readonly EICAS-style alert page. TCAS is an advisory here, never a red alarm. */
+    private void drawAlertsPage(GuiGraphicsExtractor graphics) {
+        int warnings = FlightHud.activeWarnings();
+        List<AlertEntry> alerts = activeAlertEntries(warnings);
+        List<AdvisoryEntry> advisories = tcasAdvisories(warnings);
+        double clock = System.nanoTime() / 1_000_000_000.0;
+        int blink = ((long) (clock * 2.5) & 1L) == 0L ? ALARM : ALARM_DARK;
+        boolean hasAlerts = !alerts.isEmpty();
+
+        panel(graphics, 18, 100, 344, 260, "ACTIVE ALERTS", hasAlerts ? blink : GREEN);
+        int columns = 2;
+        int rows = 13;
+        int cellWidth = 158;
+        int cellGap = 8;
+        int gridX = 28;
+        int gridY = 126;
+        int rowHeight = 11;
+        int capacity = columns * rows;
+
+        if (!hasAlerts) {
+            fittedText(graphics, "ALL MONITORED SYSTEMS NOMINAL", panelLeft + x(gridX),
+                    panelTop + y(gridY + 4), GREEN, w(316), true);
+            fittedText(graphics, "TCAS ADVISORIES, IF ANY, ARE ON THE RIGHT", panelLeft + x(gridX),
+                    panelTop + y(gridY + 20), MUTED, w(316), true);
+        } else {
+            graphics.fill(panelLeft + x(190), panelTop + y(gridY),
+                    panelLeft + x(191), panelTop + y(gridY + rows * rowHeight - 2), BORDER);
+            for (int i = 0; i < Math.min(alerts.size(), capacity); i++) {
+                AlertEntry entry = alerts.get(i);
+                int cellX = gridX + (i % columns) * (cellWidth + cellGap);
+                int cellY = gridY + (i / columns) * rowHeight;
+                int color = entry.urgent() ? blink : AMBER;
+                drawAlertRow(graphics, cellX, cellY, cellWidth, entry.label(), color);
+            }
+            if (alerts.size() > capacity) {
+                int last = capacity - 1;
+                drawAlertRow(graphics,
+                        gridX + (last % columns) * (cellWidth + cellGap),
+                        gridY + (last / columns) * rowHeight,
+                        cellWidth, "+" + (alerts.size() - capacity + 1) + " MORE", ALARM);
+            }
+        }
+        fittedText(graphics, "ALARM FRAME ON HUD: NON-TCAS ONLY", panelLeft + x(gridX),
+                panelTop + y(330), MUTED, w(316), true);
+        fittedText(graphics, "FULL MESSAGE LIST LIVES IN THIS TAB", panelLeft + x(gridX),
+                panelTop + y(344), MUTED, w(316), true);
+
+        panel(graphics, 372, 100, 210, 150, "TCAS ADVISORY", CYAN);
+        if (advisories.isEmpty()) {
+            fittedText(graphics, "NO ACTIVE ADVISORY", panelLeft + x(382), panelTop + y(130),
+                    GREEN, w(190), true);
+        } else {
+            for (int i = 0; i < Math.min(advisories.size(), 7); i++) {
+                AdvisoryEntry advisory = advisories.get(i);
+                int rowY = 128 + i * 12;
+                graphics.fill(panelLeft + x(382), panelTop + y(rowY + 1),
+                        panelLeft + x(385), panelTop + y(rowY + 9), advisory.color());
+                fittedText(graphics, advisory.label(), panelLeft + x(391), panelTop + y(rowY),
+                        advisory.color(), w(181), true);
+            }
+        }
+        fittedText(graphics, "ADVISORY ONLY · NOT AN ALARM", panelLeft + x(382),
+                panelTop + y(232), MUTED, w(190), true);
+
+        int urgent = 0;
+        int caution = 0;
+        for (AlertEntry entry : alerts) {
+            if (entry.urgent()) urgent++;
+            else caution++;
+        }
+        panel(graphics, 372, 258, 210, 102, "ALERT STATUS",
+                urgent > 0 ? blink : caution > 0 ? AMBER : GREEN);
+        fittedText(graphics, String.format(Locale.ROOT, "WARNING %d   CAUTION %d", urgent, caution),
+                panelLeft + x(382), panelTop + y(286),
+                urgent > 0 ? ALARM : caution > 0 ? AMBER : GREEN, w(190), true);
+        fittedText(graphics, "TCAS ROWS " + advisories.size(), panelLeft + x(382),
+                panelTop + y(304), advisories.isEmpty() ? MUTED : TCAS_TA, w(190), true);
+        fittedText(graphics, "HUD: EDGE FLASH ONLY", panelLeft + x(382),
+                panelTop + y(322), MUTED, w(190), true);
+        fittedText(graphics, "NO WARNING TEXT ON HUD", panelLeft + x(382),
+                panelTop + y(338), MUTED, w(190), true);
+    }
+
+    private void drawAlertRow(GuiGraphicsExtractor graphics, int x, int y, int width,
+                              String label, int color) {
+        graphics.fill(panelLeft + x(x), panelTop + y(y + 2),
+                panelLeft + x(x + 3), panelTop + y(y + 8), color);
+        graphics.text(font, FlightLineTheme.fit(font, label, width - 10),
+                panelLeft + x(x + 8), panelTop + y(y), color, true);
+    }
+
+    private List<AlertEntry> activeAlertEntries(int warnings) {
+        List<AlertEntry> active = new ArrayList<>();
+        if (FlightHud.isCrashed()) active.add(new AlertEntry(0, "AIRFRAME CRASH", true));
+        for (AlertEntry entry : ALERT_ENTRIES) {
+            if ((warnings & entry.bit()) != 0) active.add(entry);
+        }
+        return active;
+    }
+
+    private List<AdvisoryEntry> tcasAdvisories(int warnings) {
+        List<AdvisoryEntry> advisories = new ArrayList<>();
+        if ((warnings & FlightWarning.TCAS_RESOLUTION) != 0) {
+            String direction = (warnings & FlightWarning.TCAS_DESCEND) != 0 ? "DESCEND"
+                    : (warnings & FlightWarning.TCAS_CLIMB) != 0 ? "CLIMB" : "RESOLUTION";
+            String crossing = (warnings & FlightWarning.TCAS_CROSSING) != 0 ? " · CROSSING" : "";
+            advisories.add(new AdvisoryEntry("TCAS RA · " + direction + crossing, TCAS_RA));
+        } else {
+            if ((warnings & FlightWarning.TCAS_CLIMB) != 0) {
+                advisories.add(new AdvisoryEntry("TCAS CLIMB", TCAS_RA));
+            }
+            if ((warnings & FlightWarning.TCAS_DESCEND) != 0) {
+                advisories.add(new AdvisoryEntry("TCAS DESCEND", TCAS_RA));
+            }
+            if ((warnings & FlightWarning.TCAS_CROSSING) != 0) {
+                advisories.add(new AdvisoryEntry("TCAS CROSSING", TCAS_RA));
+            }
+        }
+        if ((warnings & FlightWarning.TCAS_TRAFFIC) != 0) {
+            advisories.add(new AdvisoryEntry("TRAFFIC ADVISORY", TCAS_TA));
+        }
+        if ((warnings & FlightWarning.TCAS_CLEAR) != 0) {
+            advisories.add(new AdvisoryEntry("CLEAR OF CONFLICT", TCAS_TA));
+        }
+        return advisories;
     }
 
     private void drawFlightPlanPage(GuiGraphicsExtractor graphics) {
@@ -1176,15 +1414,20 @@ public class AutopilotScreen extends Screen {
     }
 
     private void panel(GuiGraphicsExtractor graphics, int x, int y, int width, int height, String title) {
+        panel(graphics, x, y, width, height, title, CYAN);
+    }
+
+    private void panel(GuiGraphicsExtractor graphics, int x, int y, int width, int height,
+                       String title, int accent) {
         FlightLineTheme.panel(graphics, panelLeft + x(x), panelTop + y(y), w(width), h(height),
                 CARD_FILL, BORDER);
         graphics.fill(panelLeft + x(x) + 2, panelTop + y(y) + 2, panelLeft + x(x + width) - 2,
                 panelTop + y(y + 19), FlightLineTheme.HEADER);
         graphics.fill(panelLeft + x(x) + 2, panelTop + y(y + 19), panelLeft + x(x + width) - 2,
-                panelTop + y(y + 20), CYAN);
+                panelTop + y(y + 20), accent);
         graphics.fill(panelLeft + x(x) + 2, panelTop + y(y) + 2, panelLeft + x(x) + 6,
-                panelTop + y(y + 19), CYAN);
-        fittedText(graphics, title, panelLeft + x(x + 9), panelTop + y(y + 5), CYAN,
+                panelTop + y(y + 19), accent);
+        fittedText(graphics, title, panelLeft + x(x + 9), panelTop + y(y + 5), accent,
                 w(width) - 16, true);
     }
 
@@ -1242,6 +1485,7 @@ public class AutopilotScreen extends Screen {
             case 1 -> "FLIGHT PLAN";
             case 2 -> "NAV / ILS";
             case 3 -> "WX";
+            case PAGE_ALERTS -> "ALERTS";
             default -> "SYS";
         };
     }
