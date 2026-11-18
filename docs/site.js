@@ -33,17 +33,23 @@
             '<header class="site-header">' +
                 '<div class="container header-inner">' +
                     '<a class="brand" href="index.html" aria-label="Flight Line home">' +
-                        '<img class="brand-icon" src="favicon.png" width="36" height="36" alt="">' +
+                        '<img class="brand-icon" src="favicon.png" width="38" height="38" alt="">' +
                         "<span>" +
                             '<span class="brand-name">FLIGHT LINE</span>' +
                             '<span class="brand-sub">MINECRAFT FABRIC MOD</span>' +
                         "</span>" +
                     "</a>" +
-                    '<nav class="nav" aria-label="Main navigation">' +
+                    '<div class="header-meta">' +
+                        '<span class="build-tag">MC 26.3 / FABRIC / JAVA 25</span>' +
+                        '<a class="github-link" href="' + REPO_URL + '" target="_blank" rel="noreferrer">SOURCE ↗</a>' +
+                    "</div>" +
+                "</div>" +
+                '<nav class="nav" aria-label="Main navigation">' +
+                    '<div class="container nav-inner">' +
                         navLinks() +
                         '<a class="nav-link github" href="' + REPO_URL + '" target="_blank" rel="noreferrer">GITHUB</a>' +
-                    "</nav>" +
-                "</div>" +
+                    "</div>" +
+                "</nav>" +
             "</header>";
     }
 
@@ -51,25 +57,25 @@
         return '' +
             '<svg class="' + (mode === "hero" ? "live-plane" : "ticker-plane") + '" viewBox="-32 -32 64 64" aria-hidden="true">' +
                 '<g data-plane data-plane-mode="' + mode + '">' +
-                    '<line class="contrail" x1="-18" y1="0" x2="-74" y2="0" stroke="#dcecf1" stroke-width="2" stroke-dasharray="8 7" opacity="0.8"/>' +
-                    '<g fill="#0b0e10">' +
+                    '<line class="contrail" x1="-18" y1="0" x2="-74" y2="0" stroke="#ede5e2" stroke-width="2" stroke-dasharray="8 7" opacity="0.8"/>' +
+                    '<g fill="#000000">' +
                         '<rect x="-3" y="-16" width="6" height="32"/>' +
                         '<rect x="-17" y="-4" width="34" height="8"/>' +
                         '<rect x="-10" y="11" width="20" height="6"/>' +
                         '<rect x="-8" y="-5" width="6" height="10"/>' +
                         '<rect x="2" y="-5" width="6" height="10"/>' +
                     "</g>" +
-                    '<g fill="#f2f5f5">' +
+                    '<g fill="#fcf5f1">' +
                         '<rect x="-2" y="-15" width="4" height="30"/>' +
                         '<rect x="-16" y="-3" width="32" height="6"/>' +
                         '<rect x="-9" y="12" width="18" height="4"/>' +
-                        '<rect x="-7" y="-4" width="4" height="8" fill="#aeb9be"/>' +
-                        '<rect x="3" y="-4" width="4" height="8" fill="#aeb9be"/>' +
+                        '<rect x="-7" y="-4" width="4" height="8" fill="#d0c5c0"/>' +
+                        '<rect x="3" y="-4" width="4" height="8" fill="#d0c5c0"/>' +
                     "</g>" +
-                    '<rect x="-16" y="-3" width="4" height="6" fill="#c44b42"/>' +
-                    '<rect x="12" y="-3" width="4" height="6" fill="#c44b42"/>' +
-                    '<rect x="-2" y="-12" width="4" height="4" fill="#4eb8c8"/>' +
-                    '<rect x="-1" y="-11" width="2" height="2" fill="#8fd7e2"/>' +
+                    '<rect x="-16" y="-3" width="4" height="6" fill="#b83b2e"/>' +
+                    '<rect x="12" y="-3" width="4" height="6" fill="#b83b2e"/>' +
+                    '<rect x="-2" y="-12" width="4" height="4" fill="#36e6ff"/>' +
+                    '<rect x="-1" y="-11" width="2" height="2" fill="#a0e081"/>' +
                 "</g>" +
             "</svg>";
     }
@@ -95,13 +101,19 @@
         if (!mount) return;
         var links = PAGES.map(function (page) {
             return '<a href="' + page.href + '">' + page.label + "</a>";
-        }).join(" · ");
+        }).join("");
         mount.innerHTML =
             '<footer class="site-footer">' +
-                '<div class="container">' +
-                    "<span>FLIGHT LINE · BUILT FOR FABRIC</span>" +
-                    '<span>' + links + ' · <a href="' + RELEASES_URL + '" target="_blank" rel="noreferrer">RELEASES</a></span>' +
+                '<div class="container footer-grid">' +
+                    '<div class="footer-brand">FLIGHT LINE' +
+                        "<span>SERVER-AUTHORITATIVE AIRCRAFT FLIGHT · BUILT FOR FABRIC</span>" +
+                    "</div>" +
+                    '<nav class="footer-nav" aria-label="Footer navigation">' +
+                        links +
+                        '<a href="' + RELEASES_URL + '" target="_blank" rel="noreferrer">RELEASES ↗</a>' +
+                    "</nav>" +
                 "</div>" +
+                '<div class="footer-stripe" aria-hidden="true"></div>' +
             "</footer>";
     }
 
