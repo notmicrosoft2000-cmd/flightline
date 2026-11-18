@@ -133,7 +133,7 @@ public final class FlightRadarScreen extends Screen {
             int buttonGap = 3;
             int btnWidth = Math.max(40, (panelWidth - 24 - buttonGap * 4) / 5);
             int btnY = panelTop + 26;
-            addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
+            addRenderableWidget(Button.builder(thresholdPickButtonLabel(), button -> toggleThresholdPickMode(button))
                     .bounds(panelLeft + 12, btnY, btnWidth, 18).build());
             addRenderableWidget(Button.builder(Component.literal("USE"), button -> useSelectedContact())
                     .bounds(panelLeft + 12 + btnWidth + buttonGap, btnY, btnWidth, 18).build());
@@ -143,6 +143,8 @@ public final class FlightRadarScreen extends Screen {
                     .bounds(panelLeft + 12 + (btnWidth + buttonGap) * 3, btnY, btnWidth, 18).build());
             addRenderableWidget(Button.builder(rangeLabel(), button -> changeRange(1))
                     .bounds(panelLeft + 12 + (btnWidth + buttonGap) * 4, btnY, btnWidth, 18).build());
+            addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
+                    .bounds(panelLeft + panelWidth - 68, panelTop + panelHeight - 78, 56, 18).build());
         } else {
             addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
                     .bounds(panelLeft + panelWidth - 222, panelTop + 26, 104, 18).build());
@@ -218,13 +220,15 @@ public final class FlightRadarScreen extends Screen {
         }
         drawLine(graphics, cx, cy, scanX, scanY, 0xFF65F2A5);
 
-        if (headingUp) {
-            graphics.text(font, "HDG UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
-            graphics.text(font, String.format(Locale.ROOT, "%03.0f°", FlightHud.radarOwnHeadingDegrees()),
-                    cx - 10, scopeTop + 3, 0xFFB6C8D1, true);
-        } else {
-            graphics.text(font, "NORTH UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
-            graphics.text(font, "N", cx - 2, scopeTop + 3, 0xFFB6C8D1, true);
+        if (!compactLayout) {
+            if (headingUp) {
+                graphics.text(font, "HDG UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
+                graphics.text(font, String.format(Locale.ROOT, "%03.0f°", FlightHud.radarOwnHeadingDegrees()),
+                        cx - 10, scopeTop + 3, 0xFFB6C8D1, true);
+            } else {
+                graphics.text(font, "NORTH UP", scopeLeft + 4, scopeTop + 3, 0xFF72E6F5, true);
+                graphics.text(font, "N", cx - 2, scopeTop + 3, 0xFFB6C8D1, true);
+            }
         }
         graphics.text(font, "R " + RANGES[rangeIndex] + "B", scopeLeft + 4,
                 scopeTop + scopeHeight - 11, 0xFF86B5A4, true);
@@ -308,8 +312,9 @@ public final class FlightRadarScreen extends Screen {
                 graphics.text(font, "No traffic in range.", detailX, listY, 0xFF9BAAB1, true);
             }
         } else {
-            String scopeInfo = "CONTACTS " + contacts.size() + "/" + FlightRadarPayload.MAX_CONTACTS + " · RANGE "
-                    + RANGES[rangeIndex] + " B · PILOT " + FlightHud.radarOwnAltitudeFeet() + " FT";
+            String scopeInfo = "CONTACTS " + contacts.size() + "/" + FlightRadarPayload.MAX_CONTACTS
+                    + " · " + (headingUp ? "HDG" : "NORTH") + " · RANGE "
+                    + RANGES[rangeIndex] + " B · " + FlightHud.radarOwnAltitudeFeet() + " FT";
             graphics.text(font, fit(scopeInfo, scopeWidth - 8), scopeLeft + 4, scopeTop + 4, 0xFF72E6F5, true);
         }
         if (selectedContactId >= 0) {
@@ -320,7 +325,7 @@ public final class FlightRadarScreen extends Screen {
                                 + (selected.altitudeFeet() - FlightHud.radarOwnAltitudeFeet()) + "FT · "
                                 + String.format(Locale.ROOT, "%03.0f° · %dB",
                                 selected.headingDegrees(), contactRange(selected)),
-                        Math.max(1, panelWidth - 24)), panelLeft + 12, panelTop + panelHeight - 90,
+                        Math.max(1, panelWidth - 24)), panelLeft + 12, panelTop + panelHeight - 98,
                         0xFFFFB46A, true);
             }
         }
@@ -330,8 +335,8 @@ public final class FlightRadarScreen extends Screen {
                 0xFFFF6CD9, true);
         graphics.text(font, fit(status, panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 28,
                 0xFFB6C8D1, true);
-        graphics.text(font, "Drag header to move · corner to resize · scroll scope to zoom",
-                panelLeft + 12, panelTop + panelHeight - 14, 0xFF71858B, true);
+        graphics.text(font, fit("Drag header to move · corner to resize · scroll scope to zoom",
+                panelWidth - 40), panelLeft + 12, panelTop + panelHeight - 14, 0xFF71858B, true);
         drawResizeHandle(graphics);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
@@ -661,9 +666,15 @@ public final class FlightRadarScreen extends Screen {
         return Component.literal(thresholdPickMode ? "CANCEL PICK" : "PICK THRESHOLD");
     }
 
+    private Component thresholdPickButtonLabel() {
+        return Component.literal(compactLayout
+                ? (thresholdPickMode ? "CANCEL" : "PICK")
+                : (thresholdPickMode ? "CANCEL PICK" : "PICK THRESHOLD"));
+    }
+
     private void toggleThresholdPickMode(Button button) {
         thresholdPickMode = !thresholdPickMode;
-        button.setMessage(pickThresholdLabel());
+        button.setMessage(thresholdPickButtonLabel());
         status = thresholdPickMode
                 ? "Click the scope to place an ILS runway threshold."
                 : "Contact selection mode · click a blip or contact row.";
@@ -736,7 +747,7 @@ public final class FlightRadarScreen extends Screen {
         drawLine(graphics, x, y, lx, ly, isRa ? 0xFFFF2525 : isTa ? 0xFFFFB000 : 0xFF75E6A5);
 
         // Relative altitude tag and vertical speed trend arrow
-        if (contact.airborne()) {
+        if (contact.airborne() && Math.min(scopeWidth, scopeHeight) >= 60) {
             String altTag = (relAltHundreds >= 0 ? "+" : "") + String.format(Locale.ROOT, "%02d", relAltHundreds);
             String arrow = contact.verticalSpeedFpm() > 100 ? "▲" : contact.verticalSpeedFpm() < -100 ? "▼" : "";
             String fullTag = altTag + arrow;

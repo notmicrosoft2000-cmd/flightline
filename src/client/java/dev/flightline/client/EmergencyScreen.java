@@ -51,6 +51,8 @@ public final class EmergencyScreen extends Screen {
     private int panelTop;
     private int panelWidth;
     private int panelHeight;
+    private float scaleX;
+    private float scaleY;
     private int infoLeft;
     private int infoRight;
     private int infoTop;
@@ -76,48 +78,45 @@ public final class EmergencyScreen extends Screen {
         panelHeight = Math.max(1, Math.min(PANEL_HEIGHT, height - 24));
         panelLeft = (width - panelWidth) / 2;
         panelTop = (height - panelHeight) / 2;
+        scaleX = panelWidth / (float) PANEL_WIDTH;
+        scaleY = panelHeight / (float) PANEL_HEIGHT;
 
-        int bodyTop = panelTop + 62;
-        int bodyBottom = panelTop + panelHeight - 30;
-        int gap = 10;
-        int infoWidth = Math.max(120, (int) ((panelWidth - 28 - gap) * 0.46));
+        infoLeft = x(12);
+        infoRight = x(396);
+        infoTop = y(84);
+        infoBottom = y(570);
+        visibleCards = Math.max(1, (infoBottom - infoTop) / Math.max(1, h(CARD_HEIGHT)));
 
-        infoLeft = panelLeft + 12;
-        infoRight = infoLeft + infoWidth;
-        infoTop = bodyTop + 22;
-        infoBottom = bodyBottom - 4;
-        visibleCards = Math.max(1, (infoBottom - infoTop) / CARD_HEIGHT);
+        procLeft = x(406);
+        procRight = x(848);
+        procTop = y(62);
 
-        procLeft = infoRight + gap;
-        procRight = panelLeft + panelWidth - 12;
-        procTop = bodyTop;
-
-        int tabY = procTop + 4;
-        addRenderableWidget(Button.builder(Component.literal("NEXT ACTION"), b -> switchTab(0))
-                .bounds(procLeft + 4, tabY, 130, 18).build());
-        addRenderableWidget(Button.builder(Component.literal("PROCEDURES"), b -> switchTab(1))
-                .bounds(procLeft + 140, tabY, 130, 18).build());
+        int tabY = y(66);
+        int tabWidth = w(130);
+        addRenderableWidget(Button.builder(Component.literal(fitText("NEXT ACTION", tabWidth - 8)),
+                b -> switchTab(0)).bounds(x(410), tabY, tabWidth, h(18)).build());
+        addRenderableWidget(Button.builder(Component.literal(fitText("PROCEDURES", tabWidth - 8)),
+                b -> switchTab(1)).bounds(x(546), tabY, tabWidth, h(18)).build());
         addRenderableWidget(Button.builder(Component.literal("CLOSE"), b -> onClose())
-                .bounds(panelLeft + panelWidth - 88, panelTop + 7, 76, 18).build());
+                .bounds(x(772), y(7), w(76), h(18)).build());
 
         if (activeTab == 0) {
             runFixButton = Button.builder(Component.literal("RUN RECOMMENDED"), b -> executeRecommended())
-                    .bounds(procLeft + 12, procTop + 132, procRight - procLeft - 24, 24)
+                    .bounds(x(418), y(194), w(418), h(24))
                     .build();
             addRenderableWidget(runFixButton);
         } else {
             runFixButton = null;
             for (int i = 0; i < PROCEDURE_SLOTS.length; i++) {
-                int y = slotY(i);
                 addAction(PROCEDURE_SLOTS[i][0], PROCEDURE_SLOTS[i][1],
-                        procLeft + 12, y, procRight - procLeft - 24, 18);
+                        x(418), slotY(i), w(418), h(18));
             }
         }
     }
 
     private int slotY(int index) {
         int extra = (index >= 4 ? 12 : 0) + (index >= 7 ? 12 : 0);
-        return procTop + 40 + index * 32 + extra;
+        return y(116 + index * 32 + extra);
     }
 
     private void switchTab(int tab) {
@@ -172,20 +171,18 @@ public final class EmergencyScreen extends Screen {
         graphics.fill(0, 0, width, height, 0x30000000);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL_FILL);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN_TEXT);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 28, 0xFF1C2733);
-        graphics.centeredText(font, "EMERGENCY CHECKLIST", panelLeft + panelWidth / 2,
-                panelTop + 9, WARNING_TEXT);
+        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, y(28), 0xFF1C2733);
+        graphics.centeredText(font, fitText("EMERGENCY CHECKLIST", panelWidth - w(180)),
+                panelLeft + panelWidth / 2, y(9), WARNING_TEXT);
         drawSeverityBanner(graphics, status, grouped);
 
-        graphics.fill(infoLeft - 2, infoTop - 24, infoRight + 2, infoBottom, SUBPANEL_FILL);
-        graphics.outline(infoLeft - 2, infoTop - 24, infoRight - infoLeft + 4,
-                infoBottom - infoTop + 24, BORDER);
+        graphics.fill(x(10), y(60), x(398), y(570), SUBPANEL_FILL);
+        graphics.outline(x(10), y(60), w(388), h(510), BORDER);
         graphics.centeredText(font, "ACTIVE CONDITIONS", infoLeft + (infoRight - infoLeft) / 2,
-                infoTop - 19, CYAN_TEXT);
+                y(65), CYAN_TEXT);
 
-        graphics.fill(procLeft, procTop, procRight, panelTop + panelHeight - 30, SUBPANEL_FILL);
-        graphics.outline(procLeft, procTop, procRight - procLeft,
-                panelTop + panelHeight - 30 - procTop, BORDER);
+        graphics.fill(x(406), y(62), x(848), y(570), SUBPANEL_FILL);
+        graphics.outline(x(406), y(62), w(442), h(508), BORDER);
 
         cards = buildCards(status, grouped);
         drawConditionCards(graphics);
@@ -199,51 +196,54 @@ public final class EmergencyScreen extends Screen {
         String fixKey = FlightLineClient.keyName(FlightLineClient.executeEmergency());
         graphics.centeredText(font, fitText(
                 checklistKey + " closes · " + fixKey + " runs the fix · scroll conditions · every action is server-checked",
-                panelWidth - 20), panelLeft + panelWidth / 2, panelTop + panelHeight - 20, MUTED_TEXT);
+                panelWidth - w(20)), panelLeft + panelWidth / 2, y(578), MUTED_TEXT);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
     private void drawSeverityBanner(GuiGraphicsExtractor graphics, EmergencyStatusPayload status,
                                     boolean grouped) {
-        int top = panelTop + 32;
-        int bottom = panelTop + 58;
+        int top = y(32);
+        int bottom = y(58);
         boolean critical = status.hasCondition(EmergencyStatus.FIRE_1 | EmergencyStatus.FIRE_2
                 | EmergencyStatus.FAILURE_1 | EmergencyStatus.FAILURE_2 | EmergencyStatus.FUEL_EMPTY);
         boolean caution = status.active();
         int color = critical ? WARNING_TEXT : caution ? AMBER_TEXT : ACCENT_TEXT;
         int fill = critical ? 0xFF3A1414 : caution ? 0xFF332A13 : 0xFF12301F;
 
-        graphics.fill(panelLeft + 12, top, panelLeft + panelWidth - 12, bottom, fill);
-        graphics.outline(panelLeft + 12, top, panelWidth - 24, bottom - top, color);
+        graphics.fill(x(12), top, x(848), bottom, fill);
+        graphics.outline(x(12), top, w(836), bottom - top, color);
         String severity = critical ? "CRITICAL" : caution ? "CAUTION" : "ALL SYSTEMS NORMAL";
-        graphics.text(font, severity, panelLeft + 20, top + 6, color, true);
+        graphics.text(font, severity, x(20), top + h(6), color, true);
+
+        String resources = "BOTTLES " + status.extinguisherBottles()
+                + " · E1 " + status.restartAttempts1() + "/3 · E2 " + status.restartAttempts2() + "/3";
+        String fittedResources = fitText(resources, w(236));
+        int resourcesX = x(848) - font.width(fittedResources) - w(8);
+        graphics.text(font, fittedResources, resourcesX, top + h(6), MUTED_TEXT, true);
+
         String summary = critical ? "Landing emergency · follow the next action"
                 : caution ? "Abnormal condition active · follow the next action"
                 : grouped ? "GINA 787 · 6 engines in 2 groups"
                 : "KASA A380 · 2 independent engines";
-        graphics.text(font, fitText(summary, panelWidth - 180),
-                panelLeft + 110, top + 6, NORMAL_TEXT, true);
-
-        String resources = "BOTTLES " + status.extinguisherBottles()
-                + "  ·  RELIGHT E1 " + status.restartAttempts1() + "/3"
-                + "  ·  E2 " + status.restartAttempts2() + "/3";
-        graphics.text(font, fitText(resources, 250),
-                panelLeft + panelWidth - font.width(resources) - 20, top + 6, MUTED_TEXT, true);
+        int summaryX = x(20) + font.width(severity) + w(12);
+        graphics.text(font, fitText(summary, Math.max(1, resourcesX - summaryX - w(10))),
+                summaryX, top + h(6), NORMAL_TEXT, true);
     }
 
     private void drawConditionCards(GuiGraphicsExtractor graphics) {
         if (cards.isEmpty()) {
-            int y = infoTop + 12;
-            graphics.text(font, "No active failures.", infoLeft + 8, y, ACCENT_TEXT, true);
-            graphics.text(font, "Fuel " + FlightHud.fuelPercent() + "% · autopilot "
-                    + (FlightHud.isAutopilotEngaged() ? "ENGAGED" : "STANDBY"),
-                    infoLeft + 8, y + 18, NORMAL_TEXT, true);
-            graphics.text(font, "Use PROCEDURES to rehearse a checklist, or an", infoLeft + 8,
-                    y + 40, MUTED_TEXT, true);
-            graphics.text(font, "operator can inject a debug emergency with", infoLeft + 8,
-                    y + 54, MUTED_TEXT, true);
-            graphics.text(font, "/flightline emergency <scenario>.", infoLeft + 8,
-                    y + 68, CYAN_TEXT, true);
+            int lineY = infoTop + h(12);
+            int textWidth = infoRight - infoLeft - w(16);
+            graphics.text(font, "No active failures.", infoLeft + w(8), lineY, ACCENT_TEXT, true);
+            graphics.text(font, fitText("Fuel " + FlightHud.fuelPercent() + "% · autopilot "
+                    + (FlightHud.isAutopilotEngaged() ? "ENGAGED" : "STANDBY"), textWidth),
+                    infoLeft + w(8), lineY + h(18), NORMAL_TEXT, true);
+            graphics.text(font, fitText("Use PROCEDURES to rehearse a checklist, or an", textWidth),
+                    infoLeft + w(8), lineY + h(40), MUTED_TEXT, true);
+            graphics.text(font, fitText("operator can inject a debug emergency with", textWidth),
+                    infoLeft + w(8), lineY + h(54), MUTED_TEXT, true);
+            graphics.text(font, fitText("/flightline emergency <scenario>.", textWidth),
+                    infoLeft + w(8), lineY + h(68), CYAN_TEXT, true);
             return;
         }
 
@@ -252,28 +252,30 @@ public final class EmergencyScreen extends Screen {
         int end = Math.min(cards.size(), cardScroll + visibleCards);
         for (int i = cardScroll; i < end; i++) {
             ConditionCard card = cards.get(i);
-            int y = infoTop + (i - cardScroll) * CARD_HEIGHT;
-            int bottom = y + CARD_HEIGHT - 3;
-            graphics.fill(infoLeft, y, infoRight, bottom, 0xE3162028);
-            graphics.outline(infoLeft, y, infoRight - infoLeft, bottom - y, card.color());
-            graphics.fill(infoLeft, y, infoLeft + 3, bottom, card.color());
-            graphics.text(font, fitText(card.title(), infoRight - infoLeft - 14),
-                    infoLeft + 8, y + 3, card.color(), true);
+            int cardY = infoTop + (i - cardScroll) * h(CARD_HEIGHT);
+            int bottom = cardY + h(CARD_HEIGHT) - 3;
+            graphics.fill(infoLeft, cardY, infoRight, bottom, 0xE3162028);
+            graphics.outline(infoLeft, cardY, infoRight - infoLeft, bottom - cardY, card.color());
+            graphics.fill(infoLeft, cardY, infoLeft + w(3), bottom, card.color());
+            graphics.text(font, fitText(card.title(), infoRight - infoLeft - w(14)),
+                    infoLeft + w(8), cardY + h(3), card.color(), true);
 
-            List<String> detail = wrap(card.detail(), infoRight - infoLeft - 16);
-            for (int line = 0; line < Math.min(2, detail.size()); line++) {
-                graphics.text(font, detail.get(line), infoLeft + 8, y + 16 + line * LINE_HEIGHT,
+            List<String> detail = wrap(card.detail(), infoRight - infoLeft - w(16));
+            int detailLines = card.barFraction() >= 0.0f ? 1 : 2;
+            for (int line = 0; line < Math.min(detailLines, detail.size()); line++) {
+                graphics.text(font, fitText(detail.get(line), infoRight - infoLeft - w(16)),
+                        infoLeft + w(8), cardY + h(15) + line * h(LINE_HEIGHT),
                         NORMAL_TEXT, true);
             }
             if (card.barFraction() >= 0.0f) {
-                int barLeft = infoLeft + 8;
-                int barRight = infoRight - 8;
-                int barTop = y + CARD_HEIGHT - 10;
-                graphics.fill(barLeft, barTop, barRight, barTop + 5, 0xFF101A20);
+                int barLeft = infoLeft + w(8);
+                int barRight = infoRight - w(8);
+                int barTop = cardY + h(CARD_HEIGHT) - h(10);
+                graphics.fill(barLeft, barTop, barRight, barTop + h(5), 0xFF101A20);
                 int fillWidth = Math.round((barRight - barLeft) * card.barFraction());
-                graphics.fill(barLeft, barTop, barLeft + fillWidth, barTop + 5, card.color());
-                int labelWidth = font.width(card.barLabel());
-                graphics.text(font, card.barLabel(), barRight - labelWidth, barTop - 1,
+                graphics.fill(barLeft, barTop, barLeft + fillWidth, barTop + h(5), card.color());
+                String barLabel = fitText(card.barLabel(), barRight - barLeft - w(4));
+                graphics.text(font, barLabel, barRight - font.width(barLabel), barTop - h(1),
                         card.color(), true);
             }
         }
@@ -281,46 +283,48 @@ public final class EmergencyScreen extends Screen {
             int trackHeight = infoBottom - infoTop;
             int thumbHeight = Math.max(14, trackHeight * visibleCards / cards.size());
             int thumbTop = infoTop + (int) (cardScroll / (float) maxScroll * (trackHeight - thumbHeight));
-            graphics.fill(infoRight - 6, infoTop, infoRight - 3, infoBottom, 0xFF1F2A33);
-            graphics.fill(infoRight - 6, thumbTop, infoRight - 3, thumbTop + thumbHeight, CYAN_TEXT);
+            graphics.fill(infoRight - w(6), infoTop, infoRight - w(3), infoBottom, 0xFF1F2A33);
+            graphics.fill(infoRight - w(6), thumbTop, infoRight - w(3), thumbTop + thumbHeight, CYAN_TEXT);
         }
     }
 
     private void drawNextAction(GuiGraphicsExtractor graphics, EmergencyStatusPayload status,
                                 boolean grouped) {
-        int top = procTop + 28;
-        int bottom = procTop + 124;
+        int top = y(90);
+        int bottom = y(186);
         var recommendation = status.recommendation();
         int color = recommendation.present() ? ACCENT_TEXT : MUTED_TEXT;
-        graphics.fill(procLeft + 10, top, procRight - 10, bottom, 0xFF17222B);
-        graphics.outline(procLeft + 10, top, procRight - procLeft - 20, bottom - top, color);
+        int textX = x(418);
+        int textWidth = w(418) - w(16);
+        graphics.fill(x(416), top, x(838), bottom, 0xFF17222B);
+        graphics.outline(x(416), top, w(422), bottom - top, color);
 
         if (!recommendation.present()) {
-            graphics.text(font, "NO AUTOMATED FIX", procLeft + 18, top + 8, MUTED_TEXT, true);
-            graphics.text(font, "Hold the aircraft, configure manually and land as",
-                    procLeft + 18, top + 26, NORMAL_TEXT, true);
-            graphics.text(font, "soon as practical. Procedures below remain available.",
-                    procLeft + 18, top + 42, NORMAL_TEXT, true);
+            graphics.text(font, "NO AUTOMATED FIX", textX, top + h(8), MUTED_TEXT, true);
+            graphics.text(font, fitText("Hold the aircraft, configure manually and land as", textWidth),
+                    textX, top + h(26), NORMAL_TEXT, true);
+            graphics.text(font, fitText("soon as practical. Procedures below remain available.", textWidth),
+                    textX, top + h(42), NORMAL_TEXT, true);
         } else {
-            graphics.text(font, "RECOMMENDED NEXT ACTION", procLeft + 18, top + 8, CYAN_TEXT, true);
+            graphics.text(font, "RECOMMENDED NEXT ACTION", textX, top + h(8), CYAN_TEXT, true);
             String label = actionLabel(recommendation.action(), recommendation.target(), status);
-            graphics.text(font, fitText(label, procRight - procLeft - 36),
-                    procLeft + 18, top + 22, color, true);
+            graphics.text(font, fitText(label, textWidth), textX, top + h(22), color, true);
             List<String> why = wrap(EmergencyStatus.actionExplanation(recommendation.action()),
-                    procRight - procLeft - 36);
+                    textWidth);
             for (int i = 0; i < Math.min(2, why.size()); i++) {
-                graphics.text(font, why.get(i), procLeft + 18, top + 40 + i * LINE_HEIGHT,
-                        NORMAL_TEXT, true);
+                graphics.text(font, fitText(why.get(i), textWidth), textX,
+                        top + h(40) + i * h(LINE_HEIGHT), NORMAL_TEXT, true);
             }
             if (EmergencyAction.isEngineAction(recommendation.action())) {
-                graphics.text(font, "Affects " + EmergencyStatus.engineName(recommendation.target(), grouped)
-                                + " only · the other engine keeps running.",
-                        procLeft + 18, top + 66, MUTED_TEXT, true);
+                graphics.text(font, fitText("Affects "
+                                + EmergencyStatus.engineName(recommendation.target(), grouped)
+                                + " only · the other engine keeps running.", textWidth),
+                        textX, top + h(66), MUTED_TEXT, true);
             }
         }
 
-        int progressTop = procTop + 170;
-        graphics.text(font, "CHECKPOINT STATUS", procLeft + 14, progressTop, CYAN_TEXT, true);
+        int progressTop = y(226);
+        graphics.text(font, "CHECKPOINT STATUS", x(418), progressTop, CYAN_TEXT, true);
         String[][] checkpoints = {
                 {"Fires extinguished", status.hasCondition(EmergencyStatus.FIRE_1 | EmergencyStatus.FIRE_2) ? " " : "X"},
                 {"Gear usable", status.hasCondition(EmergencyStatus.GEAR_FAILED) ? " " : "X"},
@@ -330,23 +334,25 @@ public final class EmergencyScreen extends Screen {
                 {"Autoland armed", FlightHud.autopilotGuidance().autolandArmed() ? "X" : " "}
         };
         for (int i = 0; i < checkpoints.length; i++) {
-            int y = progressTop + 18 + i * 16;
+            int rowY = progressTop + h(18) + i * h(16);
             boolean done = "X".equals(checkpoints[i][1]);
-            graphics.fill(procLeft + 16, y, procLeft + 26, y + 10, done ? 0xFF173423 : 0xFF1B2227);
-            graphics.outline(procLeft + 16, y, 10, 10, done ? ACCENT_TEXT : BORDER);
-            graphics.text(font, "[" + checkpoints[i][1] + "]", procLeft + 16, y, done ? ACCENT_TEXT : MUTED_TEXT, true);
-            graphics.text(font, checkpoints[i][0], procLeft + 36, y, done ? ACCENT_TEXT : NORMAL_TEXT, true);
+            graphics.fill(x(422), rowY, x(432), rowY + h(10), done ? 0xFF173423 : 0xFF1B2227);
+            graphics.outline(x(422), rowY, w(10), h(10), done ? ACCENT_TEXT : BORDER);
+            graphics.text(font, "[" + checkpoints[i][1] + "]", x(422), rowY,
+                    done ? ACCENT_TEXT : MUTED_TEXT, true);
+            graphics.text(font, fitText(checkpoints[i][0], w(380)), x(442), rowY,
+                    done ? ACCENT_TEXT : NORMAL_TEXT, true);
         }
     }
 
     private void drawProcedures(GuiGraphicsExtractor graphics, EmergencyStatusPayload status,
                                 boolean grouped) {
-        graphics.text(font, "Available procedures are bright. Locked procedures show why.",
-                procLeft + 14, procTop + 26, MUTED_TEXT, true);
+        graphics.text(font, fitText("Available procedures are bright. Locked procedures show why.",
+                w(418)), x(418), y(88), MUTED_TEXT, true);
         String[] headers = {"ENGINE", "AIRFRAME", "FUEL / ATC"};
         int[] headerSlots = {0, 4, 7};
         for (int i = 0; i < headers.length; i++) {
-            graphics.text(font, headers[i], procLeft + 14, slotY(headerSlots[i]) - 12, CYAN_TEXT, true);
+            graphics.text(font, headers[i], x(418), slotY(headerSlots[i]) - h(12), CYAN_TEXT, true);
         }
         for (int i = 0; i < PROCEDURE_SLOTS.length; i++) {
             int action = PROCEDURE_SLOTS[i][0];
@@ -357,8 +363,8 @@ public final class EmergencyScreen extends Screen {
             int target = PROCEDURE_SLOTS[i][1];
             boolean available = actionAvailable(status, action, target);
             graphics.text(font, fitText(requirementHint(action, target, status, grouped),
-                            procRight - procLeft - 28),
-                    procLeft + 16, slotY(i) + 19, available ? MUTED_TEXT : AMBER_TEXT, true);
+                            w(402)),
+                    x(418), slotY(i) + h(19), available ? MUTED_TEXT : AMBER_TEXT, true);
         }
     }
 
@@ -426,12 +432,18 @@ public final class EmergencyScreen extends Screen {
     }
 
     private String fitText(String text, int maxWidth) {
+        if (font.width(text) <= maxWidth) return text;
         String fitted = text;
-        while (!fitted.isEmpty() && font.width(fitted) > maxWidth) {
+        while (!fitted.isEmpty() && font.width(fitted + "…") > maxWidth) {
             fitted = fitted.substring(0, fitted.length() - 1);
         }
-        return fitted;
+        return fitted + "…";
     }
+
+    private int x(int base) { return panelLeft + Math.round(base * scaleX); }
+    private int y(int base) { return panelTop + Math.round(base * scaleY); }
+    private int w(int base) { return Math.max(1, Math.round(base * scaleX)); }
+    private int h(int base) { return Math.max(1, Math.round(base * scaleY)); }
 
     private static boolean actionAvailable(EmergencyStatusPayload status, int action, int target) {
         return switch (action) {

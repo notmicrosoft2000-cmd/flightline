@@ -39,22 +39,25 @@ public final class WeatherMapScreen extends Screen {
         scopeLeft = panelLeft + 12;
         scopeTop = panelTop + 40;
         scopeWidth = panelWidth - 24;
-        scopeHeight = panelHeight - 104;
+        boolean stacked = panelWidth < 430;
+        scopeHeight = Math.max(40, panelHeight - (stacked ? 126 : 104));
 
+        int bottomRow = panelTop + panelHeight - 54;
         addRenderableWidget(Button.builder(Component.literal("RANGE -"), b -> changeRange(-1))
-                .bounds(panelLeft + 12, panelTop + panelHeight - 54, 74, 18).build());
+                .bounds(panelLeft + 12, bottomRow, stacked ? 64 : 74, 18).build());
         addRenderableWidget(Button.builder(Component.literal("RANGE +"), b -> changeRange(1))
-                .bounds(panelLeft + 92, panelTop + panelHeight - 54, 74, 18).build());
-        addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG UP" : "NORTH UP"), b -> {
+                .bounds(panelLeft + (stacked ? 80 : 92), bottomRow, stacked ? 64 : 74, 18).build());
+        addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG" : "NORTH"), b -> {
                     headingUp = !headingUp;
-                    b.setMessage(Component.literal(headingUp ? "HDG UP" : "NORTH UP"));
+                    b.setMessage(Component.literal(headingUp ? "HDG" : "NORTH"));
                 })
-                .bounds(panelLeft + 172, panelTop + panelHeight - 54, 84, 18).build());
+                .bounds(panelLeft + (stacked ? 148 : 172), bottomRow, stacked ? 60 : 84, 18).build());
+        int secondRow = stacked ? bottomRow - 22 : bottomRow;
         addRenderableWidget(Button.builder(Component.literal("RADAR"), b ->
                         Minecraft.getInstance().gui.setScreen(new FlightRadarScreen()))
-                .bounds(panelLeft + panelWidth - 158, panelTop + panelHeight - 54, 70, 18).build());
+                .bounds(panelLeft + (stacked ? 12 : panelWidth - 158), secondRow, 70, 18).build());
         addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
-                .bounds(panelLeft + panelWidth - 82, panelTop + panelHeight - 54, 70, 18).build());
+                .bounds(panelLeft + (stacked ? 86 : panelWidth - 82), secondRow, 70, 18).build());
     }
 
     @Override
@@ -133,8 +136,8 @@ public final class WeatherMapScreen extends Screen {
                 weather.antiIceActive() ? (weather.antiIceEffective() ? "ON" : "INEFFECTIVE") : "OFF");
         graphics.text(font, fit(summary, panelWidth - 24), panelLeft + 12,
                 panelTop + panelHeight - 34, 0xFFB6C8D1, true);
-        graphics.text(font, "Cells drift with world time · scroll to zoom · shared with flight radar",
-                panelLeft + 12, panelTop + panelHeight - 18, 0xFF71858B, true);
+        graphics.text(font, fit("Cells drift with world time · scroll to zoom · shared with flight radar",
+                panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 18, 0xFF71858B, true);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 

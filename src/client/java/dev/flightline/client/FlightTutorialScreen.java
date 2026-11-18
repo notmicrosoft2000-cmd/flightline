@@ -219,8 +219,8 @@ public final class FlightTutorialScreen extends Screen {
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, CYAN);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 26, 0xFF1C2733);
-        graphics.centeredText(font, "FLIGHT TRAINING  ·  " + FlightTutorial.stage().title()
-                        + "  ·  " + FlightTutorial.progressLabel(),
+        graphics.centeredText(font, fit("FLIGHT TRAINING  ·  " + FlightTutorial.stage().title()
+                        + "  ·  " + FlightTutorial.progressLabel(), panelWidth - 16),
                 panelLeft + panelWidth / 2, panelTop + 8, 0xFF72E6F5);
 
         drawObjectives(graphics);
@@ -235,7 +235,7 @@ public final class FlightTutorialScreen extends Screen {
         for (FlightTutorial.Objective objective : objectives) if (objective.done()) done++;
         int filled = objectives.isEmpty() ? barWidth : Math.round(barWidth * done / (float) objectives.size());
         graphics.fill(barX, barY, barX + filled, barY + 6, FlightTutorial.allCompleted() ? GREEN : CYAN);
-        graphics.text(font, fit(status, barWidth), barX, barY + 9, MUTED, true);
+        graphics.text(font, fit(status, barWidth), barX, barY - 12, MUTED, true);
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         pose.popMatrix();
@@ -250,14 +250,17 @@ public final class FlightTutorialScreen extends Screen {
         graphics.outline(cardX, cardY, cardWidth, cardHeight, BORDER);
         graphics.text(font, "LIVE OBJECTIVES", cardX + 8, cardY + 6, CYAN, true);
         List<FlightTutorial.Objective> objectives = FlightTutorial.objectives();
-        int rowY = cardY + 22;
+        int rowY = cardY + h(22);
+        int step = Math.max(20, Math.round(34 * scaleY));
         for (int i = 0; i < objectives.size(); i++) {
             FlightTutorial.Objective objective = objectives.get(i);
             int color = objective.done() ? GREEN : i == firstPending(objectives) ? AMBER : TEXT;
-            graphics.text(font, objective.done() ? "[X] " : "[ ] ", cardX + 8, rowY, color, true);
-            graphics.text(font, fit(objective.label(), cardWidth - 28), cardX + 28, rowY, color, true);
-            graphics.text(font, fit(objective.detail(), cardWidth - 28), cardX + 28, rowY + 10, MUTED, false);
-            rowY += Math.round(34 * scaleY);
+            graphics.text(font, objective.done() ? "[X] " : "[ ] ", cardX + w(8), rowY, color, true);
+            graphics.text(font, fit(objective.label(), cardWidth - w(28)),
+                    cardX + w(28), rowY, color, true);
+            graphics.text(font, fit(objective.detail(), cardWidth - w(28)),
+                    cardX + w(28), rowY + h(10), MUTED, false);
+            rowY += step;
         }
     }
 
@@ -275,26 +278,29 @@ public final class FlightTutorialScreen extends Screen {
         int cardHeight = h(288);
         graphics.fill(cardX, cardY, cardX + cardWidth, cardY + cardHeight, CARD);
         graphics.outline(cardX, cardY, cardWidth, cardHeight, BORDER);
-        graphics.text(font, FlightTutorial.stage().title() + " BRIEF", cardX + 8, cardY + 6, AMBER, true);
-        graphics.text(font, fit(FlightTutorial.stage().brief(), cardWidth - 16),
-                cardX + 8, cardY + 20, MUTED, false);
-        graphics.text(font, "AIRCRAFT  " + FlightLineClient.getAircraftType().displayName(),
-                cardX + 8, cardY + 42, TEXT, true);
-        graphics.text(font, String.format(Locale.ROOT, "IAS %d KT   ALT %d FT",
-                FlightHud.currentSpeedKnots(), FlightHud.currentAltitudeFeet()),
-                cardX + 8, cardY + 56, CYAN, true);
-        graphics.text(font, String.format(Locale.ROOT, "HDG %03d°   VS %+d",
-                FlightHud.trackDegrees(), FlightHud.currentVsFpm()),
-                cardX + 8, cardY + 70, TEXT, true);
-        graphics.text(font, "AUTO ACTIONS", cardX + 8, cardY + 94, AMBER, true);
-        graphics.text(font, "Buttons send the same server-authoritative", cardX + 8, cardY + 108, MUTED, false);
-        graphics.text(font, "payloads as the cockpit panels.", cardX + 8, cardY + 118, MUTED, false);
-        graphics.text(font, FlightLineClient.flightTutorial().getTranslatedKeyMessage().getString()
-                        + " reopens this lesson while flying.", cardX + 8, cardY + 132, MUTED, false);
+        graphics.text(font, fit(FlightTutorial.stage().title() + " BRIEF", cardWidth - w(16)),
+                cardX + w(8), cardY + h(6), AMBER, true);
+        graphics.text(font, fit(FlightTutorial.stage().brief(), cardWidth - w(16)),
+                cardX + w(8), cardY + h(20), MUTED, false);
+        graphics.text(font, fit("AIRCRAFT  " + FlightLineClient.getAircraftType().displayName(),
+                cardWidth - w(16)), cardX + w(8), cardY + h(42), TEXT, true);
+        graphics.text(font, fit(String.format(Locale.ROOT, "IAS %d KT   ALT %d FT",
+                FlightHud.currentSpeedKnots(), FlightHud.currentAltitudeFeet()), cardWidth - w(16)),
+                cardX + w(8), cardY + h(56), CYAN, true);
+        graphics.text(font, fit(String.format(Locale.ROOT, "HDG %03d°   VS %+d",
+                FlightHud.trackDegrees(), FlightHud.currentVsFpm()), cardWidth - w(16)),
+                cardX + w(8), cardY + h(70), TEXT, true);
+        graphics.text(font, "AUTO ACTIONS", cardX + w(8), cardY + h(94), AMBER, true);
+        graphics.text(font, fit("Buttons send the same server-authoritative", cardWidth - w(16)),
+                cardX + w(8), cardY + h(108), MUTED, false);
+        graphics.text(font, "payloads as the cockpit panels.", cardX + w(8), cardY + h(118), MUTED, false);
+        graphics.text(font, fit(FlightLineClient.flightTutorial().getTranslatedKeyMessage().getString()
+                        + " reopens this lesson while flying.", cardWidth - w(16)),
+                cardX + w(8), cardY + h(132), MUTED, false);
         if (FlightHud.isCrashed()) {
-            graphics.text(font, "AIRFRAME DOWN", cardX + 8, cardY + 270, RED, true);
+            graphics.text(font, "AIRFRAME DOWN", cardX + w(8), cardY + cardHeight - h(12), RED, true);
         } else if (FlightTutorial.allCompleted()) {
-            graphics.text(font, "ALL STAGES COMPLETE", cardX + 8, cardY + 270, GREEN, true);
+            graphics.text(font, "ALL STAGES COMPLETE", cardX + w(8), cardY + cardHeight - h(12), GREEN, true);
         }
     }
 

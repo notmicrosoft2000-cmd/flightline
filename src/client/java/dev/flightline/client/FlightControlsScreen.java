@@ -57,9 +57,10 @@ public final class FlightControlsScreen extends Screen {
             int x = panelLeft + 12 + column * (columnWidth + 12);
             int y = panelTop + 43 + row * 19;
             int keyWidth = Math.min(64, Math.max(48, columnWidth / 3));
-            Button button = Button.builder(keyLabel(mapping), clicked -> {
+            Button button = Button.builder(Component.literal(fit(
+                    mapping.getTranslatedKeyMessage().getString(), keyWidth - 6)), clicked -> {
                         listeningFor = mapping;
-                        clicked.setMessage(Component.literal("Press a key (Esc cancels)"));
+                        clicked.setMessage(Component.literal("PRESS KEY"));
                     })
                     .bounds(x + columnWidth - keyWidth, y, keyWidth, 16).build();
             bindingButtons.put(mapping, button);
@@ -103,9 +104,9 @@ public final class FlightControlsScreen extends Screen {
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 25, 0xFF1C2733);
         graphics.centeredText(font, "FLIGHT LINE CONTROLS", width / 2, panelTop + 8, 0xFF72E6F5);
-        graphics.text(font, listeningFor == null
+        graphics.text(font, fit(listeningFor == null
                         ? "Select a key to rebind · page " + (page + 1) + "/" + pageCount
-                        : "Waiting for a key · Esc cancels · Backspace unbinds",
+                        : "Waiting for a key · Esc cancels · Backspace unbinds", panelWidth - 24),
                 panelLeft + 12, panelTop + 28, listeningFor == null ? 0xFF9BAAB1 : 0xFFFFCE52, true);
         List<KeyMapping> bindings = FlightLineClient.controlScreenBindings();
         int pageSize = rowsPerColumn * 2;
@@ -130,7 +131,7 @@ public final class FlightControlsScreen extends Screen {
         if (listeningFor == null) return super.keyPressed(event);
         if (event.key() == InputConstants.KEY_ESCAPE) {
             Button button = bindingButtons.get(listeningFor);
-            if (button != null) button.setMessage(keyLabel(listeningFor));
+            if (button != null) button.setMessage(keyLabel(button, listeningFor));
             listeningFor = null;
             return true;
         }
@@ -141,12 +142,12 @@ public final class FlightControlsScreen extends Screen {
         Minecraft.getInstance().options.save();
         listeningFor = null;
         Button button = bindingButtons.get(changed);
-        if (button != null) button.setMessage(keyLabel(changed));
+        if (button != null) button.setMessage(keyLabel(button, changed));
         return true;
     }
 
-    private Component keyLabel(KeyMapping mapping) {
-        return mapping.getTranslatedKeyMessage();
+    private Component keyLabel(Button button, KeyMapping mapping) {
+        return Component.literal(fit(mapping.getTranslatedKeyMessage().getString(), button.getWidth() - 6));
     }
 
     private String bindingName(KeyMapping mapping) {
@@ -171,7 +172,7 @@ public final class FlightControlsScreen extends Screen {
     public void onClose() {
         if (listeningFor != null) {
             Button button = bindingButtons.get(listeningFor);
-            if (button != null) button.setMessage(keyLabel(listeningFor));
+            if (button != null) button.setMessage(keyLabel(button, listeningFor));
             listeningFor = null;
         } else {
             closing = true;
