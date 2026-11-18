@@ -104,7 +104,7 @@ public final class EmergencyScreen extends Screen {
                 .bounds(x(772), y(7), w(76), h(18)).build());
 
         if (activeTab == 0) {
-            runFixButton = Button.builder(Component.literal("RUN RECOMMENDED"), b -> executeRecommended())
+            runFixButton = Button.builder(Component.literal("EXECUTE NEXT ACTION"), b -> executeRecommended())
                     .bounds(x(418), y(194), w(418), h(24))
                     .build();
             addRenderableWidget(runFixButton);
@@ -166,8 +166,8 @@ public final class EmergencyScreen extends Screen {
             runFixButton.active = hasFix;
             String key = FlightLineClient.keyName(FlightLineClient.executeEmergency());
             runFixButton.setMessage(Component.literal(fitText(
-                    hasFix ? key + " · RUN " + actionLabel(status.recommendedAction(),
-                            status.recommendedTarget(), status) : "NO AUTOMATED FIX",
+                    hasFix ? key + " · " + actionLabel(status.recommendedAction(),
+                            status.recommendedTarget(), status) : "MANUAL CHECKLIST",
                     runFixButton.getWidth() - 10)));
         }
 
@@ -200,7 +200,7 @@ public final class EmergencyScreen extends Screen {
         String checklistKey = FlightLineClient.keyName(FlightLineClient.emergencyChecklist());
         String fixKey = FlightLineClient.keyName(FlightLineClient.executeEmergency());
         graphics.centeredText(font, fitText(
-                checklistKey + " closes · " + fixKey + " runs the fix · scroll conditions · every action is server-checked",
+                checklistKey + " closes · " + fixKey + " executes the next action · scroll conditions · procedures follow the approved checklist",
                 panelWidth - w(20)), panelLeft + panelWidth / 2, y(578), MUTED_TEXT);
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
         scaler.pop(graphics);
@@ -244,11 +244,11 @@ public final class EmergencyScreen extends Screen {
             graphics.text(font, fitText("Fuel " + FlightHud.fuelPercent() + "% · autopilot "
                     + (FlightHud.isAutopilotEngaged() ? "ENGAGED" : "STANDBY"), textWidth),
                     infoLeft + w(8), lineY + h(18), NORMAL_TEXT, true);
-            graphics.text(font, fitText("Use PROCEDURES to rehearse a checklist, or an", textWidth),
+            graphics.text(font, fitText("Use PROCEDURES to review the approved", textWidth),
                     infoLeft + w(8), lineY + h(40), MUTED_TEXT, true);
-            graphics.text(font, fitText("operator can inject a debug emergency with", textWidth),
+            graphics.text(font, fitText("checklist for each aircraft system.", textWidth),
                     infoLeft + w(8), lineY + h(54), MUTED_TEXT, true);
-            graphics.text(font, fitText("/flightline emergency <scenario>.", textWidth),
+            graphics.text(font, fitText("Maintain configuration and continue the flight.", textWidth),
                     infoLeft + w(8), lineY + h(68), CYAN_TEXT, true);
             return;
         }
@@ -306,7 +306,7 @@ public final class EmergencyScreen extends Screen {
         graphics.outline(x(416), top, w(422), bottom - top, color);
 
         if (!recommendation.present()) {
-            graphics.text(font, "NO AUTOMATED FIX", textX, top + h(8), MUTED_TEXT, true);
+            graphics.text(font, "MANUAL ACTION REQUIRED", textX, top + h(8), MUTED_TEXT, true);
             graphics.text(font, fitText("Hold the aircraft, configure manually and land as", textWidth),
                     textX, top + h(26), NORMAL_TEXT, true);
             graphics.text(font, fitText("soon as practical. Procedures below remain available.", textWidth),

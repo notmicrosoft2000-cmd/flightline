@@ -27,30 +27,46 @@ public final class MobFlightController {
     private static final double MAX_BANK_DEGREES = 35.0;
     private static final double BANK_RESPONSE_DEGREES_PER_TICK = 0.55;
     private static final double TURN_GRAVITY = 0.12;
+    /** Bounds mob simulation work so a dense world cannot stall an integrated-server tick. */
+    private static final int MAX_AIRCRAFT_PER_TICK = 192;
     private static final Map<UUID, MobAircraft> AIRCRAFT = new HashMap<>();
+    private static int roundRobinCursor;
 
     private MobFlightController() {
     }
 
     public static void tick(MinecraftServer server) {
+        // Level.getAllEntities() is a live view over Minecraft's entity map. Simulating aircraft can
+        // damage, kill and spawn entities, so never keep that iterator open while side effects run.
+        // Snapshot the eligible mobs first, then simulate a bounded slice of that stable list.
+        List<Mob> candidates = new ArrayList<>();
         Set<UUID> loaded = new HashSet<>();
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
-                if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
-                if (mob.isNoAi() || mob.isPassenger() || mob.isVehicle()) {
-                    MobAircraft existing = AIRCRAFT.remove(mob.getUUID());
-                    if (existing != null) restore(existing);
-                    continue;
-                }
-                loaded.add(mob.getUUID());
-                MobAircraft aircraft = AIRCRAFT.get(mob.getUUID());
+                if (!(entity instanceof Mob mob) || !mob.isAlive() || mob.isRemoved()) continue;
+                if (mob.level() != level || mob.isNoAi() || mob.isPassenger() || mob.isVehicle()) continue;
+                if (loaded.add(mob.getUUID())) candidates.add(mob);
+            }
+        }
+
+        if (!candidates.isEmpty()) {
+            int start = Math.floorMod(roundRobinCursor, candidates.size());
+            int count = Math.min(MAX_AIRCRAFT_PER_TICK, candidates.size());
+            for (int i = 0; i < count; i++) {
+                Mob mob = candidates.get((start + i) % candidates.size());
+                if (!mob.isAlive() || mob.isRemoved() || mob.level() == null) continue;
+                if (mob.isNoAi() || mob.isPassenger() || mob.isVehicle()) continue;
+
+                UUID id = mob.getUUID();
+                MobAircraft aircraft = AIRCRAFT.get(id);
                 if (aircraft == null) {
                     aircraft = new MobAircraft(mob);
-                    AIRCRAFT.put(mob.getUUID(), aircraft);
+                    AIRCRAFT.put(id, aircraft);
                 }
                 aircraft.mob = mob;
                 simulate(aircraft, server);
             }
+            roundRobinCursor = (start + count) % candidates.size();
         }
 
         Iterator<Map.Entry<UUID, MobAircraft>> iterator = AIRCRAFT.entrySet().iterator();
@@ -61,6 +77,13 @@ public final class MobFlightController {
                 iterator.remove();
             }
         }
+    }
+
+    /** Clears static flight state when a server stops so a reload cannot reuse stale mob references. */
+    public static void clear() {
+        for (MobAircraft aircraft : AIRCRAFT.values()) restore(aircraft);
+        AIRCRAFT.clear();
+        roundRobinCursor = 0;
     }
 
     public static boolean issueAtcOrder(ServerPlayer commander, Mob mob, int order, int value, int referenceEntityId) {

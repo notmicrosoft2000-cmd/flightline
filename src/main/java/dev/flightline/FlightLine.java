@@ -35,6 +35,7 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.Commands;
@@ -257,6 +258,7 @@ public class FlightLine implements ModInitializer {
 
         ServerTickEvents.END_SERVER_TICK.register(FlightController::tick);
         ServerTickEvents.END_SERVER_TICK.register(RunwayGenerator::tick);
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> MobFlightController.clear());
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             giveFlightGuide(handler.player);
             notifyAircraftSelection(handler.player);

@@ -16,9 +16,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Operator ATC console with player/mob filters and rich contact cards. */
+/** Approach-control console with traffic filters and rich aircraft contact cards. */
 public final class AtcScreen extends Screen {
-    private enum Filter { ALL, PLAYERS, MOBS }
+    private enum Filter { ALL, CREWED, AUTO }
 
     private static final int BASE_WIDTH = 520;
     private static final int BASE_HEIGHT = 360;
@@ -83,8 +83,8 @@ public final class AtcScreen extends Screen {
                 ? FlightHud.radarOwnHeadingDegrees() : selected.headingDegrees()), 360);
 
         addRenderableWidget(tabButton("ALL", 0, 12, 58, () -> setFilter(Filter.ALL)));
-        addRenderableWidget(tabButton("PLAYERS", 1, 74, 78, () -> setFilter(Filter.PLAYERS)));
-        addRenderableWidget(tabButton("MOBS", 2, 156, 62, () -> setFilter(Filter.MOBS)));
+        addRenderableWidget(tabButton("CREWED", 1, 74, 78, () -> setFilter(Filter.CREWED)));
+        addRenderableWidget(tabButton("AUTO", 2, 156, 62, () -> setFilter(Filter.AUTO)));
         addRenderableWidget(Button.builder(Component.literal("MAP"), button ->
                         Minecraft.getInstance().gui.setScreen(FlightRadarScreen.forAtcSelection()))
                 .bounds(x(344), y(28), w(52), h(18)).build());
@@ -200,15 +200,15 @@ public final class AtcScreen extends Screen {
             return;
         }
         if (order == AtcOrderPayload.RELEASE && !selected.player()) {
-            status = "Release applies to player aircraft only.";
+            status = "Release applies only to piloted aircraft.";
             return;
         }
         ClientPlayNetworking.send(new AtcOrderPayload(selectedEntityId, order, value, leadEntityId));
         status = order == AtcOrderPayload.RELEASE
-                ? "Release sent to " + selected.name() + "."
+                ? "Control released to " + selected.name() + "."
                 : selected.player()
-                        ? "Clearance sent: pilot autopilot is now under ATC control."
-                        : "Order sent to " + selected.name() + ".";
+                        ? "Clearance loaded into autoflight: " + selected.name() + " is on ATC vectors."
+                        : "Vector request sent to " + selected.name() + ".";
     }
 
     private int parse(EditBox input, int min, int max) {
@@ -226,7 +226,7 @@ public final class AtcScreen extends Screen {
         if (filter == Filter.ALL) return all;
         List<FlightRadarPayload.Contact> filtered = new ArrayList<>();
         for (FlightRadarPayload.Contact contact : all) {
-            if (filter == Filter.PLAYERS ? contact.player() : !contact.player()) filtered.add(contact);
+            if (filter == Filter.CREWED ? contact.player() : !contact.player()) filtered.add(contact);
         }
         return filtered;
     }
@@ -256,7 +256,7 @@ public final class AtcScreen extends Screen {
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 24, 0xFF1C2733);
-        graphics.centeredText(font, fit("OPERATOR ATC  ·  TRAFFIC CONTROL CONSOLE", panelWidth - 16),
+        graphics.centeredText(font, fit("APPROACH CONTROL  ·  TRAFFIC CONSOLE", panelWidth - 16),
                 panelLeft + panelWidth / 2, panelTop + 7, CYAN);
 
         List<FlightRadarPayload.Contact> contacts = filteredContacts();
@@ -273,7 +273,7 @@ public final class AtcScreen extends Screen {
         drawOrderPanel(graphics);
         graphics.text(font, fit(status, panelWidth - 24), panelLeft + 12,
                 panelTop + panelHeight - 24, CYAN, true);
-        graphics.text(font, fit("Click a card to target · scroll to browse · F7 releases pilot control",
+        graphics.text(font, fit("SELECT A CARD · SCROLL TO BROWSE · RELEASE RETURNS LOCAL CONTROL",
                 panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 12, MUTED, true);
 
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
@@ -299,11 +299,12 @@ public final class AtcScreen extends Screen {
                         selected ? 0x8052B8C8 : 0x805982AB);
             }
             int roleColor = contact.player() ? PLAYER : GREEN;
-            String name = String.format(Locale.ROOT, "%s  %s", contact.player() ? "P" : "M", contact.name());
+            String name = String.format(Locale.ROOT, "%s  %s",
+                    contact.player() ? "CREW" : "AUTO", contact.name());
             graphics.text(font, fit(name, listWidth - 12), listLeft + 8, rowY, roleColor, true);
-            String stats = String.format(Locale.ROOT, "%dKT  %+dFT  HDG %03.0f°  %dB  VS %+d",
+            String stats = String.format(Locale.ROOT, "%dKT  %+dFT  HDG %03.0f°  %.1fNM  VS %+d",
                     contact.speedKnots(), contact.altitudeFeet() - FlightHud.radarOwnAltitudeFeet(),
-                    contact.headingDegrees(), contactRange(contact), contact.verticalSpeedFpm());
+                    contact.headingDegrees(), contactRange(contact) / 10.0f, contact.verticalSpeedFpm());
             graphics.text(font, fit(stats, listWidth - 12), listLeft + 8, rowY + h(10), TEXT, false);
             if (selected) {
                 graphics.fill(listLeft + listWidth - 6, rowY + 2, listLeft + listWidth - 3, rowY + rowHeight - 6,
@@ -325,14 +326,14 @@ public final class AtcScreen extends Screen {
         graphics.text(font, fit("CLEARANCE ENTRY", cardWidth - 16), cardX + 8, cardY + 5, AMBER, true);
         FlightRadarPayload.Contact selected = findContact(selectedEntityId);
         String target = selected == null ? "TARGET: NONE"
-                : "TARGET: " + selected.name() + (selected.player() ? "  (PLAYER)" : "  (AI)");
+                : "TARGET: " + selected.name() + (selected.player() ? "  PILOTED" : "  AUTO TRAFFIC");
         graphics.text(font, fit(target, cardWidth - 16), cardX + 8, y(286), selected == null ? MUTED : TEXT, true);
         FlightRadarPayload.Contact lead = findContact(leadEntityId);
         graphics.text(font, fit("LEAD: " + (lead == null ? "not selected" : lead.name()), cardWidth - 16),
                 cardX + 8, y(299), MUTED, true);
         graphics.text(font, selected != null && selected.player()
-                        ? "Player clearance takes over the pilot's autopilot."
-                        : "Mob orders are advisory flight directions.",
+                        ? "Clearance loads into the aircraft's autoflight system."
+                        : "Vector requests are advisory for autonomous traffic.",
                 cardX + 8, y(312), MUTED, false);
         graphics.text(font, selected != null && selected.airborne() ? "TARGET AIRBORNE" : "TARGET GROUND/UNKNOWN",
                 cardX + 8, y(324), selected != null && selected.airborne() ? GREEN : AMBER, true);

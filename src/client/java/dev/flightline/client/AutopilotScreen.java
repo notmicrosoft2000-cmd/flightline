@@ -1,5 +1,6 @@
 package dev.flightline.client;
 
+import dev.flightline.flight.WeatherSimulation;
 import dev.flightline.network.ConfigureAutopilotPayload;
 import dev.flightline.network.ConfigureIlsPayload;
 import dev.flightline.network.FlightInstrumentPayload;
@@ -97,7 +98,7 @@ public class AutopilotScreen extends Screen {
         addRenderableWidget(tabButton("MCP", 0, 12, 108));
         addRenderableWidget(tabButton("NAV / ILS", 1, 126, 112));
         addRenderableWidget(tabButton("WX", 2, 244, 76));
-        addRenderableWidget(tabButton("KEYS", 3, 326, 84));
+        addRenderableWidget(tabButton("SYS", 3, 326, 84));
 
         if (activePage == 0) {
             initMcpPage();
@@ -106,10 +107,10 @@ public class AutopilotScreen extends Screen {
         } else if (activePage == 2) {
             initWeatherPage();
         } else {
-            initKeysPage();
+            initSystemsPage();
         }
 
-        addRenderableWidget(Button.builder(Component.literal("APPLY & CLOSE"), b -> onClose())
+        addRenderableWidget(Button.builder(Component.literal("APPLY"), b -> onClose())
                 .bounds(x(494), y(370), w(94), h(20)).build());
     }
 
@@ -163,13 +164,11 @@ public class AutopilotScreen extends Screen {
     }
 
     private void initWeatherPage() {
-        // The weather page is a live readout; controls stay on the keycap page.
+        // The weather page is a live radar readout with no editable controls.
     }
 
-    private void initKeysPage() {
-        addRenderableWidget(actionButton("OPEN CONTROLS", 430, 324, 148, () -> {
-            Minecraft.getInstance().gui.setScreen(new FlightControlsScreen());
-        }));
+    private void initSystemsPage() {
+        // The systems page is a live aircraft schematic with no editable controls.
     }
 
     private Button tabButton(String label, int page, int x, int width) {
@@ -219,29 +218,29 @@ public class AutopilotScreen extends Screen {
     }
 
     private void saveIlsValues() {
-        cachedThresholdX = parseCoordinate(thresholdXInput(), "threshold X");
-        cachedThresholdZ = parseCoordinate(thresholdZInput(), "threshold Z");
-        cachedRunwayHeading = Math.floorMod(parseCoordinate(runwayHeadingInput(), "runway heading"), 360);
+        cachedThresholdX = parseCoordinate(thresholdXInput(), "THRESHOLD X");
+        cachedThresholdZ = parseCoordinate(thresholdZInput(), "THRESHOLD Z");
+        cachedRunwayHeading = Math.floorMod(parseCoordinate(runwayHeadingInput(), "RWY HDG"), 360);
     }
 
     private int parseCoordinate(EditBox input, String label) {
         try {
             return Integer.parseInt(input.getValue().trim());
         } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("Enter a whole-number " + label + ".");
+            throw new IllegalArgumentException("INVALID " + label);
         }
     }
 
     private void useCurrentPosition() {
         var player = Minecraft.getInstance().player;
         if (player == null) {
-            ilsMessage = "Player position is unavailable.";
+            ilsMessage = "NO POSITION FIX";
             return;
         }
         thresholdXInput().setValue(String.valueOf(player.blockPosition().getX()));
         thresholdZInput().setValue(String.valueOf(player.blockPosition().getZ()));
         runwayHeadingInput().setValue(String.valueOf(Math.floorMod(Math.round(player.getYRot()), 360)));
-        ilsMessage = "Threshold coordinates filled from your position.";
+        ilsMessage = "ILS REFERENCE UPDATED";
     }
 
     private void adjustGlideSlope(float delta) {
@@ -250,7 +249,7 @@ public class AutopilotScreen extends Screen {
 
     private void setIls() {
         if (!FlightLineClient.isFlightEnabled()) {
-            ilsMessage = "Enable flight mode before setting a runway reference.";
+            ilsMessage = "AIRCRAFT NOT CONFIGURED";
             return;
         }
         try {
@@ -261,21 +260,21 @@ public class AutopilotScreen extends Screen {
         }
         ClientPlayNetworking.send(new ConfigureIlsPayload(true, cachedGlideSlope,
                 cachedThresholdX, cachedThresholdZ, cachedRunwayHeading));
-        ilsMessage = "Runway reference submitted.";
+        ilsMessage = "ILS TUNED";
     }
 
     private void clearIls() {
         if (!FlightLineClient.isFlightEnabled()) {
-            ilsMessage = "Enable flight mode before changing ILS.";
+            ilsMessage = "AIRCRAFT NOT CONFIGURED";
             return;
         }
         ClientPlayNetworking.send(new ConfigureIlsPayload(false, cachedGlideSlope,
                 cachedThresholdX, cachedThresholdZ, cachedRunwayHeading));
-        ilsMessage = "Clear request sent.";
+        ilsMessage = "ILS CLEARED";
     }
 
     private Component apButtonText() {
-        return Component.literal(engaged ? "A/P ENGAGED · CLICK TO OFF" : "A/P STANDBY · CLICK TO ON");
+        return Component.literal(engaged ? "A/P ENGAGED" : "A/P STANDBY");
     }
 
     private void toggleAp() {
@@ -356,11 +355,10 @@ public class AutopilotScreen extends Screen {
             case 0 -> drawMcpPage(graphics);
             case 1 -> drawNavPage(graphics);
             case 2 -> drawWeatherPage(graphics);
-            default -> drawKeysPage(graphics);
+            default -> drawSystemsPage(graphics);
         }
 
-        graphics.text(font, fit("MODE: " + activePageName() + "  ·  ALL CHANGES ARE SERVER-AUTHORITATIVE",
-                w(470)), panelLeft + x(12), panelTop + y(377), MUTED, true);
+        fittedCenteredText(graphics, activePageName(), panelLeft + x(294), panelTop + y(376), MUTED, w(320));
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
         scaler.pop(graphics);
     }
@@ -442,15 +440,10 @@ public class AutopilotScreen extends Screen {
         panel(graphics, 430, 264, 152, 86, "SPEED SELECT");
 
         var guidance = FlightHud.autopilotGuidance();
-        String config = String.format(Locale.ROOT,
-                "THRUST ±%.0f KT DEADBAND  ·  A/T %s  ·  FUEL %d%%",
-                guidance.autoThrottleDeadbandKnots(),
-                FlightHud.isAutopilotEngaged() ? "AUTO" : "STBY", FlightHud.fuelPercent());
+        String config = String.format(Locale.ROOT, "A/T %s  ·  THRUST ±%.0f KT  ·  N1 %d%%",
+                FlightHud.isAutopilotEngaged() ? "AUTO" : "STBY",
+                guidance.autoThrottleDeadbandKnots(), FlightHud.engineN1());
         fittedCenteredText(graphics, config, panelLeft + x(394), panelTop + y(358), MUTED, freeWidth(200, 588));
-        if (guidance.atcControlled()) {
-            fittedCenteredText(graphics, "ATC CONTROL ACTIVE · F7 RELEASES", panelLeft + x(394),
-                    panelTop + y(358), AMBER, freeWidth(200, 588));
-        }
     }
 
     private void drawHeadingDial(GuiGraphicsExtractor graphics, int cx, int cy, int radius,
@@ -460,13 +453,21 @@ public class AutopilotScreen extends Screen {
         graphics.outline(panelLeft + x(cx - radius), panelTop + y(cy - radius),
                 w(radius * 2), h(radius * 2), BORDER);
 
+        graphics.outline(panelLeft + x(cx - radius + 9), panelTop + y(cy - radius + 9),
+                w((radius - 9) * 2), h((radius - 9) * 2), 0xFF1F3039);
         for (int degree = 0; degree < 360; degree += 15) {
-            int r = degree % 90 == 0 ? radius - 4 : radius - 9;
+            int r = degree % 90 == 0 ? radius - 4 : degree % 30 == 0 ? radius - 7 : radius - 10;
             int[] point = headingPoint(cx, cy, r, degree);
             int size = degree % 90 == 0 ? 3 : 2;
             graphics.fill(panelLeft + x(point[0]), panelTop + y(point[1]),
                     panelLeft + x(point[0] + size), panelTop + y(point[1] + size),
-                    degree % 90 == 0 ? CYAN : BORDER);
+                    degree % 90 == 0 ? CYAN : degree % 30 == 0 ? TEXT : BORDER);
+        }
+        for (int degree = 30; degree < 360; degree += 30) {
+            if (degree % 90 == 0) continue;
+            int[] point = headingPoint(cx, cy, radius - 19, degree);
+            graphics.centeredText(font, String.format(Locale.ROOT, "%02d", degree / 10),
+                    panelLeft + x(point[0]), panelTop + y(point[1] - 3), MUTED);
         }
         for (int[] cardinal : new int[][]{{0, 0, 'N'}, {1, 90, 'E'}, {2, 180, 'S'}, {3, 270, 'W'}}) {
             int[] point = headingPoint(cx, cy, radius + 8, cardinal[1]);
@@ -476,9 +477,7 @@ public class AutopilotScreen extends Screen {
 
         int[] currentPoint = headingPoint(cx, cy, radius - 14, current);
         line(graphics, cx, cy, currentPoint[0], currentPoint[1], GREEN);
-        int[] bug = headingPoint(cx, cy, radius - 3, selected);
-        graphics.fill(panelLeft + x(bug[0] - 3), panelTop + y(bug[1] - 3),
-                panelLeft + x(bug[0] + 4), panelTop + y(bug[1] + 4), AMBER);
+        triangle(graphics, headingPoint(cx, cy, radius - 26, selected), selected, AMBER, 4);
     }
 
     private void drawTape(GuiGraphicsExtractor graphics, int x, int y, int width, int height,
@@ -490,25 +489,31 @@ public class AutopilotScreen extends Screen {
         graphics.fill(panelLeft + x(x), panelTop + y(center - 1),
                 panelLeft + x(x + width), panelTop + y(center + 1), CYAN);
 
-        int offset = clamp((selected - current) / step, -4, 4);
-        int selectedY = clamp(center - offset * 10, y + 6, y + height - 6);
-        for (int i = -4; i <= 4; i++) {
+        graphics.enableScissor(panelLeft + x(x + 1), panelTop + y(y + 1), w(width - 2), h(height - 2));
+        int selectedTick = Math.round((selected - current) / (float) step);
+        int majorEvery = Math.max(1, labelStep / step);
+        for (int i = -6; i <= 6; i++) {
             int tickY = center - i * 10;
-            if (tickY < y + 3 || tickY > y + height - 3) continue;
-            graphics.fill(panelLeft + x(x + 4), panelTop + y(tickY),
-                    panelLeft + x(x + 18), panelTop + y(tickY + 1), MUTED);
-            int value = current + i * step;
-            if (i % Math.max(1, labelStep / step) == 0) {
-                fittedText(graphics, String.valueOf(value), panelLeft + x(x + 22),
-                        panelTop + y(tickY - 4), MUTED, w(56), true);
+            if (tickY < y + 2 || tickY > y + height - 2) continue;
+            boolean major = i % majorEvery == 0;
+            graphics.fill(panelLeft + x(x + 3), panelTop + y(tickY),
+                    panelLeft + x(x + (major ? 20 : 12)), panelTop + y(tickY + 1),
+                    major ? TEXT : BORDER);
+            if (major) {
+                fittedText(graphics, String.valueOf(current + i * step), panelLeft + x(x + 24),
+                        panelTop + y(tickY - 4), MUTED, w(width - 28), true);
             }
         }
-        graphics.fill(panelLeft + x(x + 2), panelTop + y(selectedY - 6),
-                panelLeft + x(x + width - 2), panelTop + y(selectedY - 5), AMBER);
-        graphics.fill(panelLeft + x(x + width - 8), panelTop + y(selectedY - 8),
-                panelLeft + x(x + width - 2), panelTop + y(selectedY - 2), AMBER);
-        fittedText(graphics, selected + " " + unit, panelLeft + x(x + 4),
-                panelTop + y(y + height - 13), AMBER, w(92), true);
+        int selectedY = clamp(center - selectedTick * 10, y + 7, y + height - 7);
+        line(graphics, x + width - 12, selectedY - 5, x + width - 2, selectedY, AMBER);
+        line(graphics, x + width - 2, selectedY, x + width - 12, selectedY + 5, AMBER);
+        graphics.disableScissor();
+
+        graphics.fill(panelLeft + x(x + 3), panelTop + y(y + height - 15),
+                panelLeft + x(x + 55), panelTop + y(y + height - 2), 0xFF111D24);
+        graphics.outline(panelLeft + x(x + 3), panelTop + y(y + height - 15), w(52), h(13), AMBER);
+        fittedCenteredText(graphics, selected + " " + unit, panelLeft + x(x + 29),
+                panelTop + y(y + height - 13), AMBER, w(48));
     }
 
     private void drawVerticalSpeed(GuiGraphicsExtractor graphics, int cx, int cy, int height,
@@ -521,17 +526,22 @@ public class AutopilotScreen extends Screen {
                 panelLeft + x(cx + 34), panelTop + y(cy + 1), MUTED);
         for (int i = -2; i <= 2; i++) {
             int tickY = cy + i * 20;
-            graphics.fill(panelLeft + x(cx - 30), panelTop + y(tickY),
-                    panelLeft + x(cx - 20), panelTop + y(tickY + 1), MUTED);
+            boolean major = i == 0;
+            graphics.fill(panelLeft + x(cx - (major ? 32 : 26)), panelTop + y(tickY),
+                    panelLeft + x(cx - 18), panelTop + y(tickY + 1), major ? TEXT : MUTED);
+            if (i != 0) {
+                fittedText(graphics, String.format(Locale.ROOT, "%+d", i),
+                        panelLeft + x(cx + 12), panelTop + y(tickY - 4), MUTED, w(18), true);
+            }
         }
         int needle = cy - clamp(selected / 100, -40, 40);
-        line(graphics, cx - 28, needle, cx + 28, cy, AMBER);
-        graphics.fill(panelLeft + x(cx - 34), panelTop + y(needle - 1),
-                panelLeft + x(cx - 24), panelTop + y(needle + 2), AMBER);
-        fittedCenteredText(graphics, String.format(Locale.ROOT, "%+d", current),
-                panelLeft + x(cx), panelTop + y(top + 8), CYAN, w(64));
-        fittedCenteredText(graphics, String.format(Locale.ROOT, "%+d", selected),
-                panelLeft + x(cx), panelTop + y(top + height - 14), AMBER, w(64));
+        line(graphics, cx - 30, needle, cx + 30, needle, AMBER);
+        line(graphics, cx - 30, needle - 3, cx - 30, needle + 3, AMBER);
+        line(graphics, cx + 30, needle - 3, cx + 30, needle + 3, AMBER);
+        fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %+d", current),
+                panelLeft + x(cx), panelTop + y(top + 6), CYAN, w(64));
+        fittedCenteredText(graphics, String.format(Locale.ROOT, "SEL %+d", selected),
+                panelLeft + x(cx), panelTop + y(top + height - 12), AMBER, w(64));
     }
 
     private void drawNavPage(GuiGraphicsExtractor graphics) {
@@ -572,13 +582,12 @@ public class AutopilotScreen extends Screen {
                 localizer, glideslope, cachedGlideSlope), panelLeft + x(centerX),
                 panelTop + y(128), ils ? TEXT : MUTED, w(340));
 
-        fittedText(graphics, "THRESHOLD X", panelLeft + x(382), panelTop + y(118), MUTED,
+        fittedText(graphics, "THRESHOLD", panelLeft + x(382), panelTop + y(118), MUTED,
                 freeWidth(382, 466), true);
-        fittedText(graphics, "THRESHOLD Z", panelLeft + x(466), panelTop + y(118), MUTED,
+        fittedText(graphics, "POSITION", panelLeft + x(466), panelTop + y(118), MUTED,
                 freeWidth(466, 550), true);
         graphics.text(font, "RUNWAY HDG", panelLeft + x(382), panelTop + y(172), MUTED, true);
-        fittedText(graphics, "0=S  90=W  180=N  270=E", panelLeft + x(382), panelTop + y(208),
-                MUTED, freeWidth(382, 550), true);
+        drawMiniCompass(graphics, 520, 208, 20, cachedRunwayHeading);
 
         String[] status = navStatus(ils);
         int color = statusColor(status[0]);
@@ -600,28 +609,56 @@ public class AutopilotScreen extends Screen {
     private String[] navStatus(boolean ils) {
         var guidance = FlightHud.autopilotGuidance();
         if (!FlightLineClient.isFlightEnabled()) {
-            return new String[]{"ENABLE FLIGHT MODE", "Flight mode must be active before arming an approach."};
+            return new String[]{"AIRCRAFT NOT CONFIGURED", "Approach guidance unavailable."};
         }
         if (!ils) {
-            return new String[]{"NO ILS COVERAGE", "Set a runway threshold inside the approach area."};
+            return new String[]{"NO ILS SIGNAL", "Verify runway threshold and approach coverage."};
         }
         if (guidance.autolandArmed()) {
-            return new String[]{"AUTOLAND ACTIVE", "Monitor the approach · gear and flaps are managed."};
+            return new String[]{"AUTOLAND ACTIVE", "Monitor approach · verify landing configuration."};
         }
         if (!FlightHud.anyEngineRunning()) {
-            return new String[]{"NEEDS ENGINE", "At least one engine group must be running."};
+            return new String[]{"ENGINE REQUIRED", "At least one engine must be running."};
         }
         if (!guidance.atcControlled()) {
-            return new String[]{"READY FOR ARM", "Gear " + (FlightHud.gearDown() ? "DOWN" : "UP")
-                    + "  ·  ILS valid  ·  autopilot manages the landing."};
+            return new String[]{"APPROACH READY", "Gear " + (FlightHud.gearDown() ? "DOWN" : "UP")
+                    + " · ILS valid · autoland available."};
         }
-        return new String[]{"ATC CONTROL ACTIVE", "F7 releases control before manual arming."};
+        return new String[]{"ATC CONTROL ACTIVE", "Clearance must be released before manual arming."};
     }
 
     private int statusColor(String status) {
-        if (status.startsWith("AUTOLAND") || status.startsWith("READY")) return GREEN;
+        if (status.startsWith("AUTOLAND") || status.startsWith("APPROACH READY")) return GREEN;
         if (status.startsWith("ATC")) return AMBER;
         return RED;
+    }
+
+    private void drawMiniCompass(GuiGraphicsExtractor graphics, int cx, int cy, int radius, int heading) {
+        drawCircleOutline(graphics, cx, cy, radius, BORDER);
+        graphics.centeredText(font, "N", panelLeft + x(cx), panelTop + y(cy - radius - 7), CYAN);
+        int[] point = headingPoint(cx, cy, radius - 3, heading);
+        triangle(graphics, point, heading, AMBER, 4);
+        fittedCenteredText(graphics, String.format(Locale.ROOT, "%03d°", heading),
+                panelLeft + x(cx), panelTop + y(cy + radius + 4), TEXT, w(46));
+    }
+
+    private void drawCircleOutline(GuiGraphicsExtractor graphics, int cx, int cy, int radius, int color) {
+        int x = radius;
+        int y = 0;
+        int error = 1 - radius;
+        while (x >= y) {
+            int[][] points = {{x, y}, {y, x}, {-y, x}, {-x, y}, {-x, -y}, {-y, -x}, {y, -x}, {x, -y}};
+            for (int[] point : points) {
+                graphics.fill(panelLeft + x(cx + point[0]), panelTop + y(cy + point[1]),
+                        panelLeft + x(cx + point[0] + 1), panelTop + y(cy + point[1] + 1), color);
+            }
+            y++;
+            if (error < 0) error += 2 * y + 1;
+            else {
+                x--;
+                error += 2 * (y - x) + 1;
+            }
+        }
     }
 
     private void drawRunway(GuiGraphicsExtractor graphics, int cx, int y) {
@@ -635,26 +672,27 @@ public class AutopilotScreen extends Screen {
             graphics.fill(panelLeft + x(cx - 1), panelTop + y(dashY),
                     panelLeft + x(cx + 1), panelTop + y(dashY + 3), TEXT);
         }
-        graphics.centeredText(font, "THRESHOLD " + Math.round(FlightHud.thresholdDistanceBlocks()) + " BLK",
+        graphics.centeredText(font, String.format(Locale.ROOT, "DME %.1f NM",
+                        FlightHud.thresholdDistanceBlocks() / 10.0f),
                 panelLeft + x(cx), panelTop + y(y + 22), MUTED);
     }
 
     private void drawWeatherPage(GuiGraphicsExtractor graphics) {
         var weather = FlightHud.weatherGuidance();
-        panel(graphics, 18, 100, 396, 262, "WEATHER RADAR / LIVE CONDITIONS");
-        panel(graphics, 422, 100, 160, 262, "SYSTEMS");
+        panel(graphics, 18, 100, 396, 262, "WX RADAR / LIVE CONDITIONS");
+        panel(graphics, 422, 100, 160, 262, "AIRCRAFT SYSTEMS");
 
         drawWeatherRadar(graphics, 36, 122, 360, 180, weather);
-        String condition = weather.condition() == 2 ? "THUNDERSTORM"
-                : weather.condition() == 1 ? "RAIN" : "CLEAR";
-        int conditionColor = weather.condition() == 2 ? RED
-                : weather.condition() == 1 ? CYAN : GREEN;
-        fittedCenteredText(graphics, condition + "  ·  " + weather.windSpeedKnots() + " KT  ·  "
-                + String.format(Locale.ROOT, "%03d°", weather.windDirectionDegrees()),
-                panelLeft + x(216), panelTop + y(318), conditionColor, w(376));
-        fittedCenteredText(graphics, "GUST " + weather.gustKnots() + " KT  ·  VIS "
-                + weather.visibilityBlocks() + " BLK", panelLeft + x(216),
-                panelTop + y(340), MUTED, w(376));
+        String metar = String.format(Locale.ROOT, "%s  WIND %03d/%02dG%02d  VIS %.1fSM",
+                weather.condition() == 2 ? "TSRA" : weather.condition() == 1 ? "RA" : "CAVOK",
+                weather.windDirectionDegrees(), weather.windSpeedKnots(), weather.gustKnots(),
+                weather.visibilityBlocks() / 64.0f);
+        int conditionColor = conditionColor(weather);
+        fittedCenteredText(graphics, metar, panelLeft + x(216), panelTop + y(318), conditionColor, w(376));
+        fittedCenteredText(graphics, String.format(Locale.ROOT, "TURB %d%%  ·  ICE %d%%  ·  %s",
+                        weather.turbulencePercent(), weather.icingPercent(),
+                        weather.antiIceEffective() ? "A-ICE CLEAR" : weather.antiIceActive() ? "A-ICE ON" : "A-ICE OFF"),
+                panelLeft + x(216), panelTop + y(340), MUTED, w(376));
 
         gauge(graphics, 438, 146, 128, "TURBULENCE", weather.turbulencePercent(),
                 weather.turbulencePercent() >= 70 ? RED : weather.turbulencePercent() >= 35 ? AMBER : GREEN);
@@ -665,12 +703,10 @@ public class AutopilotScreen extends Screen {
                 weather.visibilityBlocks() < 80 ? AMBER : GREEN);
 
         String antiIce = weather.antiIceEffective() ? "CLEARING"
-                : weather.antiIceActive() ? "ON · NEEDS POWER" : "OFF";
+                : weather.antiIceActive() ? "ON / NO POWER" : "OFF";
         graphics.text(font, "ANTI-ICE", panelLeft + x(438), panelTop + y(300), MUTED, true);
         graphics.text(font, antiIce, panelLeft + x(438), panelTop + y(314),
                 weather.antiIceEffective() ? GREEN : weather.antiIceActive() ? AMBER : MUTED, true);
-        graphics.text(font, "KEY " + FlightLineClient.keyName(FlightLineClient.antiIce()),
-                panelLeft + x(438), panelTop + y(328), CYAN, true);
         graphics.text(font, "FUEL", panelLeft + x(438), panelTop + y(344), MUTED, true);
         graphics.text(font, FlightHud.fuelPercent() + "%", panelLeft + x(480), panelTop + y(344), TEXT, true);
         if (!ilsMessage.isEmpty()) {
@@ -698,16 +734,23 @@ public class AutopilotScreen extends Screen {
         graphics.fill(panelLeft + x(x), panelTop + y(y + height / 2 - 1),
                 panelLeft + x(x + width), panelTop + y(y + height / 2 + 1), CYAN);
 
+        long gameTime = Minecraft.getInstance().level == null
+                ? 0L : Minecraft.getInstance().level.getGameTime();
         int storm = weather.condition();
-        int cells = storm == 2 ? 11 : storm == 1 ? 7 : 3;
-        for (int i = 0; i < cells; i++) {
-            int cellX = x + 22 + ((i * 47 + weather.windDirectionDegrees()) % (width - 44));
-            int cellY = y + 22 + ((i * 31 + weather.turbulencePercent()) % (height - 44));
-            int size = 8 + (i % 3) * 4;
-            int color = storm == 2 && i % 3 == 0 ? RED : storm == 0 ? GREEN : AMBER;
-            graphics.fill(panelLeft + x(cellX), panelTop + y(cellY),
-                    panelLeft + x(cellX + size), panelTop + y(cellY + size), color);
+        for (int cellZ = -2; cellZ <= 2; cellZ++) {
+            for (int cellX = -2; cellX <= 2; cellX++) {
+                var cell = WeatherSimulation.sampleCell(cellX, cellZ, gameTime,
+                        WeatherDisplay.CELL_SEED, storm, weather.turbulencePercent(), weather.gustKnots());
+                if (cell.intensity() < 24) continue;
+                int px = x + width / 2 + cellX * 68
+                        + Math.round((float) (Math.sin(gameTime * 0.0012 + cellX * 0.83 + cellZ * 0.39) * 10));
+                int py = y + height / 2 + cellZ * 34;
+                int half = 7 + cell.intensity() / 10;
+                WeatherDisplay.drawCellGlyph(graphics, panelLeft + x(px), panelTop + y(py),
+                        w(half), cell, false);
+            }
         }
+        drawWeatherLegend(graphics, x + width - 58, y + height - 44);
 
         long phase = System.nanoTime() / 25_000_000L;
         int sweep = x + (int) (phase % Math.max(1, width - 2));
@@ -716,6 +759,16 @@ public class AutopilotScreen extends Screen {
         drawWindArrow(graphics, x + 34, y + 28, weather.windDirectionDegrees(),
                 weather.windSpeedKnots(), conditionColor(weather));
         graphics.disableScissor();
+    }
+
+    private void drawWeatherLegend(GuiGraphicsExtractor graphics, int x, int y) {
+        int[][] swatches = {{GREEN, CYAN, AMBER, RED}};
+        int[] colors = swatches[0];
+        for (int i = 0; i < colors.length; i++) {
+            graphics.fill(panelLeft + x(x + i * 12), panelTop + y(y),
+                    panelLeft + x(x + i * 12 + 9), panelTop + y(y + 7), colors[i]);
+        }
+        fittedText(graphics, "LIGHT / HEAVY", panelLeft + x(x), panelTop + y(y + 9), MUTED, w(58), true);
     }
 
     private int conditionColor(FlightInstrumentPayload.WeatherGuidance weather) {
@@ -745,68 +798,66 @@ public class AutopilotScreen extends Screen {
         graphics.outline(panelLeft + x(x), panelTop + y(y + 14), w(width), h(8), BORDER);
     }
 
-    private void drawKeysPage(GuiGraphicsExtractor graphics) {
-        panel(graphics, 18, 100, 396, 262, "KEYCAP REFERENCE");
-        panel(graphics, 422, 100, 160, 262, "QUICK LINKS");
+    private void drawSystemsPage(GuiGraphicsExtractor graphics) {
+        panel(graphics, 18, 100, 396, 262, "AIRCRAFT CONFIGURATION");
+        panel(graphics, 422, 100, 160, 262, "ENGINE / ICE / FUEL");
 
-        keyRow(graphics, 34, 118, "GEAR", FlightLineClient.keyName(FlightLineClient.toggleGear()));
-        keyRow(graphics, 34, 146, "AUTOPILOT PANEL", FlightLineClient.keyName(FlightLineClient.toggleAutopilot()));
-        keyRow(graphics, 34, 174, "ENGINES / INVENTORY",
-                FlightLineClient.keyName(FlightLineClient.inventory()) + " / "
-                        + FlightLineClient.keyName(FlightLineClient.shutdownEngines()));
-        keyRow(graphics, 34, 202, "THROTTLE",
-                FlightLineClient.keyName(FlightLineClient.throttleUp()) + " / "
-                        + FlightLineClient.keyName(FlightLineClient.throttleDown()));
-        keyRow(graphics, 34, 230, "RUDDER",
-                FlightLineClient.keyName(FlightLineClient.rudderLeft()) + " / "
-                        + FlightLineClient.keyName(FlightLineClient.rudderRight()));
-        keyRow(graphics, 34, 258, "FLAPS",
-                FlightLineClient.keyName(FlightLineClient.flapsIncrease()) + " / "
-                        + FlightLineClient.keyName(FlightLineClient.flapsDecrease()));
-        keyRow(graphics, 34, 286, "SPOILERS / AIRBRAKES",
-                FlightLineClient.keyName(FlightLineClient.spoilersToggle()) + " / "
-                        + FlightLineClient.keyName(FlightLineClient.airbrakeToggle()));
-        keyRow(graphics, 34, 314, "PUSHBACK / BRAKES",
-                FlightLineClient.keyName(FlightLineClient.pushback()) + " / "
-                        + FlightLineClient.keyName(FlightLineClient.brakes()));
-        keyRow(graphics, 34, 340, "EMERGENCY / FIX",
-                FlightLineClient.keyName(FlightLineClient.emergencyChecklist()) + " / "
-                        + FlightLineClient.keyName(FlightLineClient.executeEmergency()));
+        drawAirframeSchematic(graphics, 216, 214);
 
-        int rightWidth = freeWidth(438, 582);
-        fittedText(graphics, "DISPLAYS", panelLeft + x(438), panelTop + y(126), CYAN, rightWidth, true);
-        fittedText(graphics, FlightLineClient.keyName(FlightLineClient.flightRadar()) + " radar",
-                panelLeft + x(438), panelTop + y(144), TEXT, rightWidth, true);
-        fittedText(graphics, FlightLineClient.keyName(FlightLineClient.togglePfd()) + " PFD",
-                panelLeft + x(438), panelTop + y(160), TEXT, rightWidth, true);
-        fittedText(graphics, FlightLineClient.keyName(FlightLineClient.toggleEicas()) + " EICAS",
-                panelLeft + x(438), panelTop + y(176), TEXT, rightWidth, true);
-        fittedText(graphics, FlightLineClient.keyName(FlightLineClient.toggleNdRadar()) + " ND",
-                panelLeft + x(438), panelTop + y(192), TEXT, rightWidth, true);
-        fittedText(graphics, FlightLineClient.keyName(FlightLineClient.antiIce()) + " anti-ice",
-                panelLeft + x(438), panelTop + y(208), TEXT, rightWidth, true);
-        fittedText(graphics, "ATC RELEASE", panelLeft + x(438), panelTop + y(236), CYAN, rightWidth, true);
-        fittedText(graphics, FlightLineClient.keyName(FlightLineClient.ackAtc()) + " when cleared",
-                panelLeft + x(438), panelTop + y(254), AMBER, rightWidth, true);
-        fittedText(graphics, "FLAPS add lift and drag", panelLeft + x(438), panelTop + y(282),
-                MUTED, rightWidth, true);
-        fittedText(graphics, "SPOILERS dump lift", panelLeft + x(438), panelTop + y(298),
-                MUTED, rightWidth, true);
-        fittedText(graphics, "AIRBRAKES add drag", panelLeft + x(438), panelTop + y(314),
-                MUTED, rightWidth, true);
+        String gear = FlightHud.gearDown() ? "DOWN & LOCKED" : "UP";
+        fittedText(graphics, "GEAR", panelLeft + x(36), panelTop + y(310), MUTED, w(54), true);
+        fittedText(graphics, gear, panelLeft + x(36), panelTop + y(324),
+                FlightHud.gearDown() ? GREEN : AMBER, w(120), true);
+        fittedText(graphics, "FLAPS", panelLeft + x(164), panelTop + y(310), MUTED, w(54), true);
+        fittedText(graphics, "F" + FlightHud.flapDetent(), panelLeft + x(164), panelTop + y(324), TEXT, w(70), true);
+        fittedText(graphics, "SPOILERS", panelLeft + x(252), panelTop + y(310), MUTED, w(74), true);
+        fittedText(graphics, FlightHud.spoilersDeployed() ? "DEPLOYED" : "STOWED",
+                panelLeft + x(252), panelTop + y(324), FlightHud.spoilersDeployed() ? AMBER : TEXT, w(100), true);
+
+        gauge(graphics, 438, 134, 128, "N1", FlightHud.engineN1(),
+                FlightHud.anyEngineRunning() ? GREEN : RED);
+        gauge(graphics, 438, 186, 128, "FUEL", FlightHud.fuelPercent(),
+                FlightHud.fuelPercent() < 20 ? RED : FlightHud.fuelPercent() < 40 ? AMBER : GREEN);
+
+        var weather = FlightHud.weatherGuidance();
+        gauge(graphics, 438, 238, 128, "ICE", weather.icingPercent(),
+                weather.icingPercent() >= 20 ? AMBER : GREEN);
+        graphics.text(font, "ANTI-ICE", panelLeft + x(438), panelTop + y(292), MUTED, true);
+        graphics.text(font, weather.antiIceEffective() ? "ON · CLEARING"
+                        : weather.antiIceActive() ? "ON · NO POWER" : "OFF",
+                panelLeft + x(438), panelTop + y(306),
+                weather.antiIceEffective() ? GREEN : weather.antiIceActive() ? AMBER : MUTED, true);
+        graphics.text(font, "AIRBRAKES", panelLeft + x(438), panelTop + y(330), MUTED, true);
+        graphics.text(font, FlightHud.airbrakesDeployed() ? "DEPLOYED" : "STOWED",
+                panelLeft + x(510), panelTop + y(330), FlightHud.airbrakesDeployed() ? AMBER : TEXT, true);
     }
 
-    private void keyRow(GuiGraphicsExtractor graphics, int x, int y, String label, String key) {
-        fittedText(graphics, label, panelLeft + x(x), panelTop + y(y + 6), TEXT, freeWidth(x, 184), true);
-        int keyX = x + 150;
-        int keyWidth = 214;
-        graphics.fill(panelLeft + x(keyX), panelTop + y(y), panelLeft + x(keyX + keyWidth),
-                panelTop + y(y + 22), 0xFF1B2A33);
-        graphics.outline(panelLeft + x(keyX), panelTop + y(y), w(keyWidth), h(22), BORDER);
-        graphics.fill(panelLeft + x(keyX), panelTop + y(y + 19), panelLeft + x(keyX + keyWidth),
-                panelTop + y(y + 22), 0xFF243743);
-        graphics.centeredText(font, fit(key, w(keyWidth) - 8), panelLeft + x(keyX + keyWidth / 2),
-                panelTop + y(y + 6), CYAN);
+    private void drawAirframeSchematic(GuiGraphicsExtractor graphics, int cx, int cy) {
+        int color = FlightHud.anyEngineRunning() ? CYAN : MUTED;
+        line(graphics, cx, cy - 66, cx, cy + 54, color);
+        line(graphics, cx - 22, cy - 38, cx + 22, cy - 38, color);
+        line(graphics, cx - 78, cy + 6, cx + 78, cy + 6, color);
+        line(graphics, cx - 78, cy + 6, cx - 78, cy + 32, color);
+        line(graphics, cx + 78, cy + 6, cx + 78, cy + 32, color);
+        line(graphics, cx - 78, cy + 32, cx + 78, cy + 32, color);
+        line(graphics, cx - 22, cy - 38, cx - 58, cy + 6, color);
+        line(graphics, cx + 22, cy - 38, cx + 58, cy + 6, color);
+        line(graphics, cx - 34, cy + 32, cx - 54, cy + 56, color);
+        line(graphics, cx + 34, cy + 32, cx + 54, cy + 56, color);
+        line(graphics, cx - 54, cy + 56, cx - 34, cy + 56, color);
+        line(graphics, cx + 34, cy + 56, cx + 54, cy + 56, color);
+
+        int gearColor = FlightHud.gearDown() ? GREEN : AMBER;
+        graphics.fill(panelLeft + x(cx - 4), panelTop + y(cy + 52), panelLeft + x(cx + 4), panelTop + y(cy + 60), gearColor);
+        for (int wing : new int[]{-68, 68}) {
+            graphics.fill(panelLeft + x(cx + wing - 3), panelTop + y(cy + 30),
+                    panelLeft + x(cx + wing + 3), panelTop + y(cy + 36), gearColor);
+        }
+        int flapColor = FlightHud.flapDetent() > 0 ? CYAN : BORDER;
+        line(graphics, cx - 62, cy + 7, cx - 22, cy + (FlightHud.flapDetent() > 0 ? 22 : 12), flapColor);
+        line(graphics, cx + 62, cy + 7, cx + 22, cy + (FlightHud.flapDetent() > 0 ? 22 : 12), flapColor);
+        fittedCenteredText(graphics, "PRIMARY FLIGHT CONTROLS", panelLeft + x(cx),
+                panelTop + y(cy + 74), MUTED, w(300));
     }
 
     private void card(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int borderColor) {
@@ -823,6 +874,14 @@ public class AutopilotScreen extends Screen {
                 panelTop + y(y + 18), 0xFF172631);
         fittedText(graphics, title, panelLeft + x(x + 7), panelTop + y(y + 4), CYAN,
                 w(width) - 14, true);
+    }
+
+    private void triangle(GuiGraphicsExtractor graphics, int[] tip, int heading, int color, int size) {
+        int[] left = headingPoint(tip[0], tip[1], size, heading + 145);
+        int[] right = headingPoint(tip[0], tip[1], size, heading - 145);
+        line(graphics, tip[0], tip[1], left[0], left[1], color);
+        line(graphics, left[0], left[1], right[0], right[1], color);
+        line(graphics, right[0], right[1], tip[0], tip[1], color);
     }
 
     private void diamond(GuiGraphicsExtractor graphics, int cx, int cy, int color, boolean horizontal) {
@@ -870,7 +929,7 @@ public class AutopilotScreen extends Screen {
             case 0 -> "MCP";
             case 1 -> "NAV / ILS";
             case 2 -> "WX";
-            default -> "KEYS";
+            default -> "SYS";
         };
     }
 

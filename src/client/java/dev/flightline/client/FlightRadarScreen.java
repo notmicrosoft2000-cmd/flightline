@@ -79,7 +79,7 @@ public final class FlightRadarScreen extends Screen {
                 ? FlightHud.radarOwnHeadingDegrees() : player == null ? 0.0f : player.getYRot()), 360);
         if (atcSelectionMode) {
             selectedContactId = FlightLineClient.atcSelectedTarget();
-            status = "Click a mob or player contact on the map to select it for ATC.";
+            status = "Click an aircraft contact on the scope to select it for ATC.";
         }
     }
 
@@ -192,7 +192,7 @@ public final class FlightRadarScreen extends Screen {
                 ? 0xFF4EB8C8 : 0xFF347988;
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, frameColor);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 24, 0xFF1C2733);
-        graphics.centeredText(font, atcSelectionMode ? "SELECT ATC TARGET  ·  CLICK AN AIRCRAFT"
+        graphics.centeredText(font, atcSelectionMode ? "SELECT ATC TARGET  ·  AIRCRAFT SCOPE"
                         : "FLIGHT RADAR  ·  TCAS / TRAFFIC",
                 panelLeft + panelWidth / 2, panelTop + 7, 0xFF72E6F5);
         int revealWidth = Math.round(panelWidth * openProgress);
@@ -215,7 +215,8 @@ public final class FlightRadarScreen extends Screen {
         for (int ring = 1; ring <= 3; ring++) {
             int r = radius * ring / 3;
             drawCircle(graphics, cx, cy, r, 0xFF315E50);
-            graphics.text(font, (RANGES[rangeIndex] * ring / 3) + "B", cx + 2, cy - r - 4, 0x9956B9D2, false);
+            graphics.text(font, String.format(Locale.ROOT, "%.0f NM",
+                    RANGES[rangeIndex] * ring / 30.0f), cx + 2, cy - r - 4, 0x9956B9D2, false);
         }
         double scanRadians = Math.toRadians(scanAngle);
         int scanX = cx + (int) Math.round(Math.sin(scanRadians) * radius);
@@ -238,8 +239,8 @@ public final class FlightRadarScreen extends Screen {
                 graphics.text(font, "N", cx - 2, scopeTop + 3, 0xFFB6C8D1, true);
             }
         }
-        graphics.text(font, "R " + RANGES[rangeIndex] + "B", scopeLeft + 4,
-                scopeTop + scopeHeight - 11, 0xFF86B5A4, true);
+        graphics.text(font, String.format(Locale.ROOT, "RANGE %.0f NM", RANGES[rangeIndex] / 10.0f),
+                scopeLeft + 4, scopeTop + scopeHeight - 11, 0xFF86B5A4, true);
 
         List<FlightRadarPayload.Contact> contacts = FlightHud.radarContacts();
         for (FlightRadarPayload.Contact contact : contacts) {
@@ -284,12 +285,12 @@ public final class FlightRadarScreen extends Screen {
         if (!compactLayout) {
             int detailX = scopeLeft + scopeWidth + 10;
             int detailWidth = panelLeft + panelWidth - 10 - detailX;
-            graphics.text(font, "TRAFFIC " + contacts.size() + "/" + FlightRadarPayload.MAX_CONTACTS,
-                    detailX, scopeTop + 2, 0xFF72E6F5, true);
+            graphics.text(font, "TRAFFIC " + contacts.size(), detailX, scopeTop + 2,
+                    0xFF72E6F5, true);
             graphics.text(font, "OWN " + FlightHud.currentSpeedKnots() + "KT  "
                     + FlightHud.radarOwnAltitudeFeet() + "FT", detailX, scopeTop + 13, 0xFFD5E0E8, true);
-            graphics.text(font, "RANGE " + RANGES[rangeIndex] + "B  HDG "
-                    + String.format(Locale.ROOT, "%03.0f°", FlightHud.radarOwnHeadingDegrees()),
+            graphics.text(font, String.format(Locale.ROOT, "RANGE %.0f NM  HDG %03.0f°",
+                    RANGES[rangeIndex] / 10.0f, FlightHud.radarOwnHeadingDegrees()),
                     detailX, scopeTop + 24, 0xFF9BAAB1, true);
             graphics.horizontalLine(detailX, detailX + detailWidth, scopeTop + 36, 0xFF426B5C);
 
@@ -300,9 +301,10 @@ public final class FlightRadarScreen extends Screen {
             for (int i = 0; i < shown; i++) {
                 FlightRadarPayload.Contact contact = contacts.get(i + contactListOffset);
                 int color = contact.player() ? 0xFF6BCBFF : contact.airborne() ? 0xFF75E6A5 : 0xFFFFCE52;
-                int rangeBlocks = contactRange(contact);
-                String name = fit((contact.player() ? "P " : "M ") + contact.name()
-                        + "  " + rangeBlocks + "B", Math.max(24, detailWidth - 4));
+                double rangeNm = contactRange(contact) / 10.0f;
+                String name = fit((contact.player() ? "CREW " : "AUTO ") + contact.name()
+                        + String.format(Locale.ROOT, "  %.1fNM", rangeNm),
+                        Math.max(24, detailWidth - 4));
                 boolean selected = contact.entityId() == selectedContactId;
                 int rowY = listY + i * 18;
                 if (selected) {
@@ -320,9 +322,10 @@ public final class FlightRadarScreen extends Screen {
                 graphics.text(font, "No traffic in range.", detailX, listY, 0xFF9BAAB1, true);
             }
         } else {
-            String scopeInfo = "CONTACTS " + contacts.size() + "/" + FlightRadarPayload.MAX_CONTACTS
+            String scopeInfo = "TRAFFIC " + contacts.size()
                     + " · " + (headingUp ? "HDG" : "NORTH") + " · RANGE "
-                    + RANGES[rangeIndex] + " B · " + FlightHud.radarOwnAltitudeFeet() + " FT";
+                    + String.format(Locale.ROOT, "%.0f NM", RANGES[rangeIndex] / 10.0f)
+                    + " · " + FlightHud.radarOwnAltitudeFeet() + " FT";
             graphics.text(font, fit(scopeInfo, scopeWidth - 8), scopeLeft + 4, scopeTop + 4, 0xFF72E6F5, true);
         }
         if (selectedContactId >= 0) {
@@ -331,8 +334,8 @@ public final class FlightRadarScreen extends Screen {
                 graphics.text(font, fit("SELECTED: " + selected.name() + " · "
                                 + selected.speedKnots() + "KT · "
                                 + (selected.altitudeFeet() - FlightHud.radarOwnAltitudeFeet()) + "FT · "
-                                + String.format(Locale.ROOT, "%03.0f° · %dB",
-                                selected.headingDegrees(), contactRange(selected)),
+                                + String.format(Locale.ROOT, "%03.0f° · %.1f NM",
+                                selected.headingDegrees(), contactRange(selected) / 10.0f),
                         Math.max(1, panelWidth - 24)), panelLeft + 12, panelTop + panelHeight - 98,
                         0xFFFFB46A, true);
             }
@@ -343,7 +346,7 @@ public final class FlightRadarScreen extends Screen {
                 0xFFFF6CD9, true);
         graphics.text(font, fit(status, panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 28,
                 0xFFB6C8D1, true);
-        graphics.text(font, fit("Drag header to move · corner to resize · scroll scope to zoom",
+        graphics.text(font, fit("DRAG HEADER TO MOVE · CORNER TO RESIZE · SCROLL SCOPE TO ZOOM",
                 panelWidth - 40), panelLeft + 12, panelTop + panelHeight - 14, 0xFF71858B, true);
         drawResizeHandle(graphics);
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
@@ -491,7 +494,7 @@ public final class FlightRadarScreen extends Screen {
             return;
         }
         if (!FlightLineClient.isFlightEnabled()) {
-            status = "Enable flight mode before setting an ILS runway.";
+            status = "Configure an aircraft before setting an ILS runway.";
             return;
         }
         ClientPlayNetworking.send(new ConfigureIlsPayload(true, FlightHud.ilsReferenceGlideSlope(),
@@ -512,7 +515,7 @@ public final class FlightRadarScreen extends Screen {
     }
 
     private Component rangeLabel() {
-        return Component.literal("RNG " + RANGES[rangeIndex]);
+        return Component.literal(String.format(Locale.ROOT, "RNG %.0f NM", RANGES[rangeIndex] / 10.0f));
     }
 
     private int[] contactPoint(FlightRadarPayload.Contact contact, int cx, int cy, int radius) {
@@ -659,7 +662,8 @@ public final class FlightRadarScreen extends Screen {
             Minecraft.getInstance().gui.setScreen(new AtcScreen());
             return;
         }
-        status = "Selected " + contact.name() + " · " + contactRange(contact) + " B · "
+        status = "Selected " + contact.name() + " · "
+                + String.format(Locale.ROOT, "%.1f NM", contactRange(contact) / 10.0f) + " · "
                 + contact.speedKnots() + " KT · "
                 + (contact.altitudeFeet() - FlightHud.radarOwnAltitudeFeet()) + " FT relative · HDG "
                 + String.format(Locale.ROOT, "%03.0f", contact.headingDegrees()) + "°.";

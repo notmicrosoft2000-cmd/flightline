@@ -38,7 +38,7 @@ public final class FlightTutorialScreen extends Screen {
     private int panelHeight;
     private float scaleX;
     private float scaleY;
-    private String status = "The lesson reads your live flight data. Objectives tick off automatically.";
+    private String status = "Use the live instruments to complete each training objective.";
     private long lastFrameNanos = System.nanoTime();
     private float openProgress;
 
@@ -104,10 +104,10 @@ public final class FlightTutorialScreen extends Screen {
                 addRenderableWidget(actionButton("FLY MANUALLY", 412, 150, 216, this::flyManually));
                 addRenderableWidget(actionButton("FLAPS +", 412, 178, 104, this::flapsUp));
                 addRenderableWidget(actionButton("TOGGLE GEAR", 524, 178, 104, this::toggleGear));
-                addRenderableWidget(actionButton("TOGGLE TELEMETRY", 412, 206, 216, () -> {
+                addRenderableWidget(actionButton("FLIGHT DATA PANEL", 412, 206, 216, () -> {
                     FlightHud.toggleTelemetry();
-                    status = FlightHud.isTelemetryVisible() ? "Expanded telemetry detail visible."
-                            : "Expanded telemetry detail hidden. Press Y to open it.";
+                    status = FlightHud.isTelemetryVisible() ? "Flight-data detail card visible."
+                            : "Flight-data detail card hidden. Press Y to open it.";
                 }));
             }
             case AUTOPILOT -> {
@@ -140,7 +140,7 @@ public final class FlightTutorialScreen extends Screen {
 
     private void startEngines() {
         if (!FlightLineClient.isFlightEnabled()) {
-            status = "Enable flight mode first, then start the engines.";
+            status = "Configure an aircraft first, then start the engines.";
             return;
         }
         ClientPlayNetworking.send(new StartEnginesPayload());
@@ -149,7 +149,7 @@ public final class FlightTutorialScreen extends Screen {
 
     private void toggleGear() {
         if (!FlightLineClient.isFlightEnabled()) {
-            status = "Enable flight mode first.";
+            status = "Configure an aircraft first.";
             return;
         }
         ClientPlayNetworking.send(new ToggleGearPayload());
@@ -158,7 +158,7 @@ public final class FlightTutorialScreen extends Screen {
 
     private void flapsUp() {
         if (!FlightLineClient.isFlightEnabled()) {
-            status = "Enable flight mode first.";
+            status = "Configure an aircraft first.";
             return;
         }
         ClientPlayNetworking.send(new AdjustFlapsPayload(1));
@@ -167,7 +167,7 @@ public final class FlightTutorialScreen extends Screen {
 
     private void engageAutopilot() {
         if (!FlightLineClient.isFlightEnabled()) {
-            status = "Enable flight mode first.";
+            status = "Configure an aircraft first.";
             return;
         }
         int heading = Math.floorMod(Math.round(FlightHud.currentHeading()), 360);
@@ -180,7 +180,7 @@ public final class FlightTutorialScreen extends Screen {
 
     private void disconnectAutopilot() {
         if (!FlightLineClient.isFlightEnabled()) {
-            status = "Enable flight mode first.";
+            status = "Configure an aircraft first.";
             return;
         }
         ClientPlayNetworking.send(new ToggleAutopilotPayload());
@@ -189,7 +189,7 @@ public final class FlightTutorialScreen extends Screen {
 
     private void armAutoland() {
         if (!FlightLineClient.isFlightEnabled()) {
-            status = "Enable flight mode first.";
+            status = "Configure an aircraft first.";
             return;
         }
         if (!FlightHud.isIlsActive()) {
@@ -326,12 +326,12 @@ public final class FlightTutorialScreen extends Screen {
         graphics.text(font, fit(String.format(Locale.ROOT, "HDG %03d°   VS %+d",
                 FlightHud.trackDegrees(), FlightHud.currentVsFpm()), cardWidth - w(16)),
                 cardX + w(8), cardY + h(70), TEXT, true);
-        graphics.text(font, "AUTO ACTIONS", cardX + w(8), cardY + h(94), AMBER, true);
-        graphics.text(font, fit("Buttons send the same server-authoritative", cardWidth - w(16)),
+        graphics.text(font, "COCKPIT CONTROLS", cardX + w(8), cardY + h(94), AMBER, true);
+        graphics.text(font, fit("These controls use the same aircraft systems", cardWidth - w(16)),
                 cardX + w(8), cardY + h(108), MUTED, false);
-        graphics.text(font, "payloads as the cockpit panels.", cardX + w(8), cardY + h(118), MUTED, false);
+        graphics.text(font, "as the cockpit panels.", cardX + w(8), cardY + h(118), MUTED, false);
         graphics.text(font, fit(FlightLineClient.flightTutorial().getTranslatedKeyMessage().getString()
-                        + " reopens this lesson while flying.", cardWidth - w(16)),
+                        + " reopens this lesson in flight.", cardWidth - w(16)),
                 cardX + w(8), cardY + h(132), MUTED, false);
         if (FlightHud.isCrashed()) {
             graphics.text(font, "AIRFRAME DOWN", cardX + w(8), cardY + cardHeight - h(12), RED, true);

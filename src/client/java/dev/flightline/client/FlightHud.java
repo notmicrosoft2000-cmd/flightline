@@ -673,7 +673,7 @@ final class FlightHud {
         g.fill(x, y, x + width, y + height, 0xD8091017);
         g.outline(x, y, width, height, 0xFF3E7D8E);
         g.fill(x + 1, y + 1, x + width - 1, y + 12, 0xDD111D25);
-        g.text(font, "TELEMETRY +", x + 4, y + 2, PFD_CYAN, true);
+        g.text(font, "FLIGHT DATA", x + 4, y + 2, PFD_CYAN, true);
         String key = FlightLineClient.keyName(FlightLineClient.telemetry());
         g.text(font, key, x + width - 4 - font.width(key), y + 2, PFD_MUTED, true);
 
@@ -800,7 +800,7 @@ final class FlightHud {
         g.text(font, fitText(font, windReadout, 62), x + 61, y + 92, PFD_WHITE, true);
 
         String antiIceReadout = weatherGuidance.antiIceActive()
-                ? (weatherGuidance.antiIceEffective() ? "AI CLR" : "AI WAIT") : "AI OFF";
+                ? (weatherGuidance.antiIceEffective() ? "A-ICE CLR" : "A-ICE WAIT") : "A-ICE OFF";
         String weatherSeverity = required(String.format(Locale.ROOT, "ICE %d%%  TURB %d%%  %s",
                 weatherGuidance.icingPercent(), weatherGuidance.turbulencePercent(), antiIceReadout));
         int turbulenceColor = weatherGuidance.turbulencePercent() >= 70 ? PFD_RED
@@ -825,7 +825,7 @@ final class FlightHud {
             alertColor = PFD_AMBER;
         } else if ((warnings & FlightWarning.ICE_ACCUMULATION) != 0) {
             alert = weatherGuidance.antiIceEffective() ? "ICE CLEARING"
-                    : weatherGuidance.antiIceActive() ? "ANTI-ICE SET" : "ICE BUILDUP - AI OFF";
+                    : weatherGuidance.antiIceActive() ? "ANTI-ICE SET" : "ICE BUILDUP - A-ICE OFF";
             alertColor = PFD_CYAN;
         } else if ((warnings & FlightWarning.HYDRAULIC_FAIL) != 0) {
             alert = "HYD FAIL - GEAR/FLAP LIMITED";
@@ -1331,13 +1331,13 @@ final class FlightHud {
                 pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(), "RUDDER"),
                 binding(FlightLineClient.brakes(), "BRAKES"),
                 binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT PANEL"),
-                binding(FlightLineClient.telemetry(), "TELEMETRY HUD"),
+                binding(FlightLineClient.telemetry(), "FLIGHT DATA PANEL"),
                 binding(FlightLineClient.flightTutorial(), "FLIGHT TUTORIAL"),
                 binding(FlightLineClient.emergencyChecklist(), "EMERGENCY CHECKLIST"),
                 binding(FlightLineClient.openControls(), "ALL CONTROLS"),
                 binding(FlightLineClient.toggleKeybindHints(), "HIDE PROMPTS")));
         if (emergencyStatus.recommendation().present()) {
-            bindings.add(binding(FlightLineClient.executeEmergency(), "EXECUTE RECOMMENDED FIX"));
+            bindings.add(binding(FlightLineClient.executeEmergency(), "EXECUTE NEXT ACTION"));
         }
         if (FlightLineClient.isAirborne()) {
             bindings.addAll(List.of(
@@ -1353,7 +1353,7 @@ final class FlightHud {
             if (FlightLineClient.areEnginesActive()) {
                 bindings.add(binding(FlightLineClient.shutdownEngines(), "SHUT DOWN ENGINES"));
             } else if (isCrashed()) {
-                bindings.add(binding(FlightLineClient.inventory(), "RESET AIRCRAFT"));
+                bindings.add(binding(FlightLineClient.inventory(), "RECONFIGURE AIRCRAFT"));
             } else {
                 bindings.add(binding(FlightLineClient.inventory(), "START ENGINES"));
             }

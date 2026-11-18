@@ -74,12 +74,12 @@
                 <table class="key-table">
                     <thead><tr><th>Key</th><th>Action</th><th>Notes</th></tr></thead>
                     <tbody>
-                        <tr><td><kbd>H</kbd></td><td>Flight deck / autopilot</td><td>Opens MCP, NAV/ILS, WX and KEYS pages.</td></tr>
+                        <tr><td><kbd>H</kbd></td><td>Flight deck / autopilot</td><td>Opens MCP, NAV/ILS, WX and SYS pages.</td></tr>
                         <tr><td><kbd>R</kbd></td><td>Flight radar</td><td>Traffic scope with authoritative contacts.</td></tr>
                         <tr><td><kbd>U</kbd></td><td>Primary flight display</td><td>Toggles the PFD.</td></tr>
                         <tr><td><kbd>I</kbd></td><td>EICAS</td><td>Engine and aircraft status.</td></tr>
                         <tr><td><kbd>B</kbd></td><td>Navigation / TCAS display</td><td>Toggles the ND overlay.</td></tr>
-                        <tr><td><kbd>Y</kbd></td><td>Telemetry detail</td><td>Opens the expanded data card. Core GS, track and G-load stay on the PFD.</td></tr>
+                        <tr><td><kbd>Y</kbd></td><td>Flight data card</td><td>Toggles the compact FLIGHT DATA readout: wind, N1, flaps, gear, brakes, ILS/RA, V/S, fuel and weather. Core GS, track and G-load stay on the PFD.</td></tr>
                         <tr><td><kbd>L</kbd></td><td>Flight tutorial</td><td>Opens the interactive four-stage lesson.</td></tr>
                         <tr><td><kbd>P</kbd></td><td>Weather map</td><td>Opens the deterministic storm cell map.</td></tr>
                         <tr><td><kbd>F9</kbd></td><td>Cockpit prompts</td><td>Shows or hides bottom-right key hints.</td></tr>
@@ -99,8 +99,8 @@
                     <thead><tr><th>Key</th><th>Action</th><th>Notes</th></tr></thead>
                     <tbody>
                         <tr><td><kbd>O</kbd></td><td>Emergency checklist</td><td>Opens or closes the interactive checklist.</td></tr>
-                        <tr><td><kbd>T</kbd></td><td>Run recommended fix</td><td>Executes the checklist's current recommendation.</td></tr>
-                        <tr><td><kbd>F7</kbd></td><td>Acknowledge ATC / release</td><td>Releases your aircraft if an operator has control.</td></tr>
+                        <tr><td><kbd>T</kbd></td><td>Execute next action</td><td>Runs the checklist's current recommended action.</td></tr>
+                        <tr><td><kbd>F7</kbd></td><td>Acknowledge ATC / release</td><td>Returns local control if ATC has command of your aircraft.</td></tr>
                         <tr><td><kbd>F8</kbd></td><td>Anti-ice</td><td>Clears ice only with a running, spooled engine.</td></tr>
                     </tbody>
                 </table>
@@ -142,7 +142,7 @@
                     <h3>O & T — checklists</h3>
                     <ul>
                         <li><code>O</code> opens the situation and procedure panels.</li>
-                        <li><code>T</code> runs the highlighted recommendation.</li>
+                        <li><code>T</code> executes the highlighted next action.</li>
                         <li>The server revalidates every action before applying it.</li>
                     </ul>
                 </article>
@@ -152,13 +152,13 @@
         <section class="container section">
             <div class="content-panel pixel-box">
                 <h2>Flight deck and ILS autoland</h2>
-                <p>Press <code>H</code> for the four-page flight deck. The MCP holds heading, altitude, vertical speed and IAS targets, with SYNC and LEVEL shortcuts. The NAV/ILS page configures approaches; WX shows weather; KEYS repeats your bindings.</p>
+                <p>Press <code>H</code> for the four-page flight deck. The MCP holds heading, altitude, vertical speed and IAS targets, with SYNC and LEVEL shortcuts. The NAV/ILS page configures approaches, WX shows layered storm cells and traffic, and SYS shows the aircraft schematic and system status.</p>
                 <ul class="command-list" style="margin-top:16px">
                     <li><code>/flightline ils set 1-6</code> — set glide slope, default <code>3.0</code></li>
                     <li><code>/flightline ils clear</code> — remove the localizer</li>
                     <li><code>H → NAV/ILS → AUTOLAND</code> — engage the approach</li>
                 </ul>
-                <p style="margin-top:16px;color:var(--muted)">Autoland needs airborne flight, valid same-dimension ILS coverage, serviceable gear, a running engine and enough airspeed margin. It targets 130 kt, manages gear and flaps, and drops ATC control before taking over. Normal or emergency autoland also releases operator control.</p>
+                <p style="margin-top:16px;color:var(--muted)">Autoland needs airborne flight, valid same-dimension ILS coverage, serviceable gear, a running engine and enough airspeed margin. It targets 130 kt, manages gear and flaps, and drops ATC control before taking over. Normal or emergency autoland also releases ATC control.</p>
             </div>
         </section>
 

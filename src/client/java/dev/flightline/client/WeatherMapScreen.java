@@ -1,5 +1,6 @@
 package dev.flightline.client;
 
+import dev.flightline.flight.WeatherSimulation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -72,7 +73,7 @@ public final class WeatherMapScreen extends Screen {
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 24, 0xFF1C2733);
-        graphics.centeredText(font, "WEATHER MAP  ·  DETERMINISTIC STORM CELLS",
+        graphics.centeredText(font, "WEATHER RADAR  ·  AREA COVERAGE",
                 panelLeft + panelWidth / 2, panelTop + 7, 0xFF72E6F5);
 
         graphics.fill(scopeLeft, scopeTop, scopeLeft + scopeWidth, scopeTop + scopeHeight, 0xFF07100D);
@@ -88,11 +89,14 @@ public final class WeatherMapScreen extends Screen {
         WeatherDisplay.drawRadarCells(graphics, cx, cy, radius, RANGES[rangeIndex], ownX, ownZ,
                 headingUp, FlightHud.radarOwnHeadingDegrees(), gameTime,
                 WeatherDisplay.CELL_SEED, FlightHud.weatherGuidance());
+        drawVisibilityHaze(graphics);
+        drawWindField(graphics, cx, cy, radius);
+        drawCompassRose(graphics, cx, cy, radius);
 
         for (int ring = 1; ring <= 3; ring++) {
             drawCircle(graphics, cx, cy, radius * ring / 3, 0x8A3D6C58);
-            graphics.text(font, (RANGES[rangeIndex] * ring / 3) + "B", cx + 3, cy - radius * ring / 3 - 4,
-                    0x9956B9D2, false);
+            graphics.text(font, String.format(Locale.ROOT, "%d NM", RANGES[rangeIndex] * ring / 3 / 10),
+                    cx + 3, cy - radius * ring / 3 - 4, 0x9956B9D2, false);
         }
         drawLine(graphics, cx - radius, cy, cx + radius, cy, 0x8A315E50);
         drawLine(graphics, cx, cy - radius, cx, cy + radius, 0x8A315E50);
@@ -120,29 +124,39 @@ public final class WeatherMapScreen extends Screen {
             double scale = radius / (double) RANGES[rangeIndex];
             int px = cx + (int) Math.round(dx * scale);
             int py = cy + (int) Math.round(dz * scale);
-            int color = contact.player() ? 0xFF6BCBFF : contact.airborne() ? 0xFF75E6A5 : 0xFFFFCE52;
-            graphics.fill(px - 1, py - 1, px + 2, py + 2, color);
+            int color = contact.airborne() ? 0xFF75E6A5 : 0xFFFFCE52;
+            graphics.fill(px - 2, py - 2, px + 3, py + 3, color);
+            if (contact.airborne()) {
+                double heading = Math.toRadians(headingUp
+                        ? contact.headingDegrees() - FlightHud.radarOwnHeadingDegrees()
+                        : contact.headingDegrees());
+                int vx = px + (int) Math.round(Math.sin(heading) * 10);
+                int vy = py - (int) Math.round(Math.cos(heading) * 10);
+                drawLine(graphics, px, py, vx, vy, color);
+                graphics.text(font, String.format(Locale.ROOT, "%05.0f", contact.altitudeFeet() / 10.0f),
+                        px + 4, py - 10, 0xFFA8D8C0, false);
+            }
         }
 
         graphics.fill(cx - 2, cy - 5, cx + 3, cy + 5, 0xFFFFFFFF);
         graphics.fill(cx - 5, cy - 2, cx + 6, cy + 3, 0xFFFFFFFF);
-        graphics.text(font, headingUp ? "HDG UP" : "N", scopeLeft + 4, scopeTop + 4, 0xFF9BC9AE, true);
-        graphics.text(font, "R " + RANGES[rangeIndex] + "B", scopeLeft + 4,
-                scopeTop + scopeHeight - 12, 0xFF9BC9AE, true);
-        drawWindArrow(graphics, scopeLeft + scopeWidth - 52, scopeTop + 8);
+        graphics.text(font, headingUp ? "HDG UP" : "NORTH UP", scopeLeft + 6, scopeTop + 5, 0xFF9BC9AE, true);
+        graphics.text(font, String.format(Locale.ROOT, "RANGE %.0f NM", RANGES[rangeIndex] / 10.0f),
+                scopeLeft + 6, scopeTop + scopeHeight - 12, 0xFF9BC9AE, true);
+        drawWindArrow(graphics, scopeLeft + scopeWidth - 56, scopeTop + 8);
         drawLegend(graphics);
 
         var weather = FlightHud.weatherGuidance();
-        String summary = String.format(Locale.ROOT,
-                "%s  ·  WIND %03d/%02d G%02d  ·  VIS %dB  ·  TURB %d%%  ·  ICE %d%%  ·  ANTI-ICE %s",
+        String metar = String.format(Locale.ROOT, "%s  WIND %03d/%02dG%02d  VIS %.1fSM  %s",
                 conditionName(weather.condition()), weather.windDirectionDegrees(),
-                weather.windSpeedKnots(), weather.gustKnots(), weather.visibilityBlocks(),
-                weather.turbulencePercent(), weather.icingPercent(),
-                weather.antiIceActive() ? (weather.antiIceEffective() ? "ON" : "INEFFECTIVE") : "OFF");
-        graphics.text(font, fit(summary, panelWidth - 24), panelLeft + 12,
+                weather.windSpeedKnots(), weather.gustKnots(), weather.visibilityBlocks() / 64.0f,
+                weather.turbulencePercent() >= 70 ? "SEV TURB" : weather.turbulencePercent() >= 35 ? "MOD TURB" : "TURB NIL");
+        graphics.text(font, fit(metar, panelWidth - 24), panelLeft + 12,
                 panelTop + panelHeight - 34, 0xFFB6C8D1, true);
-        graphics.text(font, fit("Cells drift with world time · scroll to zoom · shared with flight radar",
-                panelWidth - 24), panelLeft + 12, panelTop + panelHeight - 18, 0xFF71858B, true);
+        graphics.text(font, fit("OWN AIRCRAFT ICING " + weather.icingPercent() + "%  ·  A-ICE "
+                + (weather.antiIceEffective() ? "CLEARING" : weather.antiIceActive() ? "ON" : "OFF")
+                + "  ·  SCROLL TO CHANGE RANGE", panelWidth - 24),
+                panelLeft + 12, panelTop + panelHeight - 18, 0xFF71858B, true);
         super.extractRenderState(graphics, scaler.mouseX(mouseX), scaler.mouseY(mouseY), partialTick);
         scaler.pop(graphics);
     }
@@ -168,14 +182,68 @@ public final class WeatherMapScreen extends Screen {
     }
 
     private void drawLegend(GuiGraphicsExtractor graphics) {
-        int x = panelLeft + panelWidth - 78;
+        int x = panelLeft + panelWidth - 86;
         int y = scopeTop + 34;
-        int[][] colors = {{0xFF5B9B65, 0xFFB8A532}, {0xFFE05026, 0xFFB31E22}};
-        String[] labels = {"RAIN", "STORM"};
+        int[] colors = {0xFF3E8E58, 0xFFB8A532, 0xFFE05026, 0xFFB31E22};
+        String[] labels = {"LIGHT", "MOD", "HEAVY", "EXTREME"};
+        graphics.text(font, "DBZ", x - 16, y - 12, 0xFF9BC9AE, false);
         for (int i = 0; i < colors.length; i++) {
-            graphics.fill(x, y + i * 13, x + 9, y + i * 13 + 8, colors[i][i]);
-            graphics.text(font, labels[i], x + 13, y + i * 13 - 1, 0xFFB6C8D1, false);
+            graphics.fill(x, y + i * 12, x + 10, y + i * 12 + 7, colors[i]);
+            graphics.text(font, labels[i], x + 14, y + i * 12 - 1, 0xFFB6C8D1, false);
         }
+    }
+
+    private void drawVisibilityHaze(GuiGraphicsExtractor graphics) {
+        var weather = FlightHud.weatherGuidance();
+        int alpha = weather.visibilityBlocks() <= 28 ? 0x38 : weather.visibilityBlocks() <= 64 ? 0x1E : 0x0A;
+        int color = (alpha << 24) | 0x9AA7A0;
+        int band = 14;
+        graphics.fill(scopeLeft, scopeTop, scopeLeft + scopeWidth, scopeTop + band, color);
+        graphics.fill(scopeLeft, scopeTop + scopeHeight - band, scopeLeft + scopeWidth,
+                scopeTop + scopeHeight, color);
+        graphics.fill(scopeLeft, scopeTop, scopeLeft + band, scopeTop + scopeHeight, color);
+        graphics.fill(scopeLeft + scopeWidth - band, scopeTop, scopeLeft + scopeWidth,
+                scopeTop + scopeHeight, color);
+    }
+
+    private void drawWindField(GuiGraphicsExtractor graphics, int cx, int cy, int radius) {
+        var weather = FlightHud.weatherGuidance();
+        int color = weather.windSpeedKnots() >= 30 ? 0xFF72E6F5 : 0x5E9CB0;
+        int step = 58;
+        for (int gy = -2; gy <= 2; gy++) {
+            for (int gx = -3; gx <= 3; gx++) {
+                int px = cx + gx * step;
+                int py = cy + gy * step;
+                if ((px - cx) * (px - cx) + (py - cy) * (py - cy) > (radius - 8) * (radius - 8)) continue;
+                int len = 7 + Math.min(9, weather.windSpeedKnots() / 6);
+                double radians = Math.toRadians(weather.windDirectionDegrees()
+                        - (headingUp ? FlightHud.radarOwnHeadingDegrees() : 0.0f));
+                int dx = (int) Math.round(Math.sin(radians) * len);
+                int dy = (int) Math.round(-Math.cos(radians) * len);
+                drawLine(graphics, px - dx, py - dy, px + dx, py + dy, color);
+                int[] barb = headingPoint(px + dx, py + dy, 4, weather.windDirectionDegrees() + 140
+                        - (headingUp ? FlightHud.radarOwnHeadingDegrees() : 0.0f));
+                drawLine(graphics, px + dx, py + dy, barb[0], barb[1], color);
+            }
+        }
+    }
+
+    private void drawCompassRose(GuiGraphicsExtractor graphics, int cx, int cy, int radius) {
+        String[] labels = {"N", "E", "S", "W"};
+        double[] angles = {0, 90, 180, 270};
+        float ownHeading = headingUp ? FlightHud.radarOwnHeadingDegrees() : 0.0f;
+        for (int i = 0; i < labels.length; i++) {
+            double radians = Math.toRadians(angles[i] - ownHeading);
+            int px = cx + (int) Math.round(Math.sin(radians) * (radius - 12));
+            int py = cy - (int) Math.round(Math.cos(radians) * (radius - 12));
+            graphics.text(font, labels[i], px - 2, py - 3, 0xFF9BC9AE, false);
+        }
+    }
+
+    private int[] headingPoint(int cx, int cy, int radius, double degrees) {
+        double radians = Math.toRadians(degrees);
+        return new int[]{Math.round(cx + (float) (Math.sin(radians) * radius)),
+                Math.round(cy - (float) (Math.cos(radians) * radius))};
     }
 
     private void drawWindArrow(GuiGraphicsExtractor graphics, int x, int y) {
@@ -213,9 +281,9 @@ public final class WeatherMapScreen extends Screen {
 
     private String conditionName(int condition) {
         return switch (condition) {
-            case 2 -> "THUNDERSTORMS";
-            case 1 -> "RAIN";
-            default -> "CLEAR";
+            case 2 -> "TSRA";
+            case 1 -> "RA";
+            default -> "CAVOK";
         };
     }
 
