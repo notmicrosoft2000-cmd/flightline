@@ -23,9 +23,9 @@ import java.util.Set;
 
 /** Builds surveyed 400-block runways on safe terrain as players explore the Overworld. */
 public final class RunwayGenerator {
-    static final int RUNWAY_LENGTH = 400;
-    static final int RUNWAY_WIDTH = 28;
-    private static final int GRID_SPACING = 8192;
+    public static final int RUNWAY_LENGTH = 400;
+    public static final int RUNWAY_WIDTH = 28;
+    public static final int GRID_SPACING = 8192;
     private static final int TRIGGER_DISTANCE = 900;
     private static final int MAX_TERRAIN_VARIANCE = 2;
     private static final int WORK_PER_TICK = 256;
@@ -66,7 +66,7 @@ public final class RunwayGenerator {
                     if (site.distanceSquared(player.getBlockX(), player.getBlockZ()) > triggerSquared) continue;
                     long key = site.key();
                     if (!DISCOVERED_SITES.add(key)) continue;
-                    if (!insideWorldBorder(level, site)) continue;
+                    if (!isSiteAvailable(level, site)) continue;
                     if (runwayAlreadyExists(level, site)) continue;
                     QUEUED_SITES.add(new SiteTask(level, site));
                 }
@@ -74,7 +74,7 @@ public final class RunwayGenerator {
         }
     }
 
-    private static Site siteFor(BlockPos spawn, int cellX, int cellZ) {
+    public static Site siteFor(BlockPos spawn, int cellX, int cellZ) {
         long seed = ((long) cellX << 32) ^ (cellZ & 0xFFFFFFFFL);
         seed = mix(seed);
         int offsetX = Math.floorMod((int) seed, 1025) - 512;
@@ -84,6 +84,12 @@ public final class RunwayGenerator {
         int centerX = spawn.getX() + cellX * GRID_SPACING + offsetX;
         int centerZ = spawn.getZ() + cellZ * GRID_SPACING + offsetZ;
         return new Site(centerX, centerZ, alongX);
+    }
+
+    /** Cheap validity check used by the navigation database before advertising a site. */
+    public static boolean isSiteAvailable(ServerLevel level, Site site) {
+        return insideWorldBorder(level, site)
+                && !FlightPlanStorage.get(level.getServer()).isRunwaySiteFailed(site.key());
     }
 
     private static long mix(long value) {
@@ -115,8 +121,8 @@ public final class RunwayGenerator {
                 && level.getWorldBorder().isWithinBounds(maxX, maxZ);
     }
 
-    private record Site(int centerX, int centerZ, boolean alongX) {
-        private long key() {
+    public record Site(int centerX, int centerZ, boolean alongX) {
+        public long key() {
             return ((long) centerX << 32) ^ (centerZ & 0xFFFFFFFFL);
         }
 
@@ -171,7 +177,7 @@ public final class RunwayGenerator {
                 level.getChunkSource().getChunk(chunk.x(), chunk.z(), ChunkStatus.FULL, true);
             }
             if (chunkIndex >= chunks.size()) {
-                if (runwayAlreadyExists(level, site)) return fail();
+                if (runwayAlreadyExists(level, site)) return complete();
                 stage = Stage.SURVEY;
             }
             return false;
@@ -281,9 +287,16 @@ public final class RunwayGenerator {
             return Blocks.CONCRETE.gray().defaultBlockState();
         }
 
-        private boolean fail() {
+        private boolean complete() {
             stage = Stage.DONE;
             return true;
+        }
+
+        private boolean fail() {
+            // Nav snapshots are immutable for a server session by design; the persisted failure
+            // takes effect the next time the database is rebuilt (join, respawn, or restart).
+            FlightPlanStorage.get(level.getServer()).markRunwaySiteFailed(site.key());
+            return complete();
         }
     }
 

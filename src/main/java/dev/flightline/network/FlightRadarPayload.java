@@ -1,6 +1,6 @@
 package dev.flightline.network;
 
-import dev.flightline.FlightLine;
+import dev.flightline.FlightLineIds;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -12,7 +12,7 @@ import java.util.List;
 public record FlightRadarPayload(int ownX, int ownZ, int ownAltitudeFeet, float ownHeadingDegrees,
                                  int scopeBlocks, List<Contact> contacts) implements CustomPacketPayload {
     public static final int MAX_CONTACTS = 128;
-    public static final Type<FlightRadarPayload> TYPE = new Type<>(FlightLine.id("flight_radar"));
+    public static final Type<FlightRadarPayload> TYPE = new Type<>(FlightLineIds.id("flight_radar"));
 
     @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, FlightRadarPayload> CODEC = StreamCodec.composite(

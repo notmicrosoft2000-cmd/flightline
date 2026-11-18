@@ -1,9 +1,12 @@
 package dev.flightline.client;
 
+import dev.flightline.flight.NavMode;
 import dev.flightline.flight.WeatherSimulation;
 import dev.flightline.network.ConfigureAutopilotPayload;
 import dev.flightline.network.ConfigureIlsPayload;
+import dev.flightline.network.FileFlightPlanPayload;
 import dev.flightline.network.FlightInstrumentPayload;
+import dev.flightline.network.NavDataPayload;
 import dev.flightline.network.ToggleAutolandPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
@@ -15,6 +18,8 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -55,6 +60,14 @@ public class AutopilotScreen extends Screen {
     private boolean engaged;
     private int activePage;
     private String ilsMessage = "";
+    private int fplnOrigin;
+    private int fplnDestination;
+    private int fplnAlternate;
+    private int fplnAltitude = 12_000;
+    private int fplnFixIndex;
+    private int fplnWaypointIndex;
+    private List<Integer> fplnWaypoints = new ArrayList<>();
+    private String fplnMessage = "";
 
     private final ScreenScaler scaler = new ScreenScaler(BASE_WIDTH, BASE_HEIGHT);
     private int panelLeft;
@@ -66,8 +79,14 @@ public class AutopilotScreen extends Screen {
 
     public AutopilotScreen(boolean currentlyEngaged, int currentHeading, int currentAltitudeFeet,
                            int currentVsFpm, int currentSpeedKnots) {
+        this(currentlyEngaged, currentHeading, currentAltitudeFeet, currentVsFpm, currentSpeedKnots, 0);
+    }
+
+    public AutopilotScreen(boolean currentlyEngaged, int currentHeading, int currentAltitudeFeet,
+                           int currentVsFpm, int currentSpeedKnots, int initialPage) {
         super(Component.literal("Mode Control Panel"));
         this.engaged = currentlyEngaged;
+        this.activePage = Math.max(0, Math.min(4, initialPage));
         cachedGlideSlope = FlightHud.ilsReferenceGlideSlope();
         if (currentHeading >= 0) cachedHeading = Math.floorMod(currentHeading, 360);
         if (currentAltitudeFeet > 0) cachedAltitude = clamp(currentAltitudeFeet, 100, 35000);
@@ -82,6 +101,7 @@ public class AutopilotScreen extends Screen {
             }
             thresholdDefaultsInitialized = true;
         }
+        resetFlightPlanDraft();
     }
 
     @Override
@@ -95,16 +115,19 @@ public class AutopilotScreen extends Screen {
         scaleX = 1.0f;
         scaleY = 1.0f;
 
-        addRenderableWidget(tabButton("MCP", 0, 12, 108));
-        addRenderableWidget(tabButton("NAV / ILS", 1, 126, 112));
-        addRenderableWidget(tabButton("WX", 2, 244, 76));
-        addRenderableWidget(tabButton("SYS", 3, 326, 84));
+        addRenderableWidget(tabButton("MCP", 0, 12, 100));
+        addRenderableWidget(tabButton("FPLN", 1, 116, 80));
+        addRenderableWidget(tabButton("NAV / ILS", 2, 200, 112));
+        addRenderableWidget(tabButton("WX", 3, 316, 70));
+        addRenderableWidget(tabButton("SYS", 4, 390, 84));
 
         if (activePage == 0) {
             initMcpPage();
         } else if (activePage == 1) {
-            initNavPage();
+            initFlightPlanPage();
         } else if (activePage == 2) {
+            initNavPage();
+        } else if (activePage == 3) {
             initWeatherPage();
         } else {
             initSystemsPage();
@@ -139,6 +162,43 @@ public class AutopilotScreen extends Screen {
         apMasterBtn = Button.builder(apButtonText(), b -> toggleAp())
                 .bounds(x(12), y(350), w(180), h(20)).build();
         addRenderableWidget(apMasterBtn);
+    }
+
+    private void initFlightPlanPage() {
+        addRenderableWidget(compactActionButton(airportLabel(fplnOrigin, "ORIGIN"), 28, 120, 108,
+                () -> cycleAirport(true)));
+        addRenderableWidget(compactActionButton(airportLabel(fplnDestination, "DEST"), 144, 120, 108,
+                () -> cycleAirport(false)));
+        addRenderableWidget(compactActionButton(airportLabel(fplnAlternate, "ALTN"), 28, 146, 108,
+                this::cycleAlternate));
+        addRenderableWidget(compactActionButton("-1000", 144, 146, 52, () -> adjustCruiseAltitude(-1000)));
+        addRenderableWidget(compactActionButton("+1000", 200, 146, 52, () -> adjustCruiseAltitude(1000)));
+
+        addRenderableWidget(compactActionButton("< FIX", 276, 120, 60, this::previousFix));
+        addRenderableWidget(compactActionButton("ADD", 340, 120, 60, this::addWaypoint));
+        addRenderableWidget(compactActionButton("FIX >", 404, 120, 60, this::nextFix));
+        addRenderableWidget(compactActionButton("REMOVE", 468, 120, 100, this::removeWaypoint));
+        addRenderableWidget(compactActionButton("WP UP", 276, 146, 76, () -> moveWaypoint(-1)));
+        addRenderableWidget(compactActionButton("WP DOWN", 356, 146, 84, () -> moveWaypoint(1)));
+        addRenderableWidget(compactActionButton("CLEAR ROUTE", 444, 146, 124, () -> {
+            fplnWaypoints.clear();
+            fplnWaypointIndex = 0;
+            fplnMessage = "WAYPOINT LIST CLEARED";
+            rebuild();
+        }));
+
+        addRenderableWidget(compactActionButton("FILE", 28, 316, 74, () -> sendPlanAction(
+                FileFlightPlanPayload.Action.FILE)));
+        addRenderableWidget(compactActionButton("REQUEST CLR", 108, 316, 100, () -> sendPlanAction(
+                FileFlightPlanPayload.Action.CLEARANCE)));
+        addRenderableWidget(compactActionButton("LNAV", 214, 316, 68, () -> sendPlanAction(
+                FileFlightPlanPayload.Action.LNAV)));
+        addRenderableWidget(compactActionButton("ILS APP", 288, 316, 80, () -> sendPlanAction(
+                FileFlightPlanPayload.Action.APPROACH)));
+        addRenderableWidget(compactActionButton("CANCEL", 374, 316, 80, () -> sendPlanAction(
+                FileFlightPlanPayload.Action.CANCEL)));
+        addRenderableWidget(compactActionButton("SYNC ALT", 460, 316, 108, () -> sendPlanAction(
+                FileFlightPlanPayload.Action.SYNC)));
     }
 
     private void initNavPage() {
@@ -206,6 +266,7 @@ public class AutopilotScreen extends Screen {
         if (activePage == 0) saveAutopilotValues();
         activePage = page;
         ilsMessage = "";
+        if (page == 1) resetFlightPlanDraft();
         clearWidgets();
         init();
     }
@@ -221,6 +282,163 @@ public class AutopilotScreen extends Screen {
         cachedThresholdX = parseCoordinate(thresholdXInput(), "THRESHOLD X");
         cachedThresholdZ = parseCoordinate(thresholdZInput(), "THRESHOLD Z");
         cachedRunwayHeading = Math.floorMod(parseCoordinate(runwayHeadingInput(), "RWY HDG"), 360);
+    }
+
+    private void rebuild() {
+        clearWidgets();
+        init();
+    }
+
+    private void resetFlightPlanDraft() {
+        List<NavDataPayload.Airport> airports = NavigationState.airports();
+        var current = NavigationState.plan();
+        if (airports.isEmpty()) {
+            fplnOrigin = fplnDestination = fplnAlternate = 0;
+            fplnWaypoints = new ArrayList<>();
+            return;
+        }
+        if (current != null) {
+            fplnOrigin = Math.max(0, airportIndex(current.originId()));
+            fplnDestination = Math.max(0, airportIndex(current.destinationId()));
+            fplnAlternate = Math.max(0, airportIndex(current.alternateId()));
+            fplnAltitude = current.cruiseAltitudeFeet();
+            fplnWaypoints = new ArrayList<>(current.waypointIds());
+        } else {
+            fplnOrigin = 0;
+            fplnDestination = Math.min(1, airports.size() - 1);
+            fplnAlternate = Math.min(2, airports.size() - 1);
+            fplnAltitude = 12_000;
+            fplnWaypoints = new ArrayList<>();
+        }
+        fplnWaypointIndex = 0;
+        fplnFixIndex = 0;
+    }
+
+    private int airportIndex(int airportId) {
+        List<NavDataPayload.Airport> airports = NavigationState.airports();
+        for (int i = 0; i < airports.size(); i++) {
+            if (airports.get(i).id() == airportId) return i;
+        }
+        return 0;
+    }
+
+    private int airportId(int index) {
+        List<NavDataPayload.Airport> airports = NavigationState.airports();
+        return airports.isEmpty() ? 0 : airports.get(Math.floorMod(index, airports.size())).id();
+    }
+
+    private String airportLabel(int index, String prefix) {
+        List<NavDataPayload.Airport> airports = NavigationState.airports();
+        String value = airports.isEmpty() ? "----" : airports.get(Math.floorMod(index, airports.size())).name();
+        return prefix + " " + value;
+    }
+
+    private void cycleAirport(boolean origin) {
+        int count = NavigationState.airports().size();
+        if (count == 0) {
+            fplnMessage = "NAV DATA UNAVAILABLE";
+            return;
+        }
+        if (origin) fplnOrigin = Math.floorMod(fplnOrigin + 1, count);
+        else fplnDestination = Math.floorMod(fplnDestination + 1, count);
+        if (fplnOrigin == fplnDestination) fplnDestination = Math.floorMod(fplnDestination + 1, count);
+        rebuild();
+    }
+
+    private void cycleAlternate() {
+        int count = NavigationState.airports().size();
+        if (count == 0) {
+            fplnMessage = "NAV DATA UNAVAILABLE";
+            return;
+        }
+        fplnAlternate = Math.floorMod(fplnAlternate + 1, count);
+        rebuild();
+    }
+
+    private void adjustCruiseAltitude(int delta) {
+        fplnAltitude = clamp(fplnAltitude + delta, 1000, 40_000);
+        rebuild();
+    }
+
+    private void previousFix() {
+        int count = NavigationState.fixes().size();
+        if (count == 0) {
+            fplnMessage = "NAV DATA UNAVAILABLE";
+            return;
+        }
+        fplnFixIndex = Math.floorMod(fplnFixIndex - 1, count);
+        rebuild();
+    }
+
+    private void nextFix() {
+        int count = NavigationState.fixes().size();
+        if (count == 0) {
+            fplnMessage = "NAV DATA UNAVAILABLE";
+            return;
+        }
+        fplnFixIndex = Math.floorMod(fplnFixIndex + 1, count);
+        rebuild();
+    }
+
+    private void addWaypoint() {
+        var fixes = NavigationState.fixes();
+        if (fixes.isEmpty() || fplnWaypoints.size() >= FileFlightPlanPayload.MAX_WAYPOINTS) {
+            fplnMessage = fixes.isEmpty() ? "NAV DATA UNAVAILABLE" : "WAYPOINT LIMIT REACHED";
+            return;
+        }
+        var fix = fixes.get(Math.floorMod(fplnFixIndex, fixes.size()));
+        fplnWaypoints.add(fix.id());
+        fplnWaypointIndex = fplnWaypoints.size() - 1;
+        fplnMessage = "ADDED " + fix.name();
+        rebuild();
+    }
+
+    private void removeWaypoint() {
+        if (fplnWaypoints.isEmpty()) {
+            fplnMessage = "NO WAYPOINTS";
+            return;
+        }
+        int removed = fplnWaypoints.remove(Math.min(fplnWaypointIndex, fplnWaypoints.size() - 1));
+        var fix = NavigationState.fix(removed);
+        fplnWaypointIndex = Math.min(fplnWaypointIndex, Math.max(0, fplnWaypoints.size() - 1));
+        fplnMessage = "REMOVED " + (fix == null ? removed : fix.name());
+        rebuild();
+    }
+
+    private void moveWaypoint(int delta) {
+        int size = fplnWaypoints.size();
+        if (size < 2) {
+            fplnMessage = "NEED TWO WAYPOINTS TO REORDER";
+            return;
+        }
+        int from = Math.min(fplnWaypointIndex, size - 1);
+        int to = from + delta;
+        if (to < 0 || to >= size) {
+            fplnMessage = "WAYPOINT AT LIST EDGE";
+            return;
+        }
+        int value = fplnWaypoints.remove(from);
+        fplnWaypoints.add(to, value);
+        fplnWaypointIndex = to;
+        rebuild();
+    }
+
+    private void sendPlanAction(FileFlightPlanPayload.Action action) {
+        if (!NavigationState.hasNavData()) {
+            fplnMessage = "NAV DATA UNAVAILABLE";
+            return;
+        }
+        ClientPlayNetworking.send(new FileFlightPlanPayload(airportId(fplnOrigin),
+                airportId(fplnDestination), List.copyOf(fplnWaypoints), fplnAltitude,
+                airportId(fplnAlternate), action));
+        fplnMessage = switch (action) {
+            case FILE -> "PLAN SENT TO ATC";
+            case CLEARANCE -> "CLEARANCE REQUESTED";
+            case CANCEL -> "CANCEL REQUESTED";
+            case LNAV -> "LNAV REQUESTED";
+            case APPROACH -> "APPROACH REQUESTED";
+            case SYNC -> "ALTITUDE SYNC REQUESTED";
+        };
     }
 
     private int parseCoordinate(EditBox input, String label) {
@@ -353,8 +571,9 @@ public class AutopilotScreen extends Screen {
 
         switch (activePage) {
             case 0 -> drawMcpPage(graphics);
-            case 1 -> drawNavPage(graphics);
-            case 2 -> drawWeatherPage(graphics);
+            case 1 -> drawFlightPlanPage(graphics);
+            case 2 -> drawNavPage(graphics);
+            case 3 -> drawWeatherPage(graphics);
             default -> drawSystemsPage(graphics);
         }
 
@@ -376,9 +595,11 @@ public class AutopilotScreen extends Screen {
         var guidance = FlightHud.autopilotGuidance();
         boolean ap = FlightHud.isAutopilotEngaged() || engaged;
         boolean at = ap;
-        boolean hdg = ap && !guidance.autolandArmed() && !guidance.atcControlled();
-        boolean alt = hdg && guidance.targetVerticalSpeedFpm() == 0;
-        boolean vs = hdg && guidance.targetVerticalSpeedFpm() != 0;
+        boolean lnav = ap && FlightHud.navMode() == NavMode.LNAV
+                && !guidance.autolandArmed() && !guidance.atcControlled();
+        boolean hdg = ap && !lnav && !guidance.autolandArmed() && !guidance.atcControlled();
+        boolean alt = (hdg || lnav) && guidance.targetVerticalSpeedFpm() == 0;
+        boolean vs = (hdg || lnav) && guidance.targetVerticalSpeedFpm() != 0;
         boolean ias = ap;
         boolean ils = FlightHud.isIlsActive();
         boolean autoland = guidance.autolandArmed();
@@ -389,7 +610,8 @@ public class AutopilotScreen extends Screen {
         graphics.outline(panelLeft + x(12), panelTop + y(54), w(576), h(30), BORDER);
         fmaChip(graphics, 18, 57, 58, "A/P", ap ? GREEN : MUTED, ap);
         fmaChip(graphics, 80, 57, 58, "A/T", at ? GREEN : MUTED, at);
-        fmaChip(graphics, 142, 57, 58, "HDG", hdg ? GREEN : MUTED, hdg);
+        fmaChip(graphics, 142, 57, 58, lnav ? "LNAV" : "HDG", lnav || hdg ? GREEN : MUTED,
+                lnav || hdg);
         fmaChip(graphics, 204, 57, 58, alt ? "ALT" : "V/S", alt || vs ? GREEN : MUTED, alt || vs);
         fmaChip(graphics, 266, 57, 58, "IAS", ias ? GREEN : MUTED, ias);
         fmaChip(graphics, 328, 57, 58, "ILS", ils ? autoland ? GREEN : CYAN : MUTED, ils);
@@ -542,6 +764,73 @@ public class AutopilotScreen extends Screen {
                 panelLeft + x(cx), panelTop + y(top + 6), CYAN, w(64));
         fittedCenteredText(graphics, String.format(Locale.ROOT, "SEL %+d", selected),
                 panelLeft + x(cx), panelTop + y(top + height - 12), AMBER, w(64));
+    }
+
+    private void drawFlightPlanPage(GuiGraphicsExtractor graphics) {
+        panel(graphics, 18, 100, 240, 196, "FLIGHT PLAN / ROUTE");
+        panel(graphics, 266, 100, 316, 196, "WAYPOINT SEQUENCE");
+        panel(graphics, 18, 304, 564, 58, "ATC CLEARANCE / STATUS");
+
+        var plan = NavigationState.plan();
+        fittedText(graphics, "CRUISE", panelLeft + x(28), panelTop + y(176), MUTED, w(108), true);
+        fittedText(graphics, String.format(Locale.ROOT, "FL%03d", fplnAltitude / 100),
+                panelLeft + x(144), panelTop + y(176), AMBER, w(108), true);
+        fittedText(graphics, "STATUS", panelLeft + x(28), panelTop + y(194), MUTED, w(108), true);
+        fittedText(graphics, NavigationState.statusLabel(), panelLeft + x(144), panelTop + y(194),
+                NavigationState.hasPlan() ? GREEN : MUTED, w(108), true);
+        fittedText(graphics, "ACTIVE LEG", panelLeft + x(28), panelTop + y(212), MUTED, w(108), true);
+        fittedText(graphics, activeLegLabel(), panelLeft + x(144), panelTop + y(212), CYAN, w(108), true);
+        fittedText(graphics, "RUNWAYS", panelLeft + x(28), panelTop + y(230), MUTED, w(108), true);
+        fittedText(graphics, runwayLabel(plan == null ? 0 : plan.departureRunwayId())
+                        + " / " + runwayLabel(plan == null ? 0 : plan.arrivalRunwayId()),
+                panelLeft + x(144), panelTop + y(230), TEXT, w(108), true);
+        if (!NavigationState.hasNavData()) {
+            fittedCenteredText(graphics, "WAITING FOR NAVIGATION DATA", panelLeft + x(138),
+                    panelTop + y(258), RED, w(220));
+        }
+
+        var fixes = NavigationState.fixes();
+        String selectedFix = fixes.isEmpty() ? "----"
+                : fixes.get(Math.floorMod(fplnFixIndex, fixes.size())).name();
+        fittedText(graphics, "SELECTED FIX: " + selectedFix, panelLeft + x(276), panelTop + y(176),
+                CYAN, w(300), true);
+        for (int row = 0; row < 6; row++) {
+            int index = row;
+            int y = 192 + row * 16;
+            if (index >= fplnWaypoints.size()) {
+                fittedText(graphics, String.format(Locale.ROOT, "%d  --------", index + 1),
+                        panelLeft + x(276), panelTop + y(y), 0xFF4E626C, w(300), true);
+                continue;
+            }
+            var fix = NavigationState.fix(fplnWaypoints.get(index));
+            String name = fix == null ? " FIX" + fplnWaypoints.get(index) : fix.name();
+            String marker = plan != null && index == plan.activeLeg() ? ">" : " ";
+            int color = index == fplnWaypointIndex ? AMBER : marker.equals(">") ? GREEN : TEXT;
+            fittedText(graphics, String.format(Locale.ROOT, "%d%s %s", index + 1, marker, name),
+                    panelLeft + x(276), panelTop + y(y), color, w(300), true);
+        }
+        fittedText(graphics, String.format(Locale.ROOT, "%d / %d WAYPOINTS",
+                        fplnWaypoints.size(), FileFlightPlanPayload.MAX_WAYPOINTS),
+                panelLeft + x(276), panelTop + y(288), MUTED, w(300), true);
+
+        String summary = plan == null ? "NO ACTIVE FLIGHT PLAN"
+                : String.format(Locale.ROOT, "%s  REV %d  LEG %d/%d",
+                        NavigationState.statusLabel(), plan.revision(), plan.activeLeg() + 1,
+                        NavigationState.legs().size() + 1);
+        fittedText(graphics, summary, panelLeft + x(28), panelTop + y(312),
+                plan == null ? MUTED : GREEN, w(430), true);
+        fittedText(graphics, fplnMessage, panelLeft + x(28), panelTop + y(330), CYAN, w(540), true);
+    }
+
+    private String activeLegLabel() {
+        var leg = NavigationState.activeLeg();
+        if (leg == null) return "DEST";
+        return leg.name();
+    }
+
+    private String runwayLabel(int runwayId) {
+        var runway = NavigationState.runway(runwayId);
+        return runway == null ? "----" : runway.name();
     }
 
     private void drawNavPage(GuiGraphicsExtractor graphics) {
@@ -926,8 +1215,9 @@ public class AutopilotScreen extends Screen {
     private String activePageName() {
         return switch (activePage) {
             case 0 -> "MCP";
-            case 1 -> "NAV / ILS";
-            case 2 -> "WX";
+            case 1 -> "FLIGHT PLAN";
+            case 2 -> "NAV / ILS";
+            case 3 -> "WX";
             default -> "SYS";
         };
     }

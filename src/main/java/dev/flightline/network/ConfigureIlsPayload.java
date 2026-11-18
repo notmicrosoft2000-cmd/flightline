@@ -1,6 +1,6 @@
 package dev.flightline.network;
 
-import dev.flightline.FlightLine;
+import dev.flightline.FlightLineIds;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -12,7 +12,7 @@ public record ConfigureIlsPayload(boolean active, float glideSlopeDegrees, int t
         this(active, glideSlopeDegrees, 0, 0, 0.0f);
     }
 
-    public static final Type<ConfigureIlsPayload> TYPE = new Type<>(FlightLine.id("configure_ils"));
+    public static final Type<ConfigureIlsPayload> TYPE = new Type<>(FlightLineIds.id("configure_ils"));
     @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, ConfigureIlsPayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.BOOL, ConfigureIlsPayload::active,

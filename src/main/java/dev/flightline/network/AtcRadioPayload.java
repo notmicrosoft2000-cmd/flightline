@@ -1,6 +1,6 @@
 package dev.flightline.network;
 
-import dev.flightline.FlightLine;
+import dev.flightline.FlightLineIds;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -11,7 +11,7 @@ public record AtcRadioPayload(String message, int senderEntityId) implements Cus
         this(message, -1);
     }
 
-    public static final Type<AtcRadioPayload> TYPE = new Type<>(FlightLine.id("atc_radio"));
+    public static final Type<AtcRadioPayload> TYPE = new Type<>(FlightLineIds.id("atc_radio"));
 
     @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, AtcRadioPayload> CODEC = StreamCodec.composite(

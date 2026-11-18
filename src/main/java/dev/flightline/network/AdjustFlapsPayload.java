@@ -1,13 +1,13 @@
 package dev.flightline.network;
 
-import dev.flightline.FlightLine;
+import dev.flightline.FlightLineIds;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public record AdjustFlapsPayload(int delta) implements CustomPacketPayload {
-    public static final Type<AdjustFlapsPayload> TYPE = new Type<>(FlightLine.id("adjust_flaps"));
+    public static final Type<AdjustFlapsPayload> TYPE = new Type<>(FlightLineIds.id("adjust_flaps"));
     @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, AdjustFlapsPayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.VAR_INT, AdjustFlapsPayload::delta, AdjustFlapsPayload::new);

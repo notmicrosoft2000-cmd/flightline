@@ -1,6 +1,6 @@
 package dev.flightline.network;
 
-import dev.flightline.FlightLine;
+import dev.flightline.FlightLineIds;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -8,7 +8,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 public record AtcOrderPayload(int entityId, int order, int value, int referenceEntityId)
         implements CustomPacketPayload {
-    public static final Type<AtcOrderPayload> TYPE = new Type<>(FlightLine.id("atc_order"));
+    public static final Type<AtcOrderPayload> TYPE = new Type<>(FlightLineIds.id("atc_order"));
 
     @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, AtcOrderPayload> CODEC = StreamCodec.composite(

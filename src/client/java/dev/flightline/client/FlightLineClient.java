@@ -12,8 +12,10 @@ import dev.flightline.network.EmergencyStatusPayload;
 import dev.flightline.network.FlightInputPayload;
 import dev.flightline.network.FlightNoticePayload;
 import dev.flightline.network.FlightInstrumentPayload;
+import dev.flightline.network.FlightPlanPayload;
 import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
+import dev.flightline.network.NavDataPayload;
 import dev.flightline.network.SelectPlanePayload;
 import dev.flightline.network.StartEnginesPayload;
 import dev.flightline.network.ShutdownEnginesPayload;
@@ -227,6 +229,10 @@ public class FlightLineClient implements ClientModInitializer {
         });
         ClientPlayNetworking.registerGlobalReceiver(FlightRadarPayload.TYPE, (payload, context) ->
                 FlightHud.updateRadar(payload));
+        ClientPlayNetworking.registerGlobalReceiver(NavDataPayload.TYPE, (payload, context) ->
+                NavigationState.setNavData(payload));
+        ClientPlayNetworking.registerGlobalReceiver(FlightPlanPayload.TYPE, (payload, context) ->
+                NavigationState.setPlan(payload));
         ClientPlayNetworking.registerGlobalReceiver(EmergencyStatusPayload.TYPE, (payload, context) ->
                 FlightHud.updateEmergency(payload));
         ClientPlayNetworking.registerGlobalReceiver(FlightNoticePayload.TYPE, (payload, context) ->
@@ -301,16 +307,15 @@ public class FlightLineClient implements ClientModInitializer {
                             Math.round(FlightHud.currentHeading()),
                             FlightHud.currentAltitudeFeet(),
                             FlightHud.currentVsFpm(),
-                            FlightHud.currentSpeedKnots()
+                            FlightHud.currentSpeedKnots(),
+                            1
                     ));
                 }
                 if (client.gui.screen() == null) {
                     if (ACK_ATC.consumeClick() && FlightHud.hasAtcMessage()) {
                         int controllerId = FlightHud.atcControllerEntityId();
-                        if (controllerId >= 0) {
-                            ClientPlayNetworking.send(new AtcAckPayload(controllerId));
-                            FlightHud.showAtcMessage("ACK SENT TO ATC", -1);
-                        }
+                        ClientPlayNetworking.send(new AtcAckPayload(controllerId));
+                        FlightHud.showAtcMessage("ACK SENT TO ATC", -1);
                     }
                     if (TOGGLE_PFD.consumeClick()) FlightHud.togglePfd();
                     if (TOGGLE_EICAS.consumeClick()) FlightHud.toggleEicas();
@@ -410,6 +415,7 @@ public class FlightLineClient implements ClientModInitializer {
                 engineSound = null;
             }
             FlightHud.clear();
+            NavigationState.reset();
             stopAtcCameraFollow(client);
             clearAtcHighlight();
             vanillaHudSlide = 0.0f;

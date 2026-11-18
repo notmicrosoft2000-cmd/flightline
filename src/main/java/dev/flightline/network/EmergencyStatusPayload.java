@@ -1,6 +1,6 @@
 package dev.flightline.network;
 
-import dev.flightline.FlightLine;
+import dev.flightline.FlightLineIds;
 import dev.flightline.flight.EmergencyStatus;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -13,7 +13,7 @@ public record EmergencyStatusPayload(int conditions, int available, int recommen
                                      int hotTicks1, int hotTicks2, int extinguisherBottles,
                                      int restartAttempts1, int restartAttempts2, int fuelDumpTicks)
         implements CustomPacketPayload {
-    public static final Type<EmergencyStatusPayload> TYPE = new Type<>(FlightLine.id("emergency_status"));
+    public static final Type<EmergencyStatusPayload> TYPE = new Type<>(FlightLineIds.id("emergency_status"));
 
     @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, EmergencyStatusPayload> CODEC = StreamCodec.composite(

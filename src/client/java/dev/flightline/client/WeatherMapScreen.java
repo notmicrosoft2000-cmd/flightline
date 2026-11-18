@@ -1,5 +1,6 @@
 package dev.flightline.client;
 
+import dev.flightline.flight.NavGuidance;
 import dev.flightline.flight.WeatherField;
 import dev.flightline.flight.WeatherSimulation;
 import dev.flightline.network.FlightInstrumentPayload;
@@ -23,6 +24,7 @@ public final class WeatherMapScreen extends Screen {
     private int rangeIndex = 1;
     private int layerIndex;
     private boolean headingUp;
+    private boolean routeOverlay;
     private int panelLeft;
     private int panelTop;
     private int panelWidth;
@@ -68,25 +70,31 @@ public final class WeatherMapScreen extends Screen {
         int buttonY = panelTop + panelHeight - 36;
         int x = panelLeft + 12;
         addRenderableWidget(Button.builder(Component.literal("RANGE -"), b -> changeRange(-1))
-                .bounds(x, buttonY, 74, 20).build());
-        x += 80;
+                .bounds(x, buttonY, 66, 20).build());
+        x += 72;
         addRenderableWidget(Button.builder(Component.literal("RANGE +"), b -> changeRange(1))
-                .bounds(x, buttonY, 74, 20).build());
-        x += 80;
+                .bounds(x, buttonY, 66, 20).build());
+        x += 72;
         addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG UP" : "NORTH"), b -> {
                     headingUp = !headingUp;
                     b.setMessage(Component.literal(headingUp ? "HDG UP" : "NORTH"));
                 })
-                .bounds(x, buttonY, 74, 20).build());
-        x += 80;
+                .bounds(x, buttonY, 66, 20).build());
+        x += 72;
         layerButton = Button.builder(Component.literal("LAYER: " + LAYER_NAMES[layerIndex]),
                         b -> cycleLayer())
-                .bounds(x, buttonY, 118, 20).build();
+                .bounds(x, buttonY, 112, 20).build();
         addRenderableWidget(layerButton);
-        x += 124;
+        x += 118;
+        addRenderableWidget(Button.builder(Component.literal(routeOverlay ? "ROUTE ON" : "ROUTE OFF"), b -> {
+                    routeOverlay = !routeOverlay;
+                    b.setMessage(Component.literal(routeOverlay ? "ROUTE ON" : "ROUTE OFF"));
+                })
+                .bounds(x, buttonY, 62, 20).build());
+        x += 68;
         addRenderableWidget(Button.builder(Component.literal("TRAFFIC"), b ->
                         Minecraft.getInstance().gui.setScreen(new FlightRadarScreen()))
-                .bounds(x, buttonY, 74, 20).build());
+                .bounds(x, buttonY, 64, 20).build());
         addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
                 .bounds(panelLeft + panelWidth - 82, buttonY, 70, 20).build());
     }
@@ -139,6 +147,10 @@ public final class WeatherMapScreen extends Screen {
 
         if (layerIndex == 0) {
             drawTraffic(graphics, cx, cy, ownX, ownZ);
+        }
+        if (routeOverlay) {
+            drawRouteOverlay(graphics, cx, cy, ownX, ownZ);
+            drawRouteReadout(graphics, ownX, ownZ);
         }
 
         graphics.fill(cx - 2, cy - 5, cx + 3, cy + 5, 0xFFFFFFFF);
@@ -212,6 +224,69 @@ public final class WeatherMapScreen extends Screen {
                         px + 4, py - 10, 0xFFA8D8C0, false);
             }
         }
+    }
+
+    private void drawRouteOverlay(GuiGraphicsExtractor g, int cx, int cy, int ownX, int ownZ) {
+        var legs = NavigationState.legs();
+        if (legs.isEmpty()) return;
+        var plan = NavigationState.plan();
+        int range = RANGES[rangeIndex];
+        double scale = radius() / (double) range;
+        int previousX = cx;
+        int previousY = cy;
+        boolean previousVisible = true;
+        for (int i = 0; i < legs.size(); i++) {
+            var leg = legs.get(i);
+            double dx = leg.x() - ownX;
+            double dz = leg.z() - ownZ;
+            if (headingUp) {
+                double radians = Math.toRadians(-FlightHud.radarOwnHeadingDegrees());
+                double rx = dx * Math.cos(radians) - dz * Math.sin(radians);
+                double rz = dx * Math.sin(radians) + dz * Math.cos(radians);
+                dx = rx;
+                dz = rz;
+            }
+            boolean visible = Math.hypot(dx, dz) <= range;
+            int px = cx + (int) Math.round(dx * scale);
+            int py = cy + (int) Math.round(dz * scale);
+            boolean active = plan != null && i == plan.activeLeg();
+            int color = active ? 0xFF65F2A5 : leg.airport() ? 0xFFFFCE52 : 0xFF6FD4E8;
+            if (visible && previousVisible) drawLine(g, previousX, previousY, px, py, color);
+            if (visible) {
+                g.fill(px - 2, py - 2, px + 3, py + 3, color);
+                if (active || i == legs.size() - 1) {
+                    g.text(font, fit(leg.name(), 34), px + 4, py - 8, color, false);
+                }
+            }
+            previousX = px;
+            previousY = py;
+            previousVisible = visible;
+        }
+    }
+
+    private void drawRouteReadout(GuiGraphicsExtractor g, int ownX, int ownZ) {
+        var plan = NavigationState.plan();
+        var leg = NavigationState.activeLeg();
+        int x = scopeLeft + scopeWidth - 128;
+        int y = scopeTop + 18;
+        g.fill(x, y, x + 122, y + 54, 0xD0101920);
+        g.outline(x, y, 122, 54, 0xFF4EB8C8);
+        g.text(font, "ROUTE " + NavigationState.statusLabel(), x + 4, y + 3, 0xFF72E6F5, true);
+        if (plan == null || leg == null) {
+            g.text(font, "NO ACTIVE LEG", x + 4, y + 18, 0xFFFF8A72, false);
+            return;
+        }
+        double distance = NavGuidance.distanceBlocks(ownX, ownZ, leg.x(), leg.z());
+        double bearing = NavGuidance.bearingDegrees(ownX, ownZ, leg.x(), leg.z());
+        double xtk = NavigationState.crossTrackBlocks(ownX, ownZ);
+        int speed = Math.max(1, FlightHud.groundSpeedKnots());
+        int eteMinutes = NavigationState.eteMinutes(ownX, ownZ, speed);
+        g.text(font, fit(String.format(Locale.ROOT, "%s BRG %03.0f", leg.name(), bearing), 114),
+                x + 4, y + 18, 0xFFDCE8EE, false);
+        g.text(font, String.format(Locale.ROOT, "DIST %.0fB  XTK %+.0f", distance, xtk),
+                x + 4, y + 31, 0xFF9BC9AE, false);
+        g.text(font, String.format(Locale.ROOT, "ETE %02d:%02d  GS %dKT", eteMinutes / 60,
+                        eteMinutes % 60, speed), x + 4, y + 43, 0xFF9BC9AE, false);
     }
 
     private void drawVisibilityHaze(GuiGraphicsExtractor g, int visibilityBlocks) {

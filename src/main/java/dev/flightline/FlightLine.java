@@ -4,14 +4,20 @@ import dev.flightline.flight.AircraftType;
 import dev.flightline.flight.AtcClearance;
 import dev.flightline.flight.EmergencyScenario;
 import dev.flightline.flight.FlightController;
+import dev.flightline.flight.FlightPlan;
+import dev.flightline.flight.FlightPlanService;
 import dev.flightline.flight.MobFlightController;
+import dev.flightline.flight.NavDatabase;
 import dev.flightline.flight.RunwayGenerator;
 import dev.flightline.network.AtcOrderPayload;
 import dev.flightline.network.AtcRadioPayload;
 import dev.flightline.network.AtcAckPayload;
 import dev.flightline.network.EmergencyActionPayload;
 import dev.flightline.network.EmergencyStatusPayload;
+import dev.flightline.network.FileFlightPlanPayload;
 import dev.flightline.network.FlightNoticePayload;
+import dev.flightline.network.FlightPlanPayload;
+import dev.flightline.network.NavDataPayload;
 import dev.flightline.network.OpenAtcPayload;
 import dev.flightline.network.FlightInputPayload;
 import dev.flightline.network.FlightInstrumentPayload;
@@ -68,7 +74,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 public class FlightLine implements ModInitializer {
-    public static final String MOD_ID = "flightline";
+    public static final String MOD_ID = FlightLineIds.MOD_ID;
     private static final Map<UUID, PendingAtcAcknowledgement> PENDING_ATC_ACKS = new HashMap<>();
     public static final Logger LOGGER = java.util.Objects.requireNonNull(LoggerFactory.getLogger(MOD_ID));
     @SuppressWarnings("null")
@@ -165,7 +171,7 @@ public class FlightLine implements ModInitializer {
     }
 
     public static Identifier id(String path) {
-        return Identifier.fromNamespaceAndPath(MOD_ID, path);
+        return FlightLineIds.id(path);
     }
 
     @Override
@@ -187,6 +193,7 @@ public class FlightLine implements ModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(StartEnginesPayload.TYPE, StartEnginesPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(TogglePushbackPayload.TYPE, TogglePushbackPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SelectPlanePayload.TYPE, SelectPlanePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(FileFlightPlanPayload.TYPE, FileFlightPlanPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(FlightStatePayload.TYPE, FlightStatePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(FlightInstrumentPayload.TYPE, FlightInstrumentPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(FlightRadarPayload.TYPE, FlightRadarPayload.CODEC);
@@ -195,6 +202,8 @@ public class FlightLine implements ModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(FlightNoticePayload.TYPE, FlightNoticePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(OpenAtcPayload.TYPE, OpenAtcPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(SelectPlanePayload.TYPE, SelectPlanePayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(NavDataPayload.TYPE, NavDataPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(FlightPlanPayload.TYPE, FlightPlanPayload.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(FlightInputPayload.TYPE, (payload, context) -> {
             FlightController.updateInput(context.player(), payload.controls());
@@ -255,13 +264,19 @@ public class FlightLine implements ModInitializer {
                 context.server().execute(() -> issueAtcOrder(context.player(), payload)));
         ServerPlayNetworking.registerGlobalReceiver(AtcAckPayload.TYPE, (payload, context) ->
                 context.server().execute(() -> acknowledgeAtc(context.player(), payload)));
+        ServerPlayNetworking.registerGlobalReceiver(FileFlightPlanPayload.TYPE, (payload, context) ->
+                context.server().execute(() -> FlightPlanService.handle(context.player(), payload)));
 
         ServerTickEvents.END_SERVER_TICK.register(FlightController::tick);
         ServerTickEvents.END_SERVER_TICK.register(RunwayGenerator::tick);
-        ServerLifecycleEvents.SERVER_STOPPED.register(server -> MobFlightController.clear());
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            MobFlightController.clear();
+            NavDatabase.clear();
+        });
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             giveFlightGuide(handler.player);
             notifyAircraftSelection(handler.player);
+            sendNavigationData(handler.player);
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             FlightController.remove(handler.player.getUUID(), handler.player);
@@ -271,6 +286,7 @@ public class FlightLine implements ModInitializer {
             FlightController.resetAfterRespawn(oldPlayer, newPlayer);
             giveFlightGuide(newPlayer);
             notifyAircraftSelection(newPlayer);
+            sendNavigationData(newPlayer);
         });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
@@ -338,6 +354,15 @@ public class FlightLine implements ModInitializer {
     }
 
     private static void acknowledgeAtc(ServerPlayer pilot, AtcAckPayload payload) {
+        if (payload.controllerEntityId() < 0) {
+            FlightPlan plan = FlightController.getFlightPlan(pilot);
+            boolean cleared = plan != null
+                    && plan.status().ordinal() >= FlightPlan.Status.CLEARED.ordinal();
+            pilot.sendSystemMessage(Component.literal(cleared
+                    ? "Flight plan clearance acknowledged."
+                    : "ATC transmission acknowledged."));
+            return;
+        }
         if (FlightController.isAtcControlled(pilot)
                 && payload.controllerEntityId() == FlightController.atcControllerEntityId(pilot)) {
             FlightController.releaseAtcControl(pilot, "pilot release request");
@@ -385,6 +410,13 @@ public class FlightLine implements ModInitializer {
                 0.0, AtcClearance.MIN_ALTITUDE_FEET, AtcClearance.MIN_SPEED_KNOTS).radioText();
     }
 
+    private static void sendNavigationData(ServerPlayer player) {
+        var server = player.level().getServer();
+        ServerPlayNetworking.send(player, NavDatabase.get(server).snapshot());
+        FlightPlan plan = FlightPlanService.loadPlan(player);
+        FlightPlanService.sendPlan(player, plan);
+    }
+
     private static void giveFlightGuide(ServerPlayer player) {
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             ItemStack item = player.getInventory().getItem(slot);
@@ -396,7 +428,7 @@ public class FlightLine implements ModInitializer {
                 "FLIGHT LINE\nPilot's field guide\n\nFlight is server-authoritative. Keep an eye on airspeed, pitch, bank, and radio altitude.",
                 "FIRST FLIGHT · 1\nOn the ground, press the displayed START ENGINES key and wait for both engines to spool. Hold the brake key to stop; the BRAKES ON popup confirms they are applied. Release the brake, then add throttle with the forward control.",
                 "FIRST FLIGHT · 2\nUse W / S (or your rebound controls) to increase / decrease throttle. Look up or down to control pitch, and use A / D to bank left / right. Build speed on a clear runway. Gently look up to rotate and take off. Avoid sharp turns; steep banks cost lift and speed.",
-                "FIRST FLIGHT · 3\nAfter takeoff, climb with a modest nose-up attitude. Retract flaps gradually with FLAPS (-), retract spoilers, and raise the landing gear. Watch airspeed, altitude, EICAS, weather, and the warning stack. Press H for the autopilot panel.",
+                "FIRST FLIGHT · 3\nAfter takeoff, climb with a modest nose-up attitude. Retract flaps gradually with FLAPS (-), retract spoilers, and raise the landing gear. Watch airspeed, altitude, EICAS, weather, and the warning stack. Press H for the flight planner; its FPLN tab files routes and requests clearance.",
                 "FIRST FLIGHT · 4\nTo set an ILS with /flightline ils set, stand at the runway threshold facing down the runway; or configure its threshold and heading in the flight radar. Align with the runway, descend on the glide path, lower gear and add flaps. Keep spoilers retracted until touchdown; use brakes during rollout.",
                 "STARTUP & TAXI\nUse pushback if needed, then release brakes and taxi carefully. Flight Line creates 400-block concrete runways on safe flat Overworld sites as you explore; nearby pilots are told when one is built. Build speed for takeoff only on a clear runway. Avoid obstacles.",
                 "FLIGHT CONTROLS\nForward/reverse increases/decreases throttle. Look up/down to change pitch; left/right banks the aircraft. Shallow banks preserve lift and speed. High angle of attack or low airspeed can cause a stall. Recover by easing the nose down and adding power.",

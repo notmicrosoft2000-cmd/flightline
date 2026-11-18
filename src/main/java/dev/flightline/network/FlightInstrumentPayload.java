@@ -1,6 +1,6 @@
 package dev.flightline.network;
 
-import dev.flightline.FlightLine;
+import dev.flightline.FlightLineIds;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -11,7 +11,7 @@ public record FlightInstrumentPayload(int radioAltitudeFeet, int verticalSpeedFp
                                       boolean autopilot, int warnings, AirframeStatus airframe,
                                       TrafficGuidance traffic, CockpitGuidance cockpitGuidance)
         implements CustomPacketPayload {
-    public static final Type<FlightInstrumentPayload> TYPE = new Type<>(FlightLine.id("flight_instruments"));
+    public static final Type<FlightInstrumentPayload> TYPE = new Type<>(FlightLineIds.id("flight_instruments"));
     @SuppressWarnings("null")
     public static final StreamCodec<RegistryFriendlyByteBuf, FlightInstrumentPayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.VAR_INT, payload -> payload.radioAltitudeFeet(),

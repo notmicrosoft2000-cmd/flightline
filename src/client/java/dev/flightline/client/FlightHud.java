@@ -5,6 +5,8 @@ import dev.flightline.flight.EmergencyStatus;
 import dev.flightline.flight.FlightPhase;
 import dev.flightline.flight.FlightTuning;
 import dev.flightline.flight.FlightWarning;
+import dev.flightline.flight.NavGuidance;
+import dev.flightline.flight.NavMode;
 import dev.flightline.FlightLine;
 import dev.flightline.network.EmergencyStatusPayload;
 import dev.flightline.network.FlightInstrumentPayload;
@@ -41,6 +43,7 @@ final class FlightHud {
     private static final int PFD_MUTED = 0xFF6F8792;
     private static boolean enabled;
     private static FlightPhase phase = FlightPhase.OFF;
+    private static NavMode navMode = NavMode.HDG;
     private static float speed, throttle, bankDegrees, pitchDegrees, headingDegrees;
     private static float visualSpeed, visualBank, visualPitch, visualHeading;
     private static float velocityX, velocityY, velocityZ, groundSpeedKnots, trackDegrees;
@@ -128,6 +131,10 @@ final class FlightHud {
 
     static FlightPhase phase() {
         return phase;
+    }
+
+    static NavMode navMode() {
+        return navMode;
     }
 
     static int flapDetent() {
@@ -322,6 +329,7 @@ final class FlightHud {
     static void update(FlightStatePayload state) {
         enabled = state.enabled();
         phase = FlightPhase.fromId(state.phase());
+        navMode = NavMode.fromId(state.navMode());
         speed = state.speed();
         throttle = state.throttle();
         velocityX = state.velocityX();
@@ -381,6 +389,7 @@ final class FlightHud {
     static void clear() {
         enabled = false;
         phase = FlightPhase.OFF;
+        navMode = NavMode.HDG;
         speed = throttle = bankDegrees = pitchDegrees = headingDegrees = 0;
         visualSpeed = visualBank = visualPitch = visualHeading = 0;
         velocityX = velocityY = velocityZ = groundSpeedKnots = trackDegrees = 0;
@@ -447,7 +456,7 @@ final class FlightHud {
         boolean eicasVisible = showEicas && (!showPfd || eicasX >= pfdRight + 6);
 
         int ndWidth = 104;
-        int ndHeight = 84;
+        int ndHeight = 96;
         int ndX = 0;
         int ndY = 6;
         boolean ndVisible = showRadar;
@@ -479,18 +488,40 @@ final class FlightHud {
             panel(g, ndX, ndY, ndWidth, ndHeight, 0xAA56B9D2);
             int heading = Math.floorMod(Math.round(visualHeading), 360);
             int ndRangeBlocks = hasRadarData() ? Math.min(256, Math.max(64, radarPayload.scopeBlocks())) : 128;
-            g.text(mc.font, fitText(mc.font, String.format(Locale.ROOT, "TCAS %03d° %dB", heading,
-                    ndRangeBlocks), ndWidth - 8),
-                    ndX + 4, ndY + 3,
-                    0xFF72E6F5, true);
-            int radarCx = ndX + ndWidth / 2;
-            int radarCy = ndY + 36;
-            drawRadarGrid(g, radarCx, radarCy, 19, clock, visualHeading);
-            drawAircraftSymbol(g, radarCx, radarCy);
-
+            var activeLeg = NavigationState.activeLeg();
             int ownAltFt = hasRadarData() ? radarPayload.ownAltitudeFeet() : (int) Math.round(player.getY() * 3.28084);
             int ownX = hasRadarData() ? radarPayload.ownX() : player.blockPosition().getX();
             int ownZ = hasRadarData() ? radarPayload.ownZ() : player.blockPosition().getZ();
+            int groundSpeedKnots = Math.max(1, groundSpeedKnots());
+
+            String ndHeader = activeLeg == null
+                    ? String.format(Locale.ROOT, "TCAS %03d° %dB", heading, ndRangeBlocks)
+                    : "NAV " + activeLeg.name();
+            g.text(mc.font, fitText(mc.font, ndHeader, ndWidth - 8),
+                    ndX + 4, ndY + 3,
+                    0xFF72E6F5, true);
+            String legDistance = activeLeg == null
+                    ? "GS " + groundSpeedKnots + "KT"
+                    : String.format(Locale.ROOT, "BRG %03.0f°  %.0fB",
+                            NavGuidance.bearingDegrees(ownX, ownZ, activeLeg.x(), activeLeg.z()),
+                            NavGuidance.distanceBlocks(ownX, ownZ, activeLeg.x(), activeLeg.z()));
+            g.text(mc.font, fitText(mc.font, legDistance, ndWidth - 8),
+                    ndX + 4, ndY + 13, 0xFFDCE8EE, false);
+            int eteMinutes = activeLeg == null ? 0 : NavigationState.eteMinutes(ownX, ownZ, groundSpeedKnots);
+            String legGuidance = activeLeg == null
+                    ? "ROUTE " + NavigationState.statusLabel()
+                    : String.format(Locale.ROOT, "XTK %+.0f  ETE %02d:%02d",
+                            NavigationState.crossTrackBlocks(ownX, ownZ),
+                            eteMinutes / 60, eteMinutes % 60);
+            g.text(mc.font, fitText(mc.font, legGuidance, ndWidth - 8),
+                    ndX + 4, ndY + 23, 0xFF9BC9AE, false);
+
+            int radarCx = ndX + ndWidth / 2;
+            int radarCy = ndY + 45;
+            drawRadarGrid(g, radarCx, radarCy, 18, clock, visualHeading);
+            drawAircraftSymbol(g, radarCx, radarCy);
+
+            drawRouteOverlay(g, mc, radarCx, radarCy, 16, ndRangeBlocks, visualHeading, ownX, ownZ);
 
             // Threat filtering to avoid cluttered text/dots
             List<FlightRadarPayload.Contact> allContacts = radarPayload.contacts();
@@ -566,9 +597,9 @@ final class FlightHud {
             }
 
             // Clean ND footer rows
-            g.text(mc.font, String.format(Locale.ROOT, "AIR %02d", trafficCounts >>> 8), ndX + 6, ndY + 63,
+            g.text(mc.font, String.format(Locale.ROOT, "AIR %02d", trafficCounts >>> 8), ndX + 6, ndY + 70,
                     0xFF75E6A5, true);
-            g.text(mc.font, String.format(Locale.ROOT, "GND %02d", trafficCounts & 0xFF), ndX + 62, ndY + 63,
+            g.text(mc.font, String.format(Locale.ROOT, "GND %02d", trafficCounts & 0xFF), ndX + 62, ndY + 70,
                     0xFFFFCE52, true);
 
             if (trafficRangeBlocks > 0) {
@@ -576,9 +607,9 @@ final class FlightHud {
                 String target = required(String.format(Locale.ROOT, "TGT %+dFT %dB",
                         trafficAltitudeFeet, trafficRangeBlocks));
                 g.text(mc.font, fitText(mc.font, target, ndWidth - 12),
-                        ndX + 6, ndY + 73, targetColor, true);
+                        ndX + 6, ndY + 80, targetColor, true);
             } else {
-                g.text(mc.font, "TCAS NORM", ndX + 6, ndY + 73, 0xFF62B0A0, true);
+                g.text(mc.font, "TCAS NORM", ndX + 6, ndY + 80, 0xFF62B0A0, true);
             }
         }
 
@@ -1499,6 +1530,39 @@ final class FlightHud {
         drawLine(g, cx + size, cy, cx, cy + size, color);
         drawLine(g, cx, cy + size, cx - size, cy, color);
         drawLine(g, cx - size, cy, cx, cy - size, color);
+    }
+
+    private static void drawRouteOverlay(GuiGraphicsExtractor g, Minecraft mc, int cx, int cy,
+                                         int radius, double rangeBlocks, float heading,
+                                         int ownX, int ownZ) {
+        var plan = NavigationState.plan();
+        if (plan == null) return;
+        var legs = NavigationState.legs();
+        int previousX = cx;
+        int previousY = cy;
+        boolean previousVisible = true;
+        for (int i = 0; i < legs.size(); i++) {
+            var leg = legs.get(i);
+            double distance = NavGuidance.distanceBlocks(ownX, ownZ, leg.x(), leg.z());
+            boolean visible = distance <= rangeBlocks;
+            double relative = Math.toRadians(NavGuidance.bearingDegrees(ownX, ownZ, leg.x(), leg.z())
+                    - heading);
+            double scale = Math.min(1.0, distance / rangeBlocks);
+            int px = cx - (int) Math.round(Math.sin(relative) * radius * scale);
+            int py = cy - (int) Math.round(Math.cos(relative) * radius * scale);
+            boolean active = i == plan.activeLeg();
+            int color = active ? 0xFF62D89B : leg.airport() ? 0xFFFFC44D : 0xFF72E6F5;
+            if (visible && previousVisible) drawLine(g, previousX, previousY, px, py, color);
+            if (visible) {
+                drawDiamond(g, px, py, 2, color);
+                if (active || i == legs.size() - 1) {
+                    g.text(mc.font, fitText(mc.font, leg.name(), 28), px + 3, py - 4, color, false);
+                }
+            }
+            previousX = px;
+            previousY = py;
+            previousVisible = visible;
+        }
     }
 
     private static void drawAircraftSymbol(GuiGraphicsExtractor g, int cx, int cy) {

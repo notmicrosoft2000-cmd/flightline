@@ -4,6 +4,7 @@ import dev.flightline.network.AtcOrderPayload;
 import dev.flightline.network.AtcRadioPayload;
 import dev.flightline.network.EmergencyStatusPayload;
 import dev.flightline.network.FlightInstrumentPayload;
+import dev.flightline.network.NavDataPayload;
 import dev.flightline.network.FlightNoticePayload;
 import dev.flightline.network.FlightRadarPayload;
 import dev.flightline.network.FlightStatePayload;
@@ -72,6 +73,52 @@ public final class FlightController {
         return PLAYER_AIRCRAFT.getOrDefault(player.getUUID(), AircraftType.KASA_A380);
     }
 
+    public static @Nullable FlightPlan getFlightPlan(ServerPlayer player) {
+        Session session = SESSIONS.get(player.getUUID());
+        return session == null ? null : session.flightPlan;
+    }
+
+    public static NavMode getNavMode(ServerPlayer player) {
+        Session session = SESSIONS.get(player.getUUID());
+        return session == null ? NavMode.HDG : session.navMode;
+    }
+
+    public static void setFlightPlan(ServerPlayer player, @Nullable FlightPlan plan) {
+        Session session = SESSIONS.get(player.getUUID());
+        if (session != null) session.flightPlan = plan;
+    }
+
+    public static void setNavMode(ServerPlayer player, NavMode mode) {
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null) return;
+        session.navMode = mode;
+        if (mode != NavMode.HDG) session.autopilot = true;
+        if (mode != NavMode.ILS) clearAutoland(player, session, false);
+        sendState(player, session, true);
+    }
+
+    /** Tunes a database runway and arms the existing ILS/autoland path when conditions allow. */
+    public static boolean tuneApproach(ServerPlayer player, NavDataPayload.Runway runway) {
+        if (!setIlsReference(player, runway.thresholdX(), runway.thresholdZ(),
+                runway.headingDegrees(), runway.glideSlopeDegrees())) return false;
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null) return false;
+        session.navMode = NavMode.ILS;
+        session.autopilot = true;
+        if (calculateIlsGuidance(player, session).active()) toggleAutoland(player);
+        return true;
+    }
+
+    /** Loads a filed plan's cruise altitude into the MCP without changing the active nav mode. */
+    public static boolean syncCruiseAltitude(ServerPlayer player, int altitudeFeet) {
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null || session.crashed || altitudeFeet < 100 || altitudeFeet > 40_000) return false;
+        if (session.atcClearance != null) releaseAtcControl(player, session, "pilot altitude input");
+        session.autopilotAltitudeFeet = altitudeFeet;
+        sendState(player, session, true);
+        return true;
+    }
+
     public static boolean setAircraftType(ServerPlayer player, AircraftType type) {
         PLAYER_AIRCRAFT.put(player.getUUID(), type);
         Session s = SESSIONS.get(player.getUUID());
@@ -108,7 +155,38 @@ public final class FlightController {
         session.airborne = !player.onGround();
         session.phase = session.airborne ? FlightPhase.AIRBORNE : FlightPhase.TAXI;
         SESSIONS.put(player.getUUID(), session);
+        restoreNavigationState(player, session, false);
         player.setNoGravity(session.airborne || session.hadNoGravity);
+    }
+
+    /** Restores persisted plan and ILS state into a newly created session. */
+    private static void restoreNavigationState(ServerPlayer player, Session session, boolean freshAircraft) {
+        session.flightPlan = FlightPlanService.loadPlan(player);
+        FlightPlanStorage.IlsState savedIls = FlightPlanService.loadIls(player);
+        var level = player.level();
+        String currentDimension = level.dimension().identifier().toString();
+        boolean matchingDimension = !savedIls.dimension().isEmpty()
+                && savedIls.dimension().equals(currentDimension);
+        if (savedIls.active() && matchingDimension) {
+            int y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,
+                    savedIls.thresholdX(), savedIls.thresholdZ());
+            if (y >= level.getMinY() && y < level.getMaxY()) {
+                session.ilsDimension = level.dimension();
+                session.ilsThreshold = new Vec3(savedIls.thresholdX() + 0.5, y,
+                        savedIls.thresholdZ() + 0.5);
+                session.ilsRunwayHeading = savedIls.runwayHeadingDegrees();
+                session.ilsGlideSlopeDegrees = savedIls.glideSlopeDegrees();
+            }
+        }
+        boolean armAutoland = savedIls.autolandArmed() && !freshAircraft && session.airborne
+                && matchingDimension && session.ilsDimension != null;
+        session.autoland = armAutoland;
+        if (armAutoland) {
+            session.navMode = NavMode.ILS;
+            session.autopilot = true;
+        } else if (savedIls.autolandArmed()) {
+            FlightPlanService.clearAutolandArming(player);
+        }
     }
 
     public static void updateInput(ServerPlayer player, int controls) {
@@ -182,7 +260,8 @@ public final class FlightController {
         session.atcClearance = clearance;
         session.atcControlTicks = 0;
         session.autopilot = true;
-        session.autoland = false;
+        session.navMode = NavMode.HDG;
+        clearAutoland(pilot, session, false);
         session.emergencyDescent = false;
         applyAtcTargets(session, clearance);
         sendState(pilot, session, true);
@@ -321,7 +400,7 @@ public final class FlightController {
         session.atcClearance = null;
         session.atcControlTicks = 0;
         session.autopilot = false;
-        session.autoland = false;
+        clearAutoland(pilot, session, true);
         if (controller != null) {
             String message = "RELEASE FROM " + pilot.getGameProfile().name()
                     + ": control returned to pilot (" + reason + ").";
@@ -353,6 +432,7 @@ public final class FlightController {
         session.ilsThreshold = new Vec3(thresholdX + 0.5, thresholdY, thresholdZ + 0.5);
         session.ilsRunwayHeading = (float) wrapDegrees(runwayHeadingDegrees);
         session.ilsGlideSlopeDegrees = glideSlopeDegrees;
+        persistIls(player, session);
         sendState(player, session, true);
         return true;
     }
@@ -364,9 +444,22 @@ public final class FlightController {
         session.ilsThreshold = Vec3.ZERO;
         session.ilsGlideSlopeDegrees = 3.0f;
         session.ilsGuidance = FlightInstrumentPayload.IlsGuidance.inactive();
-        disengageAutoland(session);
+        session.navMode = NavMode.HDG;
+        disengageAutoland(player, session);
+        persistIls(player, session);
         sendState(player, session, true);
         return true;
+    }
+
+    private static void persistIls(ServerPlayer player, Session session) {
+        FlightPlanService.saveIls(player, new FlightPlanStorage.IlsState(
+                session.ilsDimension != null,
+                session.ilsGlideSlopeDegrees,
+                (int) Math.round(session.ilsThreshold.x - 0.5),
+                (int) Math.round(session.ilsThreshold.z - 0.5),
+                session.ilsRunwayHeading,
+                session.autoland,
+                session.ilsDimension == null ? "" : session.ilsDimension.identifier().toString()));
     }
 
     public static void disableFlight(ServerPlayer player) {
@@ -401,8 +494,7 @@ public final class FlightController {
         if (!landing.crashes()) {
             session.gearFailed = landing.gearFailed();
             if (session.autoland) {
-                session.autoland = false;
-                session.autopilot = false;
+                clearAutoland(player, session, true);
                 session.throttle = 0.0;
                 session.spoilers = true;
                 session.autolandRolloutTicks = 100;
@@ -493,7 +585,7 @@ public final class FlightController {
         session.crashed = true;
         session.airborne = false;
         session.autopilot = false;
-        session.autoland = false;
+        clearAutoland(player, session, true);
         session.landingRoll = false;
         session.engine1State = ENGINE_OFF;
         session.engine2State = ENGINE_OFF;
@@ -577,6 +669,7 @@ public final class FlightController {
         session.headingDegrees = newPlayer.getYRot();
         session.phase = FlightPhase.TAXI;
         SESSIONS.put(newPlayer.getUUID(), session);
+        restoreNavigationState(newPlayer, session, true);
         sendState(newPlayer, session, true);
     }
 
@@ -618,7 +711,7 @@ public final class FlightController {
         session.airVelocity = Vec3.ZERO;
         session.airborne = false;
         session.autopilot = false;
-        session.autoland = false;
+        clearAutoland(player, session, true);
         session.autolandRolloutTicks = 0;
         session.gearDown = true;
         session.gearFailed = false;
@@ -706,7 +799,7 @@ public final class FlightController {
         if (session == null || session.crashed || !session.airborne) return false;
         if (session.atcClearance != null) releaseAtcControl(player, session, "pilot autoland input");
         if (session.autoland) {
-            disengageAutoland(session);
+            disengageAutoland(player, session);
             sendState(player, session, true);
             return true;
         }
@@ -726,6 +819,7 @@ public final class FlightController {
         session.airbrakes = false;
         session.autopilotAirspeedKnots = 130;
         updateAutolandTargets(player, session);
+        persistIls(player, session);
         sendState(player, session, true);
         return true;
     }
@@ -809,7 +903,7 @@ public final class FlightController {
                 }
                 session.emergencyDescent = true;
                 session.autopilot = true;
-                session.autoland = false;
+                clearAutoland(player, session, false);
                 session.autopilotHeading = session.headingDegrees;
                 session.autopilotAltitudeFeet = 10000;
                 session.autopilotVerticalSpeedFpm = -2000;
@@ -864,6 +958,7 @@ public final class FlightController {
                 session.autopilotAirspeedKnots = 130;
                 session.autopilotVerticalSpeedFpm = -1200;
                 updateAutolandTargets(player, session);
+                persistIls(player, session);
                 notify(player, "Emergency autoland armed. Monitor the glide path and configure for landing.");
             }
             default -> {
@@ -983,7 +1078,7 @@ public final class FlightController {
         session.fuelDumpTicks = 0;
         if (session.emergencyDescent) {
             session.autopilot = false;
-            session.autoland = false;
+            clearAutoland(player, session, true);
         }
         session.emergencyDescent = false;
         session.emergencyDeclared = false;
@@ -1141,6 +1236,11 @@ public final class FlightController {
 
             updateAtcControl(player, session, server);
             simulate(player, session, server);
+            if (session.flightPlan != null
+                    && player.level().getGameTime() - session.lastNavSyncTick >= STATUS_RESYNC_TICKS) {
+                FlightPlanService.refresh(player, session.flightPlan);
+                session.lastNavSyncTick = player.level().getGameTime();
+            }
             sendState(player, session, true);
         }
     }
@@ -1159,6 +1259,7 @@ public final class FlightController {
     public static void remove(UUID playerId, ServerPlayer player) {
         Session session = SESSIONS.remove(playerId);
         if (session != null && player != null) {
+            persistIls(player, session);
             player.setNoGravity(session.hadNoGravity);
         }
     }
@@ -1264,6 +1365,9 @@ public final class FlightController {
         if (session.airborne) {
             if (session.takeoffGraceTicks > 0) session.takeoffGraceTicks--;
             if (session.takeoffWarningTicks > 0) session.takeoffWarningTicks--;
+            if (session.autopilot && !session.autoland && session.atcClearance == null) {
+                updateNavigation(player, session);
+            }
             if (session.autoland) updateAutolandTargets(player, session);
             updateBankAndTurn(player, session);
             if (session.crashed) {
@@ -1481,15 +1585,79 @@ public final class FlightController {
         return left ? -FlightTuning.MAX_BANK_DEGREES : FlightTuning.MAX_BANK_DEGREES;
     }
 
+    private static boolean handoffToApproach(ServerPlayer player, Session session, FlightPlan plan,
+                                             NavDataPayload.Runway runway) {
+        if (!tuneApproach(player, runway)) return false;
+        plan.setStatus(FlightPlan.Status.ARRIVAL);
+        FlightPlanService.onPlanChanged(player, plan);
+        return true;
+    }
+
+    private static void updateNavigation(ServerPlayer player, Session session) {
+        FlightPlan plan = session.flightPlan;
+        if (plan == null || session.navMode == NavMode.HDG) return;
+        MinecraftServer server = player.level().getServer();
+        NavDatabase database = NavDatabase.get(server);
+
+        if (session.navMode == NavMode.ILS) {
+            NavDataPayload.Runway runway = NavGuidance.approachRunway(database, plan);
+            if (runway == null) {
+                session.navMode = NavMode.HDG;
+                return;
+            }
+            AutolandTargets targets = calculateAutolandTargets(player.position(),
+                    new Vec3(runway.thresholdX() + 0.5, session.ilsThreshold.y,
+                            runway.thresholdZ() + 0.5),
+                    runway.headingDegrees(), runway.glideSlopeDegrees());
+            double bearing = targets != null ? targets.targetHeadingDegrees()
+                    : NavGuidance.bearingDegrees(player.getX(), player.getZ(),
+                            runway.thresholdX(), runway.thresholdZ());
+            session.autopilotHeading = NavGuidance.wrapDegrees(bearing);
+            return;
+        }
+
+        var leg = plan.activeLeg(database);
+        if (leg == null) {
+            NavDataPayload.Runway runway = NavGuidance.approachRunway(database, plan);
+            if (runway != null && handoffToApproach(player, session, plan, runway)) {
+                notify(player, "Route complete. ILS runway " + runway.name() + " acquired.");
+            } else {
+                session.navMode = NavMode.HDG;
+                notify(player, "Route complete. Resuming heading control.");
+            }
+            return;
+        }
+        if (NavGuidance.shouldSequence(player.getX(), player.getZ(), leg.x(), leg.z(),
+                leg.id() == plan.destinationId())) {
+            plan.advanceLeg();
+            FlightPlanService.onPlanChanged(player, plan);
+            var next = plan.activeLeg(database);
+            if (next != null) {
+                notify(player, "LNAV: next waypoint " + next.name() + ".");
+            } else {
+                NavDataPayload.Runway runway = NavGuidance.approachRunway(database, plan);
+                if (runway != null && handoffToApproach(player, session, plan, runway)) {
+                    notify(player, "Route complete. ILS runway " + runway.name() + " acquired.");
+                } else {
+                    session.navMode = NavMode.HDG;
+                    notify(player, "Route complete. Resuming heading control.");
+                }
+            }
+            return;
+        }
+        session.autopilotHeading = NavGuidance.bearingDegrees(player.getX(), player.getZ(),
+                leg.x(), leg.z());
+    }
+
     private static void updateAutolandTargets(ServerPlayer player, Session session) {
         if (session.ilsDimension == null || !session.ilsDimension.equals(player.level().dimension())) {
-            disengageAutoland(session);
+            disengageAutoland(player, session);
             return;
         }
         AutolandTargets targets = calculateAutolandTargets(player.position(), session.ilsThreshold,
                 session.ilsRunwayHeading, session.ilsGlideSlopeDegrees);
         if (targets == null) {
-            disengageAutoland(session);
+            disengageAutoland(player, session);
             return;
         }
         session.autopilotAltitudeFeet = targets.targetAltitudeFeet();
@@ -1498,9 +1666,15 @@ public final class FlightController {
         session.autopilotVerticalSpeedFpm = targets.targetVerticalSpeedFpm();
     }
 
-    private static void disengageAutoland(Session session) {
+    private static void clearAutoland(ServerPlayer player, Session session, boolean stopAutopilot) {
+        if (!session.autoland) return;
         session.autoland = false;
-        session.autopilot = false;
+        if (stopAutopilot) session.autopilot = false;
+        persistIls(player, session);
+    }
+
+    private static void disengageAutoland(ServerPlayer player, Session session) {
+        clearAutoland(player, session, true);
     }
 
     static @Nullable AutolandTargets calculateAutolandTargets(Vec3 position, Vec3 threshold,
@@ -1533,8 +1707,9 @@ public final class FlightController {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || session.crashed || !session.airborne) return;
         if (session.atcClearance != null) releaseAtcControl(player, session, "pilot autopilot input");
+        clearAutoland(player, session, !engaged);
         session.autopilot = engaged;
-        if (!engaged) session.autoland = false;
+        session.navMode = NavMode.HDG;
         session.autopilotHeading = Math.floorMod(targetHeading, 360);
         session.autopilotAltitudeFeet = Math.max(100, targetAltitudeFeet);
         session.autopilotVerticalSpeedFpm = targetVerticalSpeedFpm;
@@ -1546,9 +1721,11 @@ public final class FlightController {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || session.crashed || !session.airborne) return;
         if (session.atcClearance != null) releaseAtcControl(player, session, "pilot autopilot input");
-        session.autopilot = !session.autopilot;
-        session.autoland = false;
-        if (session.autopilot) {
+        boolean engage = !session.autopilot;
+        clearAutoland(player, session, !engage);
+        session.autopilot = engage;
+        session.navMode = NavMode.HDG;
+        if (engage) {
             session.autopilotHeading = session.headingDegrees;
             session.autopilotAltitudeFeet = Math.max(100, (int) Math.round(player.getY() * 3.28084));
             session.autopilotVerticalSpeedFpm = 1000;
@@ -2214,10 +2391,11 @@ public final class FlightController {
     private static void sendState(ServerPlayer player, @Nullable Session session, boolean enabled) {
         long tick = player.level().getGameTime();
         FlightStatePayload state = session == null
-                ? new FlightStatePayload(false, FlightPhase.OFF.ordinal(), 0.0f, 0.0f,
+                ? new FlightStatePayload(false, FlightPhase.OFF.ordinal(), NavMode.HDG.id(), 0.0f, 0.0f,
                 (float) FlightTuning.ROTATION_SPEED, 0.0f, 0.0f, 0.0f)
-                : new FlightStatePayload(enabled, session.phase.ordinal(), quantize1(session.airspeed),
-                quantize2((float) session.throttle), (float) FlightTuning.ROTATION_SPEED,
+                : new FlightStatePayload(enabled, session.phase.ordinal(), session.navMode.id(),
+                quantize1(session.airspeed), quantize2((float) session.throttle),
+                (float) FlightTuning.ROTATION_SPEED,
                 quantize2((float) (session.airborne ? session.airVelocity.x : player.getDeltaMovement().x)),
                 quantize2((float) (session.airborne ? session.airVelocity.y : player.getDeltaMovement().y)),
                 quantize2((float) (session.airborne ? session.airVelocity.z : player.getDeltaMovement().z)));
@@ -2470,6 +2648,9 @@ public final class FlightController {
         private boolean antiIceEffective;
         private boolean autopilot;
         private boolean autoland;
+        private NavMode navMode = NavMode.HDG;
+        private @Nullable FlightPlan flightPlan;
+        private long lastNavSyncTick = Long.MIN_VALUE;
         private int autolandRolloutTicks;
         private double autopilotHeading;
         private int autopilotAltitudeFeet = 2000;
