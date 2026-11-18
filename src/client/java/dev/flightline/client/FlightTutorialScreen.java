@@ -103,8 +103,8 @@ public final class FlightTutorialScreen extends Screen {
                 addRenderableWidget(actionButton("TOGGLE GEAR", 524, 178, 104, this::toggleGear));
                 addRenderableWidget(actionButton("TOGGLE TELEMETRY", 412, 206, 216, () -> {
                     FlightHud.toggleTelemetry();
-                    status = FlightHud.isTelemetryVisible() ? "Telemetry HUD visible."
-                            : "Telemetry HUD hidden. Press Y to toggle it.";
+                    status = FlightHud.isTelemetryVisible() ? "Expanded telemetry detail visible."
+                            : "Expanded telemetry detail hidden. Press Y to open it.";
                 }));
             }
             case AUTOPILOT -> {

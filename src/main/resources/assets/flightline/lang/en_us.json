@@ -13,7 +13,7 @@
   "key.flightline.pfd": "Toggle PFD Display",
   "key.flightline.eicas": "Toggle EICAS Display",
   "key.flightline.nd": "Toggle TCAS ND Display",
-  "key.flightline.telemetry": "Toggle Telemetry HUD",
+  "key.flightline.telemetry": "Toggle Telemetry Detail",
   "key.flightline.tutorial": "Open Flight Tutorial",
   "key.flightline.weather_map": "Open Weather Map",
   "key.flightline.keybind_hints": "Toggle Cockpit Prompts",

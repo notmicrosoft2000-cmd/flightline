@@ -63,7 +63,7 @@ final class FlightHud {
     private static boolean showEicas = true;
     private static boolean showRadar = true;
     private static boolean showKeybinds = true;
-    private static boolean showTelemetry = true;
+    private static boolean showTelemetry = false;
     private static boolean radarDataReceived;
     private static long lastRadarUpdateNanos;
     private static boolean ilsActive;
@@ -238,7 +238,7 @@ final class FlightHud {
             showEicas = readPreference(preferences, "showEicas", showEicas);
             showRadar = readPreference(preferences, "showRadar", showRadar);
             showKeybinds = readPreference(preferences, "showKeybinds", showKeybinds);
-            showTelemetry = readPreference(preferences, "showTelemetry", showTelemetry);
+            showTelemetry = readPreference(preferences, "showTelemetryDetail", false);
         } catch (IOException exception) {
             FlightLine.LOGGER.warn("Could not load Flight Line HUD preferences from {}", path, exception);
         }
@@ -267,7 +267,7 @@ final class FlightHud {
         preferences.setProperty("showEicas", Boolean.toString(showEicas));
         preferences.setProperty("showRadar", Boolean.toString(showRadar));
         preferences.setProperty("showKeybinds", Boolean.toString(showKeybinds));
-        preferences.setProperty("showTelemetry", Boolean.toString(showTelemetry));
+        preferences.setProperty("showTelemetryDetail", Boolean.toString(showTelemetry));
         try {
             Files.createDirectories(path.getParent());
             try (var writer = Files.newBufferedWriter(path)) {
@@ -589,7 +589,7 @@ final class FlightHud {
             }
         }
 
-        if (showTelemetry) drawTelemetry(g, mc, screenWidth, screenHeight, clock);
+        if (showTelemetry) drawTelemetryDetail(g, mc, eicasX, eicasVisible, screenWidth, screenHeight, clock);
 
         updateKeybindPanelAnimation();
         if (showKeybinds && keybindPanelProgress > 0.01f) {
@@ -657,27 +657,29 @@ final class FlightHud {
         drawBrakePopup(g, screenWidth, screenHeight);
     }
 
-    /** Bottom-centre engineering strip: motion, wind, powerplant and approach data at a glance. */
-    private static void drawTelemetry(GuiGraphicsExtractor g, Minecraft mc, int screenWidth,
-                                      int screenHeight, double clock) {
+    /** Optional expanded readout: hidden by default; Y opens it as a compact right-column card. */
+    private static void drawTelemetryDetail(GuiGraphicsExtractor g, Minecraft mc, int eicasX,
+                                            boolean eicasVisible, int screenWidth,
+                                            int screenHeight, double clock) {
         Font font = mc.font;
-        int width = Math.min(224, Math.max(168, screenWidth - 24));
-        int height = 68;
-        int x = (screenWidth - width) / 2;
-        int y = Math.max(104, screenHeight - height - 58);
-        if (y + height > screenHeight - 48) y = Math.max(96, screenHeight - height - 48);
+        int width = EICAS_WIDTH;
+        int height = 70;
+        int x = eicasVisible ? eicasX : screenWidth - width - 6;
+        int y = eicasVisible ? 6 + EICAS_HEIGHT + 4 : 6;
+        if (eicasVisible && emergencyStatus.active()) y += emergencyPanelHeight() + 4;
+        if (y + height > screenHeight - 6) y = Math.max(6, screenHeight - height - 6);
+        if (y + height > screenHeight - 6) return;
+
         g.fill(x, y, x + width, y + height, 0xD8091017);
         g.outline(x, y, width, height, 0xFF3E7D8E);
         g.fill(x + 1, y + 1, x + width - 1, y + 12, 0xDD111D25);
-        g.text(font, "TELEMETRY", x + 4, y + 2, PFD_CYAN, true);
-        String mode = isAutopilotEngaged() ? (isAtcControlled() ? "ATC/AP" : "AP") : "MANUAL";
-        g.text(font, mode, x + width - 4 - font.width(mode), y + 2,
-                isAutopilotEngaged() ? PFD_GREEN : PFD_MUTED, true);
+        g.text(font, "TELEMETRY +", x + 4, y + 2, PFD_CYAN, true);
+        String key = FlightLineClient.keyName(FlightLineClient.telemetry());
+        g.text(font, key, x + width - 4 - font.width(key), y + 2, PFD_MUTED, true);
 
         int col = (width - 8) / 4;
-        int row1 = y + 15;
-        int row2 = y + 30;
-        int row3 = y + 45;
+        int row1 = y + 14;
+        int row2 = y + 29;
         String wind = String.format(Locale.ROOT, "%03d/%02dG%02d",
                 weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots(),
                 weatherGuidance.gustKnots());
@@ -707,11 +709,11 @@ final class FlightHud {
                 ? String.format(Locale.ROOT, "ILS LOC%+.1f GS%+.1f DME %.1f",
                 ilsLocalizerDegrees, ilsGlideslopeDegrees, ilsThresholdDistanceBlocks * 0.054f)
                 : "ILS ----  RA " + radioAltitudeFeet + "FT";
-        g.text(font, fitText(font, approach, width - 8), x + 4, row3 + 6,
+        g.text(font, fitText(font, approach, width - 8), x + 4, y + 50,
                 ilsActive ? PFD_CYAN : PFD_MUTED, true);
         String airframe = String.format(Locale.ROOT, "VS%+d  FUEL %d%%  WX %s",
                 verticalSpeedFpm, fuelPercent, weatherName(weatherGuidance.condition()));
-        g.text(font, fitText(font, airframe, width - 8), x + 4, row3 + 16,
+        g.text(font, fitText(font, airframe, width - 8), x + 4, y + 60,
                 weatherGuidance.condition() == 2 ? PFD_AMBER : PFD_WHITE, true);
         if (((long) (clock * 2.0) & 1L) == 0L) {
             g.fill(x + width - 5, y + 4, x + width - 2, y + 7, PFD_GREEN);
@@ -858,8 +860,7 @@ final class FlightHud {
     }
 
     /** Compact checklist summary below EICAS; the full procedure list opens with O. */
-    private static void drawEmergencyPanel(GuiGraphicsExtractor g, Minecraft mc, int x, int y, double clock) {
-        Font font = mc.font;
+    private static List<String> emergencyLines() {
         EmergencyStatusPayload status = emergencyStatus;
         List<String> lines = new ArrayList<>();
         boolean grouped = FlightLineClient.getAircraftType() == AircraftType.GINA_787;
@@ -883,7 +884,20 @@ final class FlightHud {
         if (status.hasCondition(EmergencyStatus.OVERSPEED)) lines.add("OVERSPEED");
         if (status.hasCondition(EmergencyStatus.EMERGENCY_DECLARED)) lines.add("MAYDAY ACTIVE");
         if (status.hasCondition(EmergencyStatus.FUEL_DUMPING)) lines.add("FUEL JETTISON");
+        return lines;
+    }
 
+    private static int emergencyPanelHeight() {
+        if (!emergencyStatus.active()) return 0;
+        return 18 + Math.min(4, emergencyLines().size()) * 10
+                + (emergencyStatus.recommendation().present() ? 20 : 0);
+    }
+
+    private static void drawEmergencyPanel(GuiGraphicsExtractor g, Minecraft mc, int x, int y, double clock) {
+        Font font = mc.font;
+        EmergencyStatusPayload status = emergencyStatus;
+        boolean grouped = FlightLineClient.getAircraftType() == AircraftType.GINA_787;
+        List<String> lines = emergencyLines();
         var recommendation = status.recommendation();
         int rows = Math.min(4, lines.size());
         int height = 18 + rows * 10 + (recommendation.present() ? 20 : 0);
@@ -1254,8 +1268,8 @@ final class FlightHud {
     }
 
     private static void drawPfdStatus(GuiGraphicsExtractor g, Font font) {
-        int statusTop = 128;
-        int statusBottom = PFD_BASE_HEIGHT - 2;
+        int statusTop = 127;
+        int statusBottom = PFD_BASE_HEIGHT - 1;
         g.fill(1, statusTop, PFD_BASE_WIDTH - 1, statusBottom, 0xDD070C11);
         g.outline(1, statusTop, PFD_BASE_WIDTH - 2, statusBottom - statusTop, 0x553E7D8E);
         // Row 1: Wind | Attitude or ILS | VS
@@ -1265,21 +1279,33 @@ final class FlightHud {
                 ? String.format(Locale.ROOT, "LOC%+.1f GS%+.1f", ilsLocalizerDegrees, ilsGlideslopeDegrees)
                 : String.format(Locale.ROOT, "P%+.0f° B%+.0f°", visualPitch, visualBank);
         String vs = String.format(Locale.ROOT, "VS%+d", verticalSpeedFpm);
-        g.text(font, fitText(font, wind, 52), 4, statusTop + 2, PFD_MUTED, true);
+        g.text(font, fitText(font, wind, 50), 4, statusTop + 2, PFD_MUTED, true);
         g.text(font, fitText(font, lateral, 62), 58, statusTop + 2, ilsActive ? PFD_CYAN : PFD_WHITE, true);
         g.text(font, fitText(font, vs, 42), 122, statusTop + 2,
                 verticalSpeedFpm < -1500 ? PFD_AMBER : PFD_WHITE, true);
-        // Row 2: SAT/TAT | DME distance | QNH (standard for Minecraft altitude)
-        int satC = weatherGuidance.condition() == 2 ? -40 : weatherGuidance.condition() == 1 ? 5 : 15;
-        int tatC = satC + Math.max(0, (int) Math.round(knots(visualSpeed) * 0.0017));
-        String tempStr = String.format(Locale.ROOT, "TAT%+d°", tatC);
+
+        // Row 2: Ground speed | DME distance | QNH (standard for Minecraft altitude)
+        String gs = String.format(Locale.ROOT, "GS%dKT", groundSpeedKnots());
         String dmeStr = ilsActive
                 ? String.format(Locale.ROOT, "DME %.1fNM", ilsThresholdDistanceBlocks * 0.054f)
                 : "DME ----";
-        String qnhStr = "STD 1013";
-        g.text(font, fitText(font, tempStr, 48), 4, statusTop + 14, PFD_MUTED, true);
-        g.text(font, fitText(font, dmeStr, 64), 56, statusTop + 14, ilsActive ? PFD_GREEN : PFD_MUTED, true);
-        g.text(font, fitText(font, qnhStr, 42), 122, statusTop + 14, PFD_MUTED, true);
+        g.text(font, fitText(font, gs, 48), 4, statusTop + 12, PFD_WHITE, true);
+        g.text(font, fitText(font, dmeStr, 62), 56, statusTop + 12,
+                ilsActive ? PFD_GREEN : PFD_MUTED, true);
+        g.text(font, "STD 1013", 122, statusTop + 12, PFD_MUTED, true);
+
+        // Row 3: Track | load factor and autoflight mode | outside air temperature
+        String trk = String.format(Locale.ROOT, "TRK%03d", trackDegrees());
+        String apMode = isAutopilotEngaged()
+                ? (isAtcControlled() ? "ATC" : "AP") : "MAN";
+        String gText = String.format(Locale.ROOT, "G%.1f %s", gLoad(), apMode);
+        int satC = weatherGuidance.condition() == 2 ? -40 : weatherGuidance.condition() == 1 ? 5 : 15;
+        int tatC = satC + Math.max(0, (int) Math.round(knots(visualSpeed) * 0.0017));
+        String tempStr = String.format(Locale.ROOT, "TAT%+d°", tatC);
+        g.text(font, fitText(font, trk, 48), 4, statusTop + 22, PFD_CYAN, true);
+        g.text(font, fitText(font, gText, 62), 56, statusTop + 22,
+                gLoad() > 2.5f || gLoad() < 0.3f ? PFD_AMBER : PFD_WHITE, true);
+        g.text(font, fitText(font, tempStr, 42), 122, statusTop + 22, PFD_MUTED, true);
     }
 
     private static void drawPfdWarnings(GuiGraphicsExtractor g, Font font, int centerX, int top) {
