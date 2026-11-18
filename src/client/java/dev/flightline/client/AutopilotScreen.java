@@ -46,13 +46,21 @@ public class AutopilotScreen extends Screen {
 
     private static final int PAGE_ALERTS = 5;
 
-    private static final int MCP_COLUMN_X = 24;
-    private static final int MCP_COLUMN_WIDTH = 129;
-    private static final int MCP_COLUMN_GAP = 12;
-    private static final int MCP_INSTRUMENT_TOP = 100;
-    private static final int MCP_INSTRUMENT_HEIGHT = 140;
-    private static final int MCP_SELECT_TOP = 250;
-    private static final int MCP_SELECT_HEIGHT = 90;
+    private static final int MCP_GROUP_W = 264;
+    private static final int MCP_GROUP_H = 104;
+    private static final int MCP_GROUP_X = 24;
+    private static final int MCP_GROUP_COL_GAP = 24;
+    private static final int MCP_GROUP_Y = 132;
+    private static final int MCP_GROUP_ROW_GAP = 12;
+    private static final int MCP_FIELD_X = 12;
+    private static final int MCP_FIELD_Y = 56;
+    private static final int MCP_FIELD_W = 72;
+    private static final int MCP_STEP_X = 96;
+    private static final int MCP_STEP_2_X = 180;
+    private static final int MCP_STEP_W = 72;
+    private static final int MCP_ACTION_X = 12;
+    private static final int MCP_ACTION_Y = 80;
+    private static final int MCP_ACTION_W = 240;
 
     private static final int TCAS_WARNINGS = FlightWarning.TCAS_TRAFFIC
             | FlightWarning.TCAS_RESOLUTION
@@ -241,35 +249,52 @@ public class AutopilotScreen extends Screen {
     }
 
     private void initMcpPage() {
-        headingBox = numberInput(mcpColumnCenter(0) - 29, 274, 58, "HDG", mcpHeadingText, 3);
-        altitudeBox = numberInput(mcpColumnCenter(1) - 29, 274, 58, "ALT", mcpAltitudeText, 5);
-        vsBox = numberInput(mcpColumnCenter(2) - 29, 274, 58, "V/S", mcpVsText, 5);
-        speedBox = numberInput(mcpColumnCenter(3) - 29, 274, 58, "IAS", mcpSpeedText, 3);
+        int hdgX = mcpGroupX(0);
+        int hdgY = mcpGroupY(0);
+        headingBox = numberInput(hdgX + MCP_FIELD_X, hdgY + MCP_FIELD_Y, MCP_FIELD_W,
+                "HDG", mcpHeadingText, 3);
+        addRenderableWidget(stepButton("-10", hdgX + MCP_STEP_X, hdgY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustHeading(-10)));
+        addRenderableWidget(stepButton("+10", hdgX + MCP_STEP_2_X, hdgY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustHeading(10)));
+        addRenderableWidget(compactActionButton("SYNC", hdgX + MCP_ACTION_X, hdgY + MCP_ACTION_Y,
+                MCP_ACTION_W, this::syncHeading));
 
-        addRenderableWidget(stepButton("-10", mcpColumnX(0) + 7, 298, 55, () -> adjustHeading(-10)));
-        addRenderableWidget(stepButton("+10", mcpColumnX(0) + 66, 298, 55, () -> adjustHeading(10)));
-        addRenderableWidget(compactActionButton("SYNC", mcpColumnX(0) + 26, 320, 76,
-                this::syncHeading));
+        int altX = mcpGroupX(1);
+        int altY = mcpGroupY(1);
+        altitudeBox = numberInput(altX + MCP_FIELD_X, altY + MCP_FIELD_Y, MCP_FIELD_W,
+                "ALT", mcpAltitudeText, 5);
+        addRenderableWidget(stepButton("-500", altX + MCP_STEP_X, altY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustAltitude(-500)));
+        addRenderableWidget(stepButton("+500", altX + MCP_STEP_2_X, altY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustAltitude(500)));
+        addRenderableWidget(compactActionButton("SYNC", altX + MCP_ACTION_X, altY + MCP_ACTION_Y,
+                MCP_ACTION_W, this::syncAltitude));
 
-        addRenderableWidget(stepButton("-500", mcpColumnX(1) + 7, 298, 55,
-                () -> adjustAltitude(-500)));
-        addRenderableWidget(stepButton("+500", mcpColumnX(1) + 66, 298, 55,
-                () -> adjustAltitude(500)));
-        addRenderableWidget(compactActionButton("SYNC", mcpColumnX(1) + 26, 320, 76,
-                this::syncAltitude));
+        int vsX = mcpGroupX(2);
+        int vsY = mcpGroupY(2);
+        vsBox = numberInput(vsX + MCP_FIELD_X, vsY + MCP_FIELD_Y, MCP_FIELD_W,
+                "V/S", mcpVsText, 5);
+        addRenderableWidget(stepButton("-500", vsX + MCP_STEP_X, vsY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustVs(-500)));
+        addRenderableWidget(stepButton("+500", vsX + MCP_STEP_2_X, vsY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustVs(500)));
+        addRenderableWidget(compactActionButton("LEVEL", vsX + MCP_ACTION_X, vsY + MCP_ACTION_Y,
+                MCP_ACTION_W, this::setVsZero));
 
-        addRenderableWidget(stepButton("-500", mcpColumnX(2) + 7, 298, 55, () -> adjustVs(-500)));
-        addRenderableWidget(stepButton("+500", mcpColumnX(2) + 66, 298, 55, () -> adjustVs(500)));
-        addRenderableWidget(compactActionButton("LEVEL", mcpColumnX(2) + 26, 320, 76,
-                this::setVsZero));
+        int iasX = mcpGroupX(3);
+        int iasY = mcpGroupY(3);
+        speedBox = numberInput(iasX + MCP_FIELD_X, iasY + MCP_FIELD_Y, MCP_FIELD_W,
+                "IAS", mcpSpeedText, 3);
+        addRenderableWidget(stepButton("-10", iasX + MCP_STEP_X, iasY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustSpeed(-10)));
+        addRenderableWidget(stepButton("+10", iasX + MCP_STEP_2_X, iasY + MCP_FIELD_Y,
+                MCP_STEP_W, () -> adjustSpeed(10)));
+        addRenderableWidget(compactActionButton("SYNC", iasX + MCP_ACTION_X, iasY + MCP_ACTION_Y,
+                MCP_ACTION_W, this::syncSpeed));
 
-        addRenderableWidget(stepButton("-10", mcpColumnX(3) + 7, 298, 55, () -> adjustSpeed(-10)));
-        addRenderableWidget(stepButton("+10", mcpColumnX(3) + 66, 298, 55, () -> adjustSpeed(10)));
-        addRenderableWidget(compactActionButton("SYNC", mcpColumnX(3) + 26, 320, 76,
-                this::syncSpeed));
-
-        apMasterBtn = FlightLineTheme.button(apButtonText(), x(mcpColumnX(0)), y(350),
-                w(MCP_COLUMN_WIDTH), h(20), this::toggleAp);
+        apMasterBtn = FlightLineTheme.button(apButtonText(), x(428), y(104), w(148), h(18),
+                this::toggleAp);
         addRenderableWidget(apMasterBtn);
     }
 
@@ -927,12 +952,12 @@ public class AutopilotScreen extends Screen {
         fittedText(graphics, "UNSENT CHANGES", markX + 7, markY + 1, AMBER, w(112), true);
     }
 
-    private static int mcpColumnX(int index) {
-        return MCP_COLUMN_X + index * (MCP_COLUMN_WIDTH + MCP_COLUMN_GAP);
+    private static int mcpGroupX(int index) {
+        return MCP_GROUP_X + (index % 2) * (MCP_GROUP_W + MCP_GROUP_COL_GAP);
     }
 
-    private static int mcpColumnCenter(int index) {
-        return mcpColumnX(index) + MCP_COLUMN_WIDTH / 2;
+    private static int mcpGroupY(int index) {
+        return MCP_GROUP_Y + (index / 2) * (MCP_GROUP_H + MCP_GROUP_ROW_GAP);
     }
 
     private void drawFma(GuiGraphicsExtractor graphics) {
@@ -981,52 +1006,98 @@ public class AutopilotScreen extends Screen {
         int currentAltitude = FlightHud.currentAltitudeFeet();
         int currentSpeed = FlightHud.currentSpeedKnots();
         int currentVs = FlightHud.currentVsFpm();
+        int targetHeading = parseHeading();
+        int targetAltitude = parseAltitude();
+        int targetSpeed = parseSpeed();
+        int targetVs = parseVs();
 
-        panel(graphics, mcpColumnX(0), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
-                MCP_INSTRUMENT_HEIGHT, "HEADING");
-        drawHeadingDial(graphics, mcpColumnCenter(0), 174, 40, currentHeading, parseHeading());
-        fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %03d°  SEL %03d°",
-                currentHeading, parseHeading()), panelLeft + x(mcpColumnCenter(0)),
-                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 6));
+        drawMcpStatus(graphics);
 
-        panel(graphics, mcpColumnX(1), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
-                MCP_INSTRUMENT_HEIGHT, "ALTITUDE");
-        drawTape(graphics, mcpColumnX(1) + 14, 126, 101, 84, currentAltitude, parseAltitude(),
-                500, "FT", 1000);
-        fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %,d  SEL %,d",
-                currentAltitude, parseAltitude()), panelLeft + x(mcpColumnCenter(1)),
-                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 6));
+        panel(graphics, mcpGroupX(0), mcpGroupY(0), MCP_GROUP_W, MCP_GROUP_H,
+                "LATERAL / HDG", CYAN);
+        drawMcpReadout(graphics, 0,
+                String.format(Locale.ROOT, "%03d°", currentHeading),
+                String.format(Locale.ROOT, "%03d°", targetHeading),
+                currentHeading / 359.0f, targetHeading / 359.0f);
 
-        panel(graphics, mcpColumnX(2), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
-                MCP_INSTRUMENT_HEIGHT, "VERTICAL SPEED");
-        drawVerticalSpeed(graphics, mcpColumnCenter(2), 168, 84, currentVs, parseVs());
-        fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %+d  SEL %+d FPM",
-                currentVs, parseVs()), panelLeft + x(mcpColumnCenter(2)),
-                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 4));
+        panel(graphics, mcpGroupX(1), mcpGroupY(1), MCP_GROUP_W, MCP_GROUP_H,
+                "VERTICAL / ALT", CYAN);
+        drawMcpReadout(graphics, 1,
+                String.format(Locale.ROOT, "%,d FT", currentAltitude),
+                String.format(Locale.ROOT, "%,d FT", targetAltitude),
+                currentAltitude / 35000.0f, targetAltitude / 35000.0f);
 
-        panel(graphics, mcpColumnX(3), MCP_INSTRUMENT_TOP, MCP_COLUMN_WIDTH,
-                MCP_INSTRUMENT_HEIGHT, "AIRSPEED");
-        drawTape(graphics, mcpColumnX(3) + 14, 126, 101, 84, currentSpeed, parseSpeed(),
-                10, "KT", 50);
-        fittedCenteredText(graphics, String.format(Locale.ROOT, "CUR %d  SEL %d",
-                currentSpeed, parseSpeed()), panelLeft + x(mcpColumnCenter(3)),
-                panelTop + y(218), TEXT, w(MCP_COLUMN_WIDTH - 6));
+        panel(graphics, mcpGroupX(2), mcpGroupY(2), MCP_GROUP_W, MCP_GROUP_H,
+                "VERTICAL / V/S", CYAN);
+        drawMcpReadout(graphics, 2,
+                String.format(Locale.ROOT, "%+d FPM", currentVs),
+                String.format(Locale.ROOT, "%+d FPM", targetVs),
+                (currentVs + 4000.0f) / 8000.0f, (targetVs + 4000.0f) / 8000.0f);
 
-        panel(graphics, mcpColumnX(0), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
-                MCP_SELECT_HEIGHT, "HDG SELECT");
-        panel(graphics, mcpColumnX(1), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
-                MCP_SELECT_HEIGHT, "ALT SELECT");
-        panel(graphics, mcpColumnX(2), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
-                MCP_SELECT_HEIGHT, "V/S SELECT");
-        panel(graphics, mcpColumnX(3), MCP_SELECT_TOP, MCP_COLUMN_WIDTH,
-                MCP_SELECT_HEIGHT, "IAS SELECT");
+        panel(graphics, mcpGroupX(3), mcpGroupY(3), MCP_GROUP_W, MCP_GROUP_H,
+                "SPEED / IAS", CYAN);
+        drawMcpReadout(graphics, 3,
+                currentSpeed + " KT", targetSpeed + " KT",
+                (currentSpeed - 60.0f) / 260.0f, (targetSpeed - 60.0f) / 260.0f);
 
         var guidance = FlightHud.autopilotGuidance();
         String config = String.format(Locale.ROOT, "A/T %s  ·  THRUST ±%.0f KT  ·  N1 %d%%",
                 FlightHud.isAutopilotEngaged() ? "AUTO" : "STBY",
                 guidance.autoThrottleDeadbandKnots(), FlightHud.engineN1());
-        fittedCenteredText(graphics, config, panelLeft + x(mcpColumnCenter(2)),
-                panelTop + y(354), MUTED, freeWidth(mcpColumnX(1), mcpColumnX(3) + MCP_COLUMN_WIDTH));
+        fittedCenteredText(graphics, config, panelLeft + x(294), panelTop + y(360), MUTED, w(500));
+    }
+
+    /** Engagement strip inside the card; the full mode annunciator row sits above it. */
+    private void drawMcpStatus(GuiGraphicsExtractor graphics) {
+        var guidance = FlightHud.autopilotGuidance();
+        boolean ap = FlightHud.isAutopilotEngaged() || engaged;
+        String mode = guidance.atcControlled() ? "ATC CONTROL"
+                : guidance.autolandArmed() ? "AUTOLAND"
+                : ap && FlightHud.navMode() == NavMode.LNAV ? "LNAV"
+                : ap ? "HDG" : "MANUAL";
+        int stateColor = ap ? GREEN : MUTED;
+
+        graphics.fill(panelLeft + x(24), panelTop + y(100),
+                panelLeft + x(28), panelTop + y(123), stateColor);
+        fittedText(graphics, "FLIGHT DIRECTOR", panelLeft + x(36), panelTop + y(100),
+                MUTED, w(112), true);
+        fittedText(graphics, ap ? "ARMED" : "STANDBY", panelLeft + x(36), panelTop + y(111),
+                stateColor, w(112), true);
+        fittedText(graphics, "ACTIVE MODE", panelLeft + x(208), panelTop + y(100),
+                MUTED, w(96), true);
+        fittedText(graphics, mode, panelLeft + x(208), panelTop + y(111),
+                ap ? TEXT : MUTED, w(196), true);
+        graphics.fill(panelLeft + x(24), panelTop + y(127),
+                panelLeft + x(576), panelTop + y(128), BORDER);
+    }
+
+    private void drawMcpReadout(GuiGraphicsExtractor graphics, int index,
+                                String current, String selected,
+                                float currentFraction, float selectedFraction) {
+        int x = mcpGroupX(index);
+        int y = mcpGroupY(index);
+        fittedText(graphics, "CURRENT", panelLeft + x(x + 14), panelTop + y(y + 23),
+                MUTED, w(56), true);
+        fittedText(graphics, current, panelLeft + x(x + 14), panelTop + y(y + 34),
+                CYAN, w(112), true);
+        fittedText(graphics, "SELECTED", panelLeft + x(x + 148), panelTop + y(y + 23),
+                MUTED, w(60), true);
+        fittedText(graphics, selected, panelLeft + x(x + 148), panelTop + y(y + 34),
+                AMBER, w(102), true);
+        drawMcpScale(graphics, x + 14, y + 46, 236, currentFraction, selectedFraction);
+    }
+
+    private void drawMcpScale(GuiGraphicsExtractor graphics, int x, int y, int width,
+                              float currentFraction, float selectedFraction) {
+        graphics.fill(panelLeft + x(x), panelTop + y(y),
+                panelLeft + x(x + width), panelTop + y(y + 2), FlightLineTheme.INSET);
+        graphics.outline(panelLeft + x(x), panelTop + y(y), w(width), h(2), BORDER);
+        int currentPos = x + Math.round(width * fraction01(currentFraction));
+        int selectedPos = x + Math.round(width * fraction01(selectedFraction));
+        graphics.fill(panelLeft + x(currentPos), panelTop + y(y - 2),
+                panelLeft + x(currentPos + 2), panelTop + y(y + 4), CYAN);
+        graphics.fill(panelLeft + x(selectedPos), panelTop + y(y - 3),
+                panelLeft + x(selectedPos + 2), panelTop + y(y + 5), AMBER);
     }
 
     private void drawHeadingDial(GuiGraphicsExtractor graphics, int cx, int cy, int radius,
@@ -1796,6 +1867,10 @@ public class AutopilotScreen extends Screen {
 
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static float fraction01(float value) {
+        return Math.max(0.0f, Math.min(1.0f, value));
     }
 
     private EditBox headingInput() {
