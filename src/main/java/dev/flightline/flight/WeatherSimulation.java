@@ -1,10 +1,9 @@
 package dev.flightline.flight;
 
 /**
- * Lightweight, deterministic weather model. Wind is split into a slowly varying mean flow and a
- * shorter-period gust component, which gives the cockpit a believable "wind 270/25G40" feel instead
- * of a single sine wave. Storms add a much wider gust spread and a vertical component that the
- * flight model turns into turbulence and windshear.
+ * Lightweight, deterministic weather model built on top of the shared regional weather field.
+ * The field supplies slowly varying air masses and gradient wind; this class maps them to the
+ * compact cockpit guidance and to organized radar cells.
  */
 public final class WeatherSimulation {
     private static final long WINDSHEAR_INTERVAL_TICKS = 600L;
@@ -16,46 +15,26 @@ public final class WeatherSimulation {
         return sample(raining, thundering, 0.8f, gameTime, seed);
     }
 
+    /** Legacy seed-based sampling kept for tests and callers without a world position. */
     public static Conditions sample(boolean raining, boolean thundering, float biomeTemperature,
                                     long gameTime, long seed) {
-        double weatherSeverity = thundering ? 1.0 : raining ? 0.55 : 0.10;
-        double seedPhase = (seed & 0xFFFFL) * 0.00013;
-        double phase = gameTime * 0.018 + seedPhase;
+        int blockX = (int) (((seed & 0xFFFFL) * 37L) % 131071L) - 65535;
+        int blockZ = (int) (((seed >>> 16) & 0xFFFFL) * 53L) % 131071 - 65535;
+        return sample(raining, thundering, biomeTemperature, blockX, blockZ, 96.0, gameTime);
+    }
 
-        // A slow pressure wave plus a faster gust wave. The two never line up for long, so gusts
-        // arrive in bursts and fade instead of producing a perfect sine.
-        double slowWave = 0.5 + 0.5 * Math.sin(phase * 0.33 + seedPhase * 7.0);
-        double gustWave = 0.5 + 0.5 * Math.sin(phase * 1.87 + Math.sin(phase * 0.41) * 1.3);
-        double gustEnvelope = 0.55 + 0.45 * Math.sin(phase * 0.71 + 2.1);
-
-        double baseKnots = thundering ? 20.0 + slowWave * 18.0
-                : raining ? 8.0 + slowWave * 12.0
-                : 3.0 + slowWave * 6.0;
-        double gustAmplitude = (thundering ? 16.0 + gustWave * 16.0
-                : raining ? 5.0 + gustWave * 9.0
-                : 1.0 + gustWave * 3.0) * Math.max(0.35, gustEnvelope);
-        double windKnots = baseKnots + gustAmplitude * 0.45;
-        int gustKnots = (int) Math.round(windKnots + gustAmplitude * 0.75);
-
-        // Wind slowly veers with the weather system instead of snapping around every tick.
-        double directionRadians = (seed & 0xFFFFL) * 0.0021
-                + Math.sin(gameTime * 0.00083) * 0.55
-                + gameTime * 0.00006;
-        double windSpeed = windKnots / FlightTuning.KNOTS_PER_BLOCK_PER_TICK;
-
-        int turbulencePercent = thundering
-                ? (int) Math.round(48.0 + 47.0 * (0.5 + 0.5 * Math.sin(phase * 0.91 + 1.7)))
-                : raining
-                        ? (int) Math.round(18.0 + 36.0 * (0.5 + 0.5 * Math.sin(phase * 0.61 + 1.7)))
-                        : (int) Math.round(2.0 + 10.0 * (0.5 + 0.5 * Math.sin(phase * 0.43 + 1.7)));
-        int visibilityBlocks = thundering ? 28 : raining ? 64 : 320;
-        int condition = thundering ? 2 : raining ? 1 : 0;
-        int directionDegrees = Math.floorMod((int) Math.round(Math.toDegrees(directionRadians)), 360);
-        return new Conditions(Math.cos(directionRadians) * windSpeed,
-                Math.sin(directionRadians) * windSpeed,
-                (int) Math.round(windKnots), directionDegrees, turbulencePercent,
-                visibilityBlocks, condition, (raining || thundering) && biomeTemperature <= 0.2f,
-                Math.max((int) Math.round(windKnots), gustKnots));
+    public static Conditions sample(boolean raining, boolean thundering, float biomeTemperature,
+                                    int blockX, int blockZ, double altitudeBlocks, long gameTime) {
+        WeatherField.Sample field = WeatherField.sample(blockX, blockZ, altitudeBlocks,
+                raining, thundering, biomeTemperature, gameTime);
+        double speedBlocks = field.surfaceWindKnots() / FlightTuning.KNOTS_PER_BLOCK_PER_TICK;
+        double[] vector = WeatherField.windVector(field.surfaceWindDirectionDegrees(), speedBlocks);
+        return new Conditions(vector[0], vector[1],
+                (int) Math.round(field.surfaceWindKnots()),
+                (int) Math.round(field.surfaceWindDirectionDegrees()),
+                (int) Math.round(field.turbulencePercent()), field.visibilityBlocks(),
+                field.condition(), (raining || thundering) && biomeTemperature <= 0.2f,
+                (int) Math.round(field.gustKnots()));
     }
 
     public static boolean isWindshearEvent(boolean thundering, long gameTime, long seed) {
@@ -63,35 +42,45 @@ public final class WeatherSimulation {
     }
 
     /**
-     * Deterministic weather cell used by the map screens. The authoritative per-player guidance sets
-     * the broad storm intensity; the hash adds stable local structure so a cell keeps its shape while
-     * the whole system drifts. No extra network payload is needed because every client samples the
-     * same world seed and game time.
+     * Deterministic radar cell with a cluster envelope, lifecycle, motion and storm metadata.
+     * Broad guidance still comes from the authoritative cockpit payload, so no extra network field
+     * is needed for the display-only structure.
      */
     public static WeatherCell sampleCell(int cellX, int cellZ, long gameTime, long seed,
                                          int condition, int turbulencePercent, int gustKnots) {
-        long epoch = gameTime / 600L;
-        long hash = cellX * 0x9E3779B97F4A7C15L
-                ^ cellZ * 0xC2B2AE3D27D4EB4FL
-                ^ seed
-                ^ epoch * 0xBF58476D1CE4E5B9L;
-        int noise = (int) ((mix64(hash) >>> 48) & 0xFFFFL);
-        double drift = 0.5 + 0.5 * Math.sin(gameTime * 0.0012
-                + cellX * 0.83 + cellZ * 0.39 + (seed & 0xFFFFL) * 0.001);
-        double base = condition == 2 ? 0.70 : condition == 1 ? 0.40 : 0.10;
-        double severity = Math.min(0.24, turbulencePercent / 400.0)
-                + Math.min(0.12, gustKnots / 400.0);
-        double intensity = (base * 0.64 + noise / 65535.0 * 0.34 + drift * 0.18 + severity) * 100.0;
-        if (condition == 0 && intensity < 36.0) intensity = 0.0;
+        double worldX = (cellX + 0.5) * 128.0;
+        double worldZ = (cellZ + 0.5) * 128.0;
+        WeatherField.CellRegion region = WeatherField.sampleCellRegion(worldX, worldZ, gameTime, seed);
+
+        double broad = condition == 2 ? 1.0 : condition == 1 ? 0.62 : 0.26;
+        double envelope = clamp01(region.cluster() * 0.48 + region.front() * 0.32
+                + broad * 0.34 + region.humidity() * 0.16);
+        double life = 0.55 + 0.45 * Math.sin(gameTime * 0.0011 + region.phase() * Math.PI * 2.0);
+        double severity = Math.min(18.0, turbulencePercent * 0.10 + gustKnots * 0.06);
+        double intensity = envelope * (0.55 + 0.45 * life) * 100.0
+                + (condition == 2 ? 18.0 * life : 0.0) + severity;
+        if (condition == 0) intensity *= 0.72;
+
         int value = (int) Math.round(Math.max(0.0, Math.min(100.0, intensity)));
-        int cellCondition = value >= 70 ? 2 : value >= 38 ? 1 : 0;
-        return new WeatherCell(value, cellCondition);
+        if (value < 14) {
+            return new WeatherCell(0, 0, 0, 0, 0.0, 0.0, false, false);
+        }
+
+        int cellCondition = value >= 72 ? 2 : value >= 36 ? 1 : 0;
+        int type = cellCondition == 2 ? (value >= 90 ? 3 : 2) : cellCondition == 1 ? 1 : 0;
+        int topFeet = cellCondition == 2 ? 22000 + value * 180
+                : cellCondition == 1 ? 8000 + value * 70 : 4000 + value * 40;
+        boolean lightning = cellCondition == 2 && value >= 78
+                && (Math.floorDiv(gameTime, 20L) + cellX + cellZ) % 4L == 0L;
+        boolean hail = type == 3 && value >= 90;
+
+        double[] motion = WeatherField.windVector(region.windDirectionDegrees(), 1.0);
+        return new WeatherCell(value, cellCondition, type, topFeet, motion[0], motion[1],
+                lightning, hail);
     }
 
-    private static long mix64(long value) {
-        value = (value ^ (value >>> 30)) * 0xBF58476D1CE4E5B9L;
-        value = (value ^ (value >>> 27)) * 0x94D049BB133111EBL;
-        return value ^ (value >>> 31);
+    private static double clamp01(double value) {
+        return Math.max(0.0, Math.min(1.0, value));
     }
 
     static double advanceIcing(double currentPercent, boolean icingConditions, boolean antiIceEffective) {
@@ -106,6 +95,11 @@ public final class WeatherSimulation {
     }
 
     /** One deterministic radar/map cell. Intensity is 0-100; condition follows the storm scale. */
-    public record WeatherCell(int intensity, int condition) {
+    public record WeatherCell(int intensity, int condition, int type, int topFeet,
+                              double motionDx, double motionDz, boolean lightning, boolean hail) {
+        public WeatherCell(int intensity, int condition) {
+            this(intensity, condition, condition == 2 ? 2 : condition == 1 ? 1 : 0,
+                    0, 0.0, 0.0, false, false);
+        }
     }
 }

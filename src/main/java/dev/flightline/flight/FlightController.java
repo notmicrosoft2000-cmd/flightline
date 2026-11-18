@@ -1771,7 +1771,8 @@ public final class FlightController {
         long seed = player.getUUID().getLeastSignificantBits();
         float biomeTemperature = player.level().getBiome(player.blockPosition()).value().getBaseTemperature();
         WeatherSimulation.Conditions conditions = WeatherSimulation.sample(player.level().isRaining(),
-                player.level().isThundering(), biomeTemperature, gameTime, seed);
+                player.level().isThundering(), biomeTemperature, player.blockPosition().getX(),
+                player.blockPosition().getZ(), player.getY(), gameTime);
         boolean antiIceEffective = session.antiIce && runningEngines(session) > 0 && session.engineSpool > 0.35;
         session.antiIceEffective = antiIceEffective;
         session.icingPercent = WeatherSimulation.advanceIcing(session.icingPercent,

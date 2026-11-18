@@ -756,17 +756,16 @@ public class AutopilotScreen extends Screen {
         int sweep = x + (int) (phase % Math.max(1, width - 2));
         graphics.fill(panelLeft + x(sweep), panelTop + y(y), panelLeft + x(sweep + 2),
                 panelTop + y(y + height), 0x8062D89B);
-        drawWindArrow(graphics, x + 34, y + 28, weather.windDirectionDegrees(),
+        drawWindArrow(graphics, x + 34, y + 28, weather.windDirectionDegrees() + 180,
                 weather.windSpeedKnots(), conditionColor(weather));
         graphics.disableScissor();
     }
 
     private void drawWeatherLegend(GuiGraphicsExtractor graphics, int x, int y) {
-        int[][] swatches = {{GREEN, CYAN, AMBER, RED}};
-        int[] colors = swatches[0];
-        for (int i = 0; i < colors.length; i++) {
+        for (int i = 0; i < WeatherDisplay.DBZ_COLORS.length; i++) {
             graphics.fill(panelLeft + x(x + i * 12), panelTop + y(y),
-                    panelLeft + x(x + i * 12 + 9), panelTop + y(y + 7), colors[i]);
+                    panelLeft + x(x + i * 12 + 9), panelTop + y(y + 7),
+                    WeatherDisplay.DBZ_COLORS[i]);
         }
         fittedText(graphics, "LIGHT / HEAVY", panelLeft + x(x), panelTop + y(y + 9), MUTED, w(58), true);
     }
