@@ -12,10 +12,23 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+/** Operator ATC console with player/mob filters and rich contact cards. */
 public final class AtcScreen extends Screen {
+    private enum Filter { ALL, PLAYERS, MOBS }
+
+    private static final int BASE_WIDTH = 520;
+    private static final int BASE_HEIGHT = 360;
+    private static final int TEXT = 0xFFDCE8EE;
+    private static final int MUTED = 0xFF8198A3;
+    private static final int CYAN = 0xFF72E6F5;
+    private static final int GREEN = 0xFF75E6A5;
+    private static final int AMBER = 0xFFFFCE52;
+    private static final int PLAYER = 0xFF6BCBFF;
+
     private int selectedEntityId = FlightLineClient.atcSelectedTarget();
     private int leadEntityId = -1;
     private int contactOffset;
@@ -24,14 +37,18 @@ public final class AtcScreen extends Screen {
     private int panelWidth;
     private int panelHeight;
     private int listTop;
+    private int listLeft;
+    private int listWidth;
     private int visibleRows;
+    private int rowHeight;
+    private float scaleX;
+    private float scaleY;
+    private Filter filter = Filter.ALL;
     private boolean selectingLead;
-    private boolean compactLayout;
-    private boolean compactDense;
     private boolean closing;
     private float openProgress;
     private long lastFrameNanos = System.nanoTime();
-    private String status = "Select an aircraft to issue a control clearance.";
+    private String status = "Select a contact, then issue a clearance or order.";
     private @Nullable Button cameraButton;
     private @Nullable EditBox headingInput;
     private @Nullable EditBox altitudeInput;
@@ -44,127 +61,117 @@ public final class AtcScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        panelWidth = Math.max(1, Math.min(380, width - 16));
-        panelHeight = Math.max(1, Math.min(300, height - 16));
+        panelWidth = Math.max(1, Math.min(BASE_WIDTH, width - 16));
+        panelHeight = Math.max(1, Math.min(BASE_HEIGHT, height - 16));
         panelLeft = (width - panelWidth) / 2;
         panelTop = (height - panelHeight) / 2;
-        listTop = panelTop + 48;
-        compactLayout = panelWidth < 430 || panelHeight < 310;
-        compactDense = compactLayout && panelHeight < 310;
-        List<FlightRadarPayload.Contact> contacts = FlightHud.radarContacts();
+        scaleX = panelWidth / (float) BASE_WIDTH;
+        scaleY = panelHeight / (float) BASE_HEIGHT;
+        rowHeight = h(30);
+        listLeft = x(12);
+        listTop = y(54);
+        listWidth = w(286);
+        visibleRows = Math.max(1, Math.min(8, (h(280) - 22) / Math.max(1, rowHeight)));
+
+        List<FlightRadarPayload.Contact> contacts = filteredContacts();
         if (selectedEntityId < 0 && !contacts.isEmpty()) selectedEntityId = contacts.getFirst().entityId();
         if (selectedEntityId >= 0) FlightLineClient.setAtcSelectedTarget(selectedEntityId);
         FlightRadarPayload.Contact selected = findContact(selectedEntityId);
         int initialHeading = Math.floorMod(Math.round(selected == null
                 ? FlightHud.radarOwnHeadingDegrees() : selected.headingDegrees()), 360);
 
-        int colWidth = 96;
-        int gap = 6;
-        int rowHeight = 20;
-        int right = panelLeft + 194;
-        int actionsY;
-        if (compactLayout) {
-            visibleRows = compactDense ? 1 : Math.min(4, Math.max(1, (panelHeight - 205) / 20));
-            int fieldWidth = Math.max(38, (panelWidth - 36) / 3);
-            int fieldY = listTop + (compactDense ? 16 : visibleRows * 20) + 5;
-            headingInput = numberInput(panelLeft + 12, fieldY, fieldWidth, "HDG",
-                    initialHeading);
-            altitudeInput = numberInput(panelLeft + 18 + fieldWidth, fieldY, fieldWidth, "ALT FT",
-                    selected == null ? FlightHud.radarOwnAltitudeFeet() : selected.altitudeFeet());
-            speedInput = numberInput(panelLeft + 24 + fieldWidth * 2, fieldY, fieldWidth, "KT",
-                    selected == null ? 130 : Math.max(40, selected.speedKnots()));
-            actionsY = fieldY + (compactDense ? 21 : 24);
-            int actionWidth = Math.max(46, (panelWidth - 30) / 2);
-            int buttonHeight = compactDense ? 18 : 20;
-            int rowSpacing = buttonHeight + (compactDense ? 2 : 3);
-            int secondX = panelLeft + 12 + actionWidth + 6;
-            addOrderButton("HOLD", AtcOrderPayload.HOLD, panelLeft + 12, actionsY, actionWidth, buttonHeight);
-            addOrderButton("TURN HDG", AtcOrderPayload.TURN, secondX, actionsY, actionWidth, buttonHeight);
-            addOrderButton("CLIMB", AtcOrderPayload.CLIMB, panelLeft + 12, actionsY + rowSpacing, actionWidth, buttonHeight);
-            addOrderButton("DESCEND", AtcOrderPayload.DESCEND, secondX, actionsY + rowSpacing, actionWidth, buttonHeight);
-            addOrderButton("SET SPEED", AtcOrderPayload.SPEED, panelLeft + 12, actionsY + rowSpacing * 2, actionWidth, buttonHeight);
-            addOrderButton("ORBIT ME", AtcOrderPayload.ORBIT, secondX, actionsY + rowSpacing * 2, actionWidth, buttonHeight);
-            addOrderButton("RETURN", AtcOrderPayload.RETURN, panelLeft + 12, actionsY + rowSpacing * 3, actionWidth, buttonHeight);
-            addLeadButton(secondX, actionsY + rowSpacing * 3, actionWidth, buttonHeight);
-            addOrderButton("FOLLOW LEAD", AtcOrderPayload.FOLLOW, panelLeft + 12,
-                    actionsY + rowSpacing * 4, actionWidth, buttonHeight);
-            addOrderButton("RELEASE CTRL", AtcOrderPayload.RELEASE, secondX,
-                    actionsY + rowSpacing * 4, actionWidth, buttonHeight);
-        } else {
-            visibleRows = Math.max(1, (panelHeight - 116) / 20);
-            headingInput = numberInput(right, panelTop + 48, 62, "HDG",
-                    initialHeading);
-            altitudeInput = numberInput(right + 67, panelTop + 48, 70, "ALT FT",
-                    selected == null ? FlightHud.radarOwnAltitudeFeet() : selected.altitudeFeet());
-            speedInput = numberInput(right + 142, panelTop + 48, 58, "KT",
-                    selected == null ? 130 : Math.max(40, selected.speedKnots()));
-            actionsY = panelTop + 82;
-            addOrderButton("HOLD", AtcOrderPayload.HOLD, right, actionsY, colWidth);
-            addOrderButton("TURN HDG", AtcOrderPayload.TURN, right + colWidth + gap, actionsY, colWidth);
-            addOrderButton("CLIMB", AtcOrderPayload.CLIMB, right, actionsY + rowHeight + 3, colWidth);
-            addOrderButton("DESCEND", AtcOrderPayload.DESCEND, right + colWidth + gap, actionsY + rowHeight + 3, colWidth);
-            addOrderButton("SET SPEED", AtcOrderPayload.SPEED, right, actionsY + (rowHeight + 3) * 2, colWidth);
-            addOrderButton("ORBIT ME", AtcOrderPayload.ORBIT, right + colWidth + gap,
-                    actionsY + (rowHeight + 3) * 2, colWidth);
-            addOrderButton("RETURN TO ME", AtcOrderPayload.RETURN, right,
-                    actionsY + (rowHeight + 3) * 3, colWidth);
-            addLeadButton(right + colWidth + gap, actionsY + (rowHeight + 3) * 3, colWidth, 20);
-            addOrderButton("FOLLOW LEAD", AtcOrderPayload.FOLLOW, right,
-                    actionsY + (rowHeight + 3) * 4, colWidth);
-            addOrderButton("RELEASE CTRL", AtcOrderPayload.RELEASE, right + colWidth + gap,
-                    actionsY + (rowHeight + 3) * 4, colWidth);
-        }
-        int mapButtonWidth = Math.min(70, Math.max(46, panelWidth / 5));
-        int mapButtonX = panelLeft + Math.max(12, panelWidth - 196);
+        addRenderableWidget(tabButton("ALL", 0, 12, 58, () -> setFilter(Filter.ALL)));
+        addRenderableWidget(tabButton("PLAYERS", 1, 74, 78, () -> setFilter(Filter.PLAYERS)));
+        addRenderableWidget(tabButton("MOBS", 2, 156, 62, () -> setFilter(Filter.MOBS)));
         addRenderableWidget(Button.builder(Component.literal("MAP"), button ->
                         Minecraft.getInstance().gui.setScreen(FlightRadarScreen.forAtcSelection()))
-                .bounds(mapButtonX, panelTop + 26, mapButtonWidth, 18).build());
+                .bounds(x(344), y(28), w(52), h(18)).build());
         cameraButton = addRenderableWidget(Button.builder(cameraLabel(), button -> {
-                    FlightRadarPayload.Contact target = findContact(selectedEntityId);
-                    if (target == null) {
+                    if (findContact(selectedEntityId) == null) {
                         status = "Select an aircraft contact first.";
                         return;
                     }
                     FlightLineClient.toggleAtcCameraFollow(selectedEntityId);
                     button.setMessage(cameraLabel());
                     status = FlightLineClient.isFollowingAtcTarget(selectedEntityId)
-                            ? "Camera following " + target.name() + ". Select FOLLOW CAM again to stop."
+                            ? "Camera following target. Select again to stop."
                             : "Camera follow stopped.";
                 })
-                .bounds(panelLeft + panelWidth - 116, panelTop + 26, 104, 18).build());
+                .bounds(x(402), y(28), w(106), h(18)).build());
+
+        headingInput = numberInput(318, 64, 58, "HDG", initialHeading);
+        altitudeInput = numberInput(382, 64, 60, "ALT FT",
+                selected == null ? FlightHud.radarOwnAltitudeFeet() : selected.altitudeFeet());
+        speedInput = numberInput(448, 64, 58, "KT",
+                selected == null ? 130 : Math.max(40, selected.speedKnots()));
+
+        addOrderButton("HOLD", AtcOrderPayload.HOLD, 318, 94, 90);
+        addOrderButton("TURN HDG", AtcOrderPayload.TURN, 414, 94, 92);
+        addOrderButton("CLIMB", AtcOrderPayload.CLIMB, 318, 120, 90);
+        addOrderButton("DESCEND", AtcOrderPayload.DESCEND, 414, 120, 92);
+        addOrderButton("SET SPEED", AtcOrderPayload.SPEED, 318, 146, 90);
+        addOrderButton("ORBIT ME", AtcOrderPayload.ORBIT, 414, 146, 92);
+        addOrderButton("RETURN", AtcOrderPayload.RETURN, 318, 172, 90);
+        addLeadButton(414, 172, 92);
+        addOrderButton("FOLLOW LEAD", AtcOrderPayload.FOLLOW, 318, 198, 90);
+        addOrderButton("RELEASE CTRL", AtcOrderPayload.RELEASE, 414, 198, 92);
+        addRenderableWidget(Button.builder(Component.literal("TCAS TEST"),
+                        button -> FlightLineClient.playTcasTest(Minecraft.getInstance()))
+                .bounds(x(318), y(232), w(188), h(20)).build());
+        addRenderableWidget(Button.builder(Component.literal("CLEAR LEAD"), button -> {
+                    leadEntityId = -1;
+                    status = "Follow lead cleared.";
+                })
+                .bounds(x(318), y(258), w(188), h(20)).build());
         addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
-                .bounds(panelLeft + panelWidth - 68, panelTop + panelHeight - 28, 58, 18).build());
+                .bounds(x(418), y(328), w(88), h(18)).build());
     }
 
-    private EditBox numberInput(int x, int y, int boxWidth, String hint, int initialValue) {
-        EditBox input = new EditBox(font, x, y, boxWidth, 20, Component.literal(hint));
+    private void setFilter(Filter next) {
+        if (filter == next) return;
+        filter = next;
+        contactOffset = 0;
+        rebuild();
+    }
+
+    private void rebuild() {
+        clearWidgets();
+        init();
+    }
+
+    private Button tabButton(String label, int filterIndex, int baseX, int baseWidth, Runnable action) {
+        boolean selected = filter.ordinal() == filterIndex;
+        String text = selected ? "[" + label + "]" : label;
+        return Button.builder(Component.literal(text), button -> action.run())
+                .bounds(x(baseX), y(28), w(baseWidth), h(18)).build();
+    }
+
+    private EditBox numberInput(int baseX, int baseY, int baseWidth, String hint, int value) {
+        EditBox input = new EditBox(font, x(baseX), y(baseY), w(baseWidth), h(20), Component.literal(hint));
         input.setHint(Component.literal(hint));
         input.setMaxLength(5);
-        input.setValue(String.valueOf(initialValue));
+        input.setValue(String.valueOf(value));
         addRenderableWidget(input);
         return input;
     }
 
-    private void addOrderButton(String label, int order, int x, int y, int buttonWidth) {
-        addRenderableWidget(Button.builder(Component.literal(label), button -> sendOrder(order))
-                .bounds(x, y, buttonWidth, 20).build());
+    private void addOrderButton(String label, int order, int baseX, int baseY, int baseWidth) {
+        addRenderableWidget(Button.builder(Component.literal(fit(label, w(baseWidth) - 8)),
+                        button -> sendOrder(order))
+                .bounds(x(baseX), y(baseY), w(baseWidth), h(22)).build());
     }
 
-    private void addOrderButton(String label, int order, int x, int y, int buttonWidth, int buttonHeight) {
-        addRenderableWidget(Button.builder(Component.literal(label), button -> sendOrder(order))
-                .bounds(x, y, buttonWidth, buttonHeight).build());
-    }
-
-    private void addLeadButton(int x, int y, int buttonWidth, int buttonHeight) {
+    private void addLeadButton(int baseX, int baseY, int baseWidth) {
         addRenderableWidget(Button.builder(Component.literal(selectingLead ? "CANCEL LEAD" : "SELECT LEAD"),
                         button -> {
                             selectingLead = !selectingLead;
                             button.setMessage(Component.literal(selectingLead ? "CANCEL LEAD" : "SELECT LEAD"));
-                            status = selectingLead ? "Choose an aircraft to follow from the contact list."
-                                    : "Follow-target selection cancelled.";
+                            status = selectingLead ? "Choose an aircraft from the list as the follow lead."
+                                    : "Lead selection cancelled.";
                         })
-                .bounds(x, y, buttonWidth, buttonHeight).build());
+                .bounds(x(baseX), y(baseY), w(baseWidth), h(22)).build());
     }
+
     private void sendOrder(int order) {
         FlightRadarPayload.Contact selected = findContact(selectedEntityId);
         if (selected == null) {
@@ -209,6 +216,16 @@ public final class AtcScreen extends Screen {
         }
     }
 
+    private List<FlightRadarPayload.Contact> filteredContacts() {
+        List<FlightRadarPayload.Contact> all = FlightHud.radarContacts();
+        if (filter == Filter.ALL) return all;
+        List<FlightRadarPayload.Contact> filtered = new ArrayList<>();
+        for (FlightRadarPayload.Contact contact : all) {
+            if (filter == Filter.PLAYERS ? contact.player() : !contact.player()) filtered.add(contact);
+        }
+        return filtered;
+    }
+
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         long now = System.nanoTime();
@@ -220,6 +237,7 @@ public final class AtcScreen extends Screen {
             Minecraft.getInstance().gui.setScreen(null);
             return;
         }
+
         graphics.fill(0, 0, width, height, 0x30000000);
         var pose = graphics.pose();
         pose.pushMatrix();
@@ -227,68 +245,107 @@ public final class AtcScreen extends Screen {
         pose.translate(width / 2.0f, height / 2.0f);
         pose.scale(scale, scale);
         pose.translate(-width / 2.0f, -height / 2.0f);
+
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xF0121A22);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF4EB8C8);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 25, 0xFF1C2733);
-        graphics.centeredText(font, fit("OPERATOR ATC  ·  AIRCRAFT CONTROL", panelWidth - 16),
-                panelLeft + panelWidth / 2, panelTop + 8, 0xFF72E6F5);
-        List<FlightRadarPayload.Contact> contacts = FlightHud.radarContacts();
+        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + 24, 0xFF1C2733);
+        graphics.centeredText(font, "OPERATOR ATC  ·  TRAFFIC CONTROL CONSOLE",
+                panelLeft + panelWidth / 2, panelTop + 7, CYAN);
+
+        List<FlightRadarPayload.Contact> contacts = filteredContacts();
+        if (selectedEntityId >= 0 && !contacts.isEmpty()
+                && contacts.stream().noneMatch(contact -> contact.entityId() == selectedEntityId)) {
+            selectedEntityId = contacts.getFirst().entityId();
+            FlightLineClient.setAtcSelectedTarget(selectedEntityId);
+            if (cameraButton != null) cameraButton.setMessage(cameraLabel());
+        }
         int maxOffset = Math.max(0, contacts.size() - visibleRows);
         contactOffset = Math.max(0, Math.min(contactOffset, maxOffset));
-        int shown = Math.min(visibleRows, contacts.size() - contactOffset);
-        for (int i = 0; i < shown; i++) {
-            FlightRadarPayload.Contact contact = contacts.get(i + contactOffset);
-            int rowY = listTop + i * 20;
-            boolean selected = contact.entityId() == selectedEntityId;
-            boolean lead = contact.entityId() == leadEntityId;
-            if (selected || lead) {
-                graphics.fill(panelLeft + 9, rowY - 2, panelLeft + 184, rowY + 16,
-                        selected ? 0x8052B8C8 : 0x805982AB);
-            }
-            String role = contact.player() ? "P" : "M";
-            String row = String.format(Locale.ROOT, "%s %s  %dKT  %+dFT",
-                    role, contact.name(), contact.speedKnots(),
-                    contact.altitudeFeet() - FlightHud.radarOwnAltitudeFeet());
-            graphics.text(font, fit(row, 174), panelLeft + 13, rowY,
-                    contact.player() ? 0xFF80CFFF : 0xFF8EE6AA, true);
-        }
-        if (contacts.isEmpty()) {
-            graphics.text(font, "No aircraft contacts in radar range.", panelLeft + 12, listTop,
-                    0xFFB6C8D1, true);
-        }
-        if (compactDense) {
-            graphics.text(font, fit(status, panelWidth - 100), panelLeft + 12,
-                    panelTop + panelHeight - 14, 0xFF72E6F5, true);
-        } else {
-            FlightRadarPayload.Contact selected = findContact(selectedEntityId);
-            String selection = selected == null ? "TARGET: NONE" : "TARGET: "
-                    + selected.name() + (selected.player() ? " (PLAYER · ATC CONTROL)" : " (AI)");
-            graphics.text(font, fit(selection, panelWidth - 24), panelLeft + 12,
-                    panelTop + panelHeight - 62, 0xFFD5E0E8, true);
-            FlightRadarPayload.Contact lead = findContact(leadEntityId);
-            graphics.text(font, fit("FOLLOW LEAD: " + (lead == null ? "not selected" : lead.name()),
-                            panelWidth - 24),
-                    panelLeft + 12, panelTop + panelHeight - 49, 0xFF9BAAB1, true);
-            graphics.text(font, fit(status, panelWidth - 24), panelLeft + 12,
-                    panelTop + panelHeight - 36, 0xFF72E6F5, true);
-            graphics.text(font, "Click a row to target; scroll over contacts for more.",
-                    panelLeft + 12, panelTop + panelHeight - 14, 0xFF71858B, true);
-        }
+
+        drawContactList(graphics, contacts);
+        drawOrderPanel(graphics);
+        graphics.text(font, fit(status, panelWidth - 24), panelLeft + 12,
+                panelTop + panelHeight - 24, CYAN, true);
+        graphics.text(font, "Click a card to target · scroll to browse · F7 releases pilot control",
+                panelLeft + 12, panelTop + panelHeight - 12, MUTED, true);
+
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         pose.popMatrix();
     }
 
+    private void drawContactList(GuiGraphicsExtractor graphics, List<FlightRadarPayload.Contact> contacts) {
+        int cardTop = y(54);
+        int cardHeight = h(280);
+        graphics.fill(listLeft, cardTop, listLeft + listWidth, cardTop + cardHeight, 0xE3101920);
+        graphics.outline(listLeft, cardTop, listWidth, cardHeight, 0xFF2A3D49);
+        graphics.text(font, "CONTACT BOARD  ·  " + filter.name() + "  ·  " + contacts.size(),
+                listLeft + 6, cardTop + 5, CYAN, true);
+        int shown = Math.min(visibleRows, Math.max(0, contacts.size() - contactOffset));
+        for (int i = 0; i < shown; i++) {
+            FlightRadarPayload.Contact contact = contacts.get(i + contactOffset);
+            int rowY = listTop + 18 + i * rowHeight;
+            boolean selected = contact.entityId() == selectedEntityId;
+            boolean lead = contact.entityId() == leadEntityId;
+            if (selected || lead) {
+                graphics.fill(listLeft + 3, rowY - 2, listLeft + listWidth - 3, rowY + rowHeight - 3,
+                        selected ? 0x8052B8C8 : 0x805982AB);
+            }
+            int roleColor = contact.player() ? PLAYER : GREEN;
+            String name = String.format(Locale.ROOT, "%s  %s", contact.player() ? "P" : "M", contact.name());
+            graphics.text(font, fit(name, listWidth - 12), listLeft + 8, rowY, roleColor, true);
+            String stats = String.format(Locale.ROOT, "%dKT  %+dFT  HDG %03.0f°  %dB  VS %+d",
+                    contact.speedKnots(), contact.altitudeFeet() - FlightHud.radarOwnAltitudeFeet(),
+                    contact.headingDegrees(), contactRange(contact), contact.verticalSpeedFpm());
+            graphics.text(font, fit(stats, listWidth - 12), listLeft + 8, rowY + 10, TEXT, false);
+            if (selected) {
+                graphics.fill(listLeft + listWidth - 6, rowY + 2, listLeft + listWidth - 3, rowY + rowHeight - 6,
+                        AMBER);
+            }
+        }
+        if (contacts.isEmpty()) {
+            graphics.text(font, "No contacts match this filter.", listLeft + 8, listTop + 24, MUTED, true);
+        }
+    }
+
+    private void drawOrderPanel(GuiGraphicsExtractor graphics) {
+        int cardX = x(308);
+        int cardY = y(54);
+        int cardWidth = w(200);
+        int cardHeight = h(280);
+        graphics.fill(cardX, cardY, cardX + cardWidth, cardY + cardHeight, 0xE3101920);
+        graphics.outline(cardX, cardY, cardWidth, cardHeight, 0xFF2A3D49);
+        graphics.text(font, "CLEARANCE ENTRY", cardX + 8, cardY + 5, AMBER, true);
+        FlightRadarPayload.Contact selected = findContact(selectedEntityId);
+        String target = selected == null ? "TARGET: NONE"
+                : "TARGET: " + selected.name() + (selected.player() ? "  (PLAYER)" : "  (AI)");
+        graphics.text(font, fit(target, cardWidth - 16), cardX + 8, cardY + 232, selected == null ? MUTED : TEXT, true);
+        FlightRadarPayload.Contact lead = findContact(leadEntityId);
+        graphics.text(font, fit("LEAD: " + (lead == null ? "not selected" : lead.name()), cardWidth - 16),
+                cardX + 8, cardY + 245, MUTED, true);
+        graphics.text(font, selected != null && selected.player()
+                        ? "Player clearance takes over the pilot's autopilot."
+                        : "Mob orders are advisory flight directions.",
+                cardX + 8, cardY + 258, MUTED, false);
+        graphics.text(font, selected != null && selected.airborne() ? "TARGET AIRBORNE" : "TARGET GROUND/UNKNOWN",
+                cardX + 8, cardY + 270, selected != null && selected.airborne() ? GREEN : AMBER, true);
+    }
+
+    private int contactRange(FlightRadarPayload.Contact contact) {
+        return (int) Math.round(Math.hypot(contact.x() - FlightHud.radarOwnX(), contact.z() - FlightHud.radarOwnZ()));
+    }
+
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0 && event.x() >= panelLeft + 8 && event.x() <= panelLeft + 186
-                && event.y() >= listTop && event.y() < listTop + visibleRows * 20) {
-            int row = (int) ((event.y() - listTop) / 20) + contactOffset;
-            List<FlightRadarPayload.Contact> contacts = FlightHud.radarContacts();
+        if (event.button() == 0 && event.x() >= listLeft && event.x() <= listLeft + listWidth
+                && event.y() >= listTop + 18 && event.y() < listTop + 18 + visibleRows * rowHeight) {
+            int row = (int) ((event.y() - listTop - 18) / rowHeight) + contactOffset;
+            List<FlightRadarPayload.Contact> contacts = filteredContacts();
             if (row >= 0 && row < contacts.size()) {
                 FlightRadarPayload.Contact contact = contacts.get(row);
                 if (selectingLead) {
                     leadEntityId = contact.entityId();
                     selectingLead = false;
+                    rebuild();
                     status = "Follow lead selected: " + contact.name() + ".";
                 } else {
                     selectedEntityId = contact.entityId();
@@ -314,10 +371,9 @@ public final class AtcScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (mouseX >= panelLeft + 8 && mouseX <= panelLeft + 186
-                && mouseY >= listTop && mouseY <= listTop + visibleRows * 20) {
-            contactOffset = Math.max(0, Math.min(
-                    Math.max(0, FlightHud.radarContacts().size() - visibleRows),
+        if (mouseX >= listLeft && mouseX <= listLeft + listWidth
+                && mouseY >= listTop && mouseY <= listTop + 18 + visibleRows * rowHeight) {
+            contactOffset = Math.max(0, Math.min(Math.max(0, filteredContacts().size() - visibleRows),
                     contactOffset + (deltaY < 0 ? 1 : -1)));
             return true;
         }
@@ -336,6 +392,11 @@ public final class AtcScreen extends Screen {
         }
         return fitted;
     }
+
+    private int x(int base) { return panelLeft + Math.round(base * scaleX); }
+    private int y(int base) { return panelTop + Math.round(base * scaleY); }
+    private int w(int base) { return Math.max(1, Math.round(base * scaleX)); }
+    private int h(int base) { return Math.max(1, Math.round(base * scaleY)); }
 
     private EditBox headingInput() { return java.util.Objects.requireNonNull(headingInput); }
     private EditBox altitudeInput() { return java.util.Objects.requireNonNull(altitudeInput); }

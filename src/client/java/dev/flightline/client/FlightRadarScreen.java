@@ -58,6 +58,7 @@ public final class FlightRadarScreen extends Screen {
     private boolean compactLayout;
     private final boolean atcSelectionMode;
     private boolean headingUp;
+    private boolean weatherLayer = true;
 
     public FlightRadarScreen() {
         this(false);
@@ -130,7 +131,7 @@ public final class FlightRadarScreen extends Screen {
                 .bounds(setButtonX, fieldY, setButtonWidth, 20).build());
         if (compactLayout) {
             int buttonGap = 3;
-            int btnWidth = Math.max(48, (panelWidth - 24 - buttonGap * 3) / 4);
+            int btnWidth = Math.max(40, (panelWidth - 24 - buttonGap * 4) / 5);
             int btnY = panelTop + 26;
             addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
                     .bounds(panelLeft + 12, btnY, btnWidth, 18).build());
@@ -138,8 +139,10 @@ public final class FlightRadarScreen extends Screen {
                     .bounds(panelLeft + 12 + btnWidth + buttonGap, btnY, btnWidth, 18).build());
             addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG" : "NORTH"),
                     button -> toggleOrientation(button)).bounds(panelLeft + 12 + (btnWidth + buttonGap) * 2, btnY, btnWidth, 18).build());
-            addRenderableWidget(Button.builder(rangeLabel(), button -> changeRange(1))
+            addRenderableWidget(Button.builder(weatherLayerLabel(), button -> toggleWeatherLayer(button))
                     .bounds(panelLeft + 12 + (btnWidth + buttonGap) * 3, btnY, btnWidth, 18).build());
+            addRenderableWidget(Button.builder(rangeLabel(), button -> changeRange(1))
+                    .bounds(panelLeft + 12 + (btnWidth + buttonGap) * 4, btnY, btnWidth, 18).build());
         } else {
             addRenderableWidget(Button.builder(pickThresholdLabel(), button -> toggleThresholdPickMode(button))
                     .bounds(panelLeft + panelWidth - 222, panelTop + 26, 104, 18).build());
@@ -147,6 +150,8 @@ public final class FlightRadarScreen extends Screen {
                     .bounds(panelLeft + panelWidth - 112, panelTop + 26, 100, 18).build());
             addRenderableWidget(Button.builder(Component.literal(headingUp ? "HDG UP" : "NORTH UP"),
                     button -> toggleOrientation(button)).bounds(panelLeft + 12, panelTop + 26, 78, 18).build());
+            addRenderableWidget(Button.builder(weatherLayerLabel(), button -> toggleWeatherLayer(button))
+                    .bounds(panelLeft + 96, panelTop + 26, 74, 18).build());
             addRenderableWidget(Button.builder(Component.literal("CLOSE"), button -> onClose())
                     .bounds(panelLeft + panelWidth - 72, fieldY, 60, 20).build());
             addRenderableWidget(Button.builder(Component.literal("RANGE -"), button -> changeRange(-1))
@@ -188,6 +193,13 @@ public final class FlightRadarScreen extends Screen {
         int cx = scopeLeft + scopeWidth / 2;
         int cy = scopeTop + scopeHeight / 2;
         int radius = Math.max(14, Math.min(scopeWidth, scopeHeight) / 2 - 12);
+        if (weatherLayer) {
+            var level = Minecraft.getInstance().level;
+            long gameTime = level == null ? 0L : level.getGameTime();
+            WeatherDisplay.drawRadarCells(graphics, cx, cy, radius, RANGES[rangeIndex],
+                    ownX(), ownZ(), headingUp, FlightHud.radarOwnHeadingDegrees(),
+                    gameTime, WeatherDisplay.CELL_SEED, FlightHud.weatherGuidance());
+        }
         drawLine(graphics, scopeLeft + 1, cy, scopeLeft + scopeWidth - 1, cy, 0xFF244538);
         drawLine(graphics, cx, scopeTop + 1, cx, scopeTop + scopeHeight - 1, 0xFF244538);
         for (int ring = 1; ring <= 3; ring++) {
@@ -505,6 +517,17 @@ public final class FlightRadarScreen extends Screen {
     private void toggleOrientation(Button button) {
         headingUp = !headingUp;
         button.setMessage(Component.literal(headingUp ? "HDG UP" : "NORTH UP"));
+    }
+
+    private Component weatherLayerLabel() {
+        return Component.literal(weatherLayer ? "WX ON" : "WX OFF");
+    }
+
+    private void toggleWeatherLayer(Button button) {
+        weatherLayer = !weatherLayer;
+        button.setMessage(weatherLayerLabel());
+        status = weatherLayer ? "Weather cell layer visible under traffic."
+                : "Weather cell layer hidden.";
     }
 
     private void animateRadar() {

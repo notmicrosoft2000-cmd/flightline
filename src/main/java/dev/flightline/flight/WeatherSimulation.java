@@ -62,6 +62,38 @@ public final class WeatherSimulation {
         return thundering && Math.floorMod(gameTime + seed, WINDSHEAR_INTERVAL_TICKS) == 0L;
     }
 
+    /**
+     * Deterministic weather cell used by the map screens. The authoritative per-player guidance sets
+     * the broad storm intensity; the hash adds stable local structure so a cell keeps its shape while
+     * the whole system drifts. No extra network payload is needed because every client samples the
+     * same world seed and game time.
+     */
+    public static WeatherCell sampleCell(int cellX, int cellZ, long gameTime, long seed,
+                                         int condition, int turbulencePercent, int gustKnots) {
+        long epoch = gameTime / 600L;
+        long hash = cellX * 0x9E3779B97F4A7C15L
+                ^ cellZ * 0xC2B2AE3D27D4EB4FL
+                ^ seed
+                ^ epoch * 0xBF58476D1CE4E5B9L;
+        int noise = (int) ((mix64(hash) >>> 48) & 0xFFFFL);
+        double drift = 0.5 + 0.5 * Math.sin(gameTime * 0.0012
+                + cellX * 0.83 + cellZ * 0.39 + (seed & 0xFFFFL) * 0.001);
+        double base = condition == 2 ? 0.70 : condition == 1 ? 0.40 : 0.10;
+        double severity = Math.min(0.24, turbulencePercent / 400.0)
+                + Math.min(0.12, gustKnots / 400.0);
+        double intensity = (base * 0.64 + noise / 65535.0 * 0.34 + drift * 0.18 + severity) * 100.0;
+        if (condition == 0 && intensity < 36.0) intensity = 0.0;
+        int value = (int) Math.round(Math.max(0.0, Math.min(100.0, intensity)));
+        int cellCondition = value >= 70 ? 2 : value >= 38 ? 1 : 0;
+        return new WeatherCell(value, cellCondition);
+    }
+
+    private static long mix64(long value) {
+        value = (value ^ (value >>> 30)) * 0xBF58476D1CE4E5B9L;
+        value = (value ^ (value >>> 27)) * 0x94D049BB133111EBL;
+        return value ^ (value >>> 31);
+    }
+
     static double advanceIcing(double currentPercent, boolean icingConditions, boolean antiIceEffective) {
         if (icingConditions && !antiIceEffective) return Math.min(100.0, currentPercent + 0.006);
         if (antiIceEffective) return Math.max(0.0, currentPercent - 0.045);
@@ -71,5 +103,9 @@ public final class WeatherSimulation {
     public record Conditions(double windX, double windZ, int windSpeedKnots, int windDirectionDegrees,
                              int turbulencePercent, int visibilityBlocks, int condition,
                              boolean icingConditions, int gustKnots) {
+    }
+
+    /** One deterministic radar/map cell. Intensity is 0-100; condition follows the storm scale. */
+    public record WeatherCell(int intensity, int condition) {
     }
 }

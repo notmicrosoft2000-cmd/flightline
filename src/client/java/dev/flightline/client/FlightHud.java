@@ -43,6 +43,10 @@ final class FlightHud {
     private static FlightPhase phase = FlightPhase.OFF;
     private static float speed, throttle, bankDegrees, pitchDegrees, headingDegrees;
     private static float visualSpeed, visualBank, visualPitch, visualHeading;
+    private static float velocityX, velocityY, velocityZ, groundSpeedKnots, trackDegrees;
+    private static float gLoad = 1.0f;
+    private static float lastGVerticalSpeed;
+    private static long lastGUpdateNanos;
     private static int radioAltitudeFeet, verticalSpeedFpm, gearState, systems, warnings;
     private static int fuelPercent;
     private static boolean airbrakes;
@@ -59,6 +63,7 @@ final class FlightHud {
     private static boolean showEicas = true;
     private static boolean showRadar = true;
     private static boolean showKeybinds = true;
+    private static boolean showTelemetry = true;
     private static boolean radarDataReceived;
     private static long lastRadarUpdateNanos;
     private static boolean ilsActive;
@@ -93,6 +98,10 @@ final class FlightHud {
         return visualPitch;
     }
 
+    static float currentBank() {
+        return visualBank;
+    }
+
     static int currentAltitudeFeet() {
         return radioAltitudeFeet;
     }
@@ -103,6 +112,30 @@ final class FlightHud {
 
     static int currentSpeedKnots() {
         return knots(visualSpeed);
+    }
+
+    static int groundSpeedKnots() {
+        return Math.round(groundSpeedKnots);
+    }
+
+    static int trackDegrees() {
+        return Math.floorMod(Math.round(trackDegrees), 360);
+    }
+
+    static float gLoad() {
+        return gLoad;
+    }
+
+    static FlightPhase phase() {
+        return phase;
+    }
+
+    static int flapDetent() {
+        return (systems >> 9) & 7;
+    }
+
+    static int engineN1() {
+        return (systems >> 12) & 0x7F;
     }
 
     static boolean isAutopilotEngaged() {
@@ -205,6 +238,7 @@ final class FlightHud {
             showEicas = readPreference(preferences, "showEicas", showEicas);
             showRadar = readPreference(preferences, "showRadar", showRadar);
             showKeybinds = readPreference(preferences, "showKeybinds", showKeybinds);
+            showTelemetry = readPreference(preferences, "showTelemetry", showTelemetry);
         } catch (IOException exception) {
             FlightLine.LOGGER.warn("Could not load Flight Line HUD preferences from {}", path, exception);
         }
@@ -214,6 +248,8 @@ final class FlightHud {
     static void toggleEicas() { showEicas = !showEicas; savePreferences(); }
     static void toggleRadar() { showRadar = !showRadar; savePreferences(); }
     static void toggleKeybinds() { showKeybinds = !showKeybinds; savePreferences(); }
+    static void toggleTelemetry() { showTelemetry = !showTelemetry; savePreferences(); }
+    static boolean isTelemetryVisible() { return showTelemetry; }
 
     private static boolean readPreference(Properties preferences, String key, boolean defaultValue) {
         String value = preferences.getProperty(key);
@@ -231,6 +267,7 @@ final class FlightHud {
         preferences.setProperty("showEicas", Boolean.toString(showEicas));
         preferences.setProperty("showRadar", Boolean.toString(showRadar));
         preferences.setProperty("showKeybinds", Boolean.toString(showKeybinds));
+        preferences.setProperty("showTelemetry", Boolean.toString(showTelemetry));
         try {
             Files.createDirectories(path.getParent());
             try (var writer = Files.newBufferedWriter(path)) {
@@ -287,6 +324,18 @@ final class FlightHud {
         phase = FlightPhase.fromId(state.phase());
         speed = state.speed();
         throttle = state.throttle();
+        velocityX = state.velocityX();
+        velocityY = state.velocityY();
+        velocityZ = state.velocityZ();
+        double horizontalVelocity = Math.hypot(velocityX, velocityZ);
+        groundSpeedKnots = (float) (horizontalVelocity * FlightTuning.KNOTS_PER_BLOCK_PER_TICK);
+        if (horizontalVelocity > 0.002) {
+            double track = Math.toDegrees(Math.atan2(-velocityX, velocityZ)) % 360.0;
+            if (track < 0.0) track += 360.0;
+            trackDegrees = (float) track;
+        } else {
+            trackDegrees = headingDegrees;
+        }
     }
 
     static void updateInstruments(FlightInstrumentPayload instruments) {
@@ -314,6 +363,19 @@ final class FlightHud {
         ilsReferenceGlideSlopeDegrees = instruments.ilsGuidance().referenceGlideSlopeDegrees();
         ilsRunwayHeadingDegrees = instruments.ilsGuidance().runwayHeadingDegrees();
         ilsThresholdDistanceBlocks = instruments.ilsGuidance().thresholdDistanceBlocks();
+        updateGLoad();
+    }
+
+    private static void updateGLoad() {
+        long now = System.nanoTime();
+        if (lastGUpdateNanos == 0L || now - lastGUpdateNanos < 60_000_000L) return;
+        double seconds = (now - lastGUpdateNanos) / 1_000_000_000.0;
+        double deltaMetersPerSecond = (verticalSpeedFpm - lastGVerticalSpeed) * 0.00508;
+        double acceleration = deltaMetersPerSecond / Math.max(0.05, seconds);
+        float target = Math.max(0.0f, Math.min(6.0f, 1.0f + (float) (acceleration / 9.80665)));
+        gLoad += (target - gLoad) * 0.35f;
+        lastGVerticalSpeed = verticalSpeedFpm;
+        lastGUpdateNanos = now;
     }
 
     static void clear() {
@@ -321,6 +383,10 @@ final class FlightHud {
         phase = FlightPhase.OFF;
         speed = throttle = bankDegrees = pitchDegrees = headingDegrees = 0;
         visualSpeed = visualBank = visualPitch = visualHeading = 0;
+        velocityX = velocityY = velocityZ = groundSpeedKnots = trackDegrees = 0;
+        gLoad = 1.0f;
+        lastGVerticalSpeed = 0.0f;
+        lastGUpdateNanos = 0L;
         radioAltitudeFeet = verticalSpeedFpm = gearState = systems = warnings = 0;
         fuelPercent = 0;
         airbrakes = false;
@@ -523,6 +589,8 @@ final class FlightHud {
             }
         }
 
+        if (showTelemetry) drawTelemetry(g, mc, screenWidth, screenHeight, clock);
+
         updateKeybindPanelAnimation();
         if (showKeybinds && keybindPanelProgress > 0.01f) {
             drawKeybindList(g, mc, screenWidth, screenHeight);
@@ -546,6 +614,7 @@ final class FlightHud {
             atcMessage = "";
         }
         drawNotice(g, mc, screenWidth);
+        FlightTutorial.drawTracker(g, mc, screenWidth, screenHeight);
 
         List<String> alerts = warningLabels();
         if (!alerts.isEmpty()) {
@@ -586,6 +655,67 @@ final class FlightHud {
             }
         }
         drawBrakePopup(g, screenWidth, screenHeight);
+    }
+
+    /** Bottom-centre engineering strip: motion, wind, powerplant and approach data at a glance. */
+    private static void drawTelemetry(GuiGraphicsExtractor g, Minecraft mc, int screenWidth,
+                                      int screenHeight, double clock) {
+        Font font = mc.font;
+        int width = Math.min(224, Math.max(168, screenWidth - 24));
+        int height = 68;
+        int x = (screenWidth - width) / 2;
+        int y = Math.max(104, screenHeight - height - 58);
+        if (y + height > screenHeight - 48) y = Math.max(96, screenHeight - height - 48);
+        g.fill(x, y, x + width, y + height, 0xD8091017);
+        g.outline(x, y, width, height, 0xFF3E7D8E);
+        g.fill(x + 1, y + 1, x + width - 1, y + 12, 0xDD111D25);
+        g.text(font, "TELEMETRY", x + 4, y + 2, PFD_CYAN, true);
+        String mode = isAutopilotEngaged() ? (isAtcControlled() ? "ATC/AP" : "AP") : "MANUAL";
+        g.text(font, mode, x + width - 4 - font.width(mode), y + 2,
+                isAutopilotEngaged() ? PFD_GREEN : PFD_MUTED, true);
+
+        int col = (width - 8) / 4;
+        int row1 = y + 15;
+        int row2 = y + 30;
+        int row3 = y + 45;
+        String wind = String.format(Locale.ROOT, "%03d/%02dG%02d",
+                weatherGuidance.windDirectionDegrees(), weatherGuidance.windSpeedKnots(),
+                weatherGuidance.gustKnots());
+        String[] labels = {"GS", "TRK", "G", "WIND", "N1", "FLAP", "GEAR", "A/B"};
+        String[] values = {
+                groundSpeedKnots() + "KT",
+                String.format(Locale.ROOT, "%03d°", trackDegrees()),
+                String.format(Locale.ROOT, "%.1f", gLoad()),
+                wind,
+                engineN1() + "%",
+                "F" + flapDetent(),
+                gearState == 0 ? "DN" : gearState == 1 ? "UP" : "FAIL",
+                (airbrakes ? "BRK" : "-") + (spoilersDeployed() ? " SPOIL" : "")
+        };
+        for (int i = 0; i < labels.length; i++) {
+            int cx = x + 4 + (i % 4) * col;
+            int cy = i < 4 ? row1 : row2;
+            g.text(font, labels[i], cx, cy, PFD_MUTED, true);
+            int valueColor = PFD_WHITE;
+            if (i == 2 && (gLoad() > 2.5f || gLoad() < 0.3f)) valueColor = PFD_AMBER;
+            if (i == 4 && engineN1() > 90) valueColor = PFD_AMBER;
+            if (i == 6 && gearState == 2) valueColor = PFD_RED;
+            g.text(font, fitText(font, values[i], col - 3), cx, cy + 8, valueColor, true);
+        }
+
+        String approach = ilsActive
+                ? String.format(Locale.ROOT, "ILS LOC%+.1f GS%+.1f DME %.1f",
+                ilsLocalizerDegrees, ilsGlideslopeDegrees, ilsThresholdDistanceBlocks * 0.054f)
+                : "ILS ----  RA " + radioAltitudeFeet + "FT";
+        g.text(font, fitText(font, approach, width - 8), x + 4, row3 + 6,
+                ilsActive ? PFD_CYAN : PFD_MUTED, true);
+        String airframe = String.format(Locale.ROOT, "VS%+d  FUEL %d%%  WX %s",
+                verticalSpeedFpm, fuelPercent, weatherName(weatherGuidance.condition()));
+        g.text(font, fitText(font, airframe, width - 8), x + 4, row3 + 16,
+                weatherGuidance.condition() == 2 ? PFD_AMBER : PFD_WHITE, true);
+        if (((long) (clock * 2.0) & 1L) == 0L) {
+            g.fill(x + width - 5, y + 4, x + width - 2, y + 7, PFD_GREEN);
+        }
     }
 
     /**
@@ -877,13 +1007,25 @@ final class FlightHud {
     }
 
     private static void drawPfdFma(GuiGraphicsExtractor g, Font font) {
-        String atMode = autopilot ? autopilotGuidance.targetAirspeedKnots() + "KT" : "---";
-        String rollMode = autopilotGuidance.autolandArmed() ? "LOC" : (autopilot ? String.format(Locale.ROOT, "HDG%03d", (int) autopilotGuidance.targetHeadingDegrees()) : "---");
-        String pitchMode = autopilotGuidance.autolandArmed() ? "GS" : (autopilot ? (autopilotGuidance.targetVerticalSpeedFpm() != 0 ? String.format(Locale.ROOT, "%+d", autopilotGuidance.targetVerticalSpeedFpm()) : "ALT") : "---");
-        int color = autopilot || autopilotGuidance.autolandArmed() ? PFD_GREEN : PFD_MUTED;
-        drawFmaCell(g, font, 2, 2, 54, "A/T", atMode, color);
-        drawFmaCell(g, font, 57, 2, 54, "ROLL", rollMode, color);
-        drawFmaCell(g, font, 112, 2, 54, "PITCH", pitchMode, color);
+        boolean autoland = autopilotGuidance.autolandArmed();
+        String atMode = autoland && radioAltitudeFeet < 50 && isAirbornePhase()
+                ? "RETARD" : autopilot ? autopilotGuidance.targetAirspeedKnots() + "KT" : "---";
+        String rollMode = autoland
+                ? (ilsActive ? "LOC" : "LOC AR")
+                : autopilot ? String.format(Locale.ROOT, "HDG%03d", (int) autopilotGuidance.targetHeadingDegrees()) : "---";
+        String pitchMode = autoland
+                ? (ilsActive ? "GS" : "GS AR")
+                : autopilot ? (autopilotGuidance.targetVerticalSpeedFpm() != 0
+                        ? String.format(Locale.ROOT, "%+d", autopilotGuidance.targetVerticalSpeedFpm()) : "ALT") : "---";
+        int active = autopilot || autoland ? PFD_GREEN : PFD_MUTED;
+        int armed = autoland && !ilsActive && autopilot ? PFD_CYAN : active;
+        drawFmaCell(g, font, 2, 2, 54, "A/T", atMode, active);
+        drawFmaCell(g, font, 57, 2, 54, "ROLL", rollMode, armed);
+        drawFmaCell(g, font, 112, 2, 54, "PITCH", pitchMode, armed);
+        if (autopilot || autoland) {
+            String source = autoland ? "ILS" : "FMS";
+            g.text(font, source, 2, 14, autoland ? PFD_CYAN : PFD_GREEN, false);
+        }
     }
 
     private static void drawFmaCell(GuiGraphicsExtractor g, Font font, int x, int y, int width,
@@ -1039,6 +1181,9 @@ final class FlightHud {
         g.fill(x + 1, centerY - 7, x + width - 1, centerY + 7, 0xFF070C11);
         g.outline(x + 1, centerY - 7, width - 2, 14, PFD_WHITE);
         g.centeredText(font, Integer.toString(current), x + width / 2, centerY - 4, PFD_WHITE);
+        String vsiText = String.format(Locale.ROOT, "%+d", verticalSpeedFpm);
+        g.text(font, fitText(font, vsiText, width - 3), x + 2, y + height - 8,
+                verticalSpeedFpm < -1500 ? PFD_AMBER : PFD_CYAN, true);
     }
 
     private static void drawRadioAltitudeBox(GuiGraphicsExtractor g, Font font, int x, int y,
@@ -1080,6 +1225,16 @@ final class FlightHud {
             }
             String tgtText = String.format(Locale.ROOT, "H%03d", (int) autopilotGuidance.targetHeadingDegrees());
             g.text(font, tgtText, x + 3, y + 2, PFD_CYAN, false);
+        }
+        int trackX = centerX + (int) Math.round(wrapDegrees(trackDegrees() - visualHeading) * pixelsPerDegree);
+        if (trackX > x + 2 && trackX < x + width - 2) {
+            g.fill(trackX - 1, y + 2, trackX + 1, y + 4, PFD_GREEN);
+        }
+        if (ilsActive) {
+            int courseX = centerX + (int) Math.round(wrapDegrees(ilsRunwayHeadingDegrees - visualHeading) * pixelsPerDegree);
+            if (courseX > x + 2 && courseX < x + width - 2) {
+                g.fill(courseX - 1, y + 2, courseX + 1, y + 4, 0xFFFF6CD9);
+            }
         }
         g.fill(centerX, y + 1, centerX + 1, y + 5, PFD_WHITE);
         int heading = Math.floorMod(Math.round(visualHeading), 360);
@@ -1150,6 +1305,8 @@ final class FlightHud {
                 pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(), "RUDDER"),
                 binding(FlightLineClient.brakes(), "BRAKES"),
                 binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT PANEL"),
+                binding(FlightLineClient.telemetry(), "TELEMETRY HUD"),
+                binding(FlightLineClient.flightTutorial(), "FLIGHT TUTORIAL"),
                 binding(FlightLineClient.emergencyChecklist(), "EMERGENCY CHECKLIST"),
                 binding(FlightLineClient.openControls(), "ALL CONTROLS"),
                 binding(FlightLineClient.toggleKeybindHints(), "HIDE PROMPTS")));
@@ -1175,7 +1332,10 @@ final class FlightHud {
                 bindings.add(binding(FlightLineClient.inventory(), "START ENGINES"));
             }
         }
-        if (FlightLineClient.isAirborne()) bindings.add(binding(FlightLineClient.flightRadar(), "FLIGHT RADAR"));
+        if (FlightLineClient.isAirborne()) {
+            bindings.add(binding(FlightLineClient.flightRadar(), "FLIGHT RADAR"));
+            bindings.add(binding(FlightLineClient.weatherMap(), "WEATHER MAP"));
+        }
         if (isAtcControlled()) {
             bindings.add(binding(FlightLineClient.ackAtc(), "RELEASE ATC"));
         } else if (hasAtcMessage()) {
@@ -1372,15 +1532,16 @@ final class FlightHud {
                     0xFFF2F7FA);
         }
 
-        // Five-degree pitch ladder; ten-degree bars are longer and labelled.
-        for (int ladderPitch = -35; ladderPitch <= 35; ladderPitch += 5) {
-            if (ladderPitch == 0) continue;
+        // 2.5-degree pitch ladder; ten-degree bars are longer and labelled like a glass ADI.
+        for (int ladderStep = -14; ladderStep <= 14; ladderStep++) {
+            double ladderPitch = ladderStep * 2.5;
+            if (ladderStep == 0) continue;
             double dp = (pitch - ladderPitch) * pitchScale;
             int rungCenterX = cx - (int) Math.round(dp * sinBank);
             int rungCenterY = cy + (int) Math.round(dp * cosBank);
             if (rungCenterY < top + 4 || rungCenterY > bottom - 4) continue;
-            boolean major = Math.floorMod(ladderPitch, 10) == 0;
-            int rungHalfWidth = major ? 20 : 12;
+            boolean major = Math.floorMod(ladderStep, 4) == 0;
+            int rungHalfWidth = major ? 20 : Math.floorMod(ladderStep, 2) == 0 ? 13 : 7;
             int rx1 = rungCenterX - (int) Math.round(rungHalfWidth * cosBank);
             int ry1 = rungCenterY - (int) Math.round(rungHalfWidth * sinBank);
             int rx2 = rungCenterX + (int) Math.round(rungHalfWidth * cosBank);
@@ -1388,7 +1549,7 @@ final class FlightHud {
             drawLineClipped(g, rx1, ry1, rx2, ry2, left, top, right, bottom,
                     ladderPitch > 0 ? 0xFFF2F7FA : 0xFFD0D0D0);
             if (major) {
-                String label = Integer.toString(Math.abs(ladderPitch));
+                String label = Integer.toString((int) Math.abs(ladderPitch));
                 int labelX = rungCenterX + (int) Math.round((rungHalfWidth + 2) * cosBank);
                 int labelY = rungCenterY - 4;
                 if (labelX > left + 2 && labelX + font.width(label) < right - 2
@@ -1421,10 +1582,12 @@ final class FlightHud {
                     Math.min(width / 2 - 4, Math.round(localizerDegrees * 6.0f)));
             int glideslopeOffset = Math.max(-height / 2 + 4,
                     Math.min(height / 2 - 4, -Math.round(glideslopeDegrees * 6.0f)));
-            drawLineClipped(g, cx + localizerOffset, cy - 18, cx + localizerOffset, cy + 18,
-                    left, top, right, bottom, 0xFFFF6CD9);
-            drawLineClipped(g, cx - 18, cy + glideslopeOffset, cx + 18, cy + glideslopeOffset,
-                    left, top, right, bottom, 0xFF79E8FF);
+            drawLineClipped(g, cx + localizerOffset, cy - 22, cx + localizerOffset, cy + 22,
+                    left, top, right, bottom, 0x80FF6CD9);
+            drawLineClipped(g, cx - 22, cy + glideslopeOffset, cx + 22, cy + glideslopeOffset,
+                    left, top, right, bottom, 0x8079E8FF);
+            drawDiamond(g, cx + localizerOffset, cy - 22, 3, 0xFFFF6CD9);
+            drawDiamond(g, cx + 22, cy + glideslopeOffset, 3, 0xFF79E8FF);
             g.fill(cx + localizerOffset - 2, cy - 1, cx + localizerOffset + 3, cy + 2, 0xFFFF6CD9);
             g.fill(cx - 1, cy + glideslopeOffset - 2, cx + 2, cy + glideslopeOffset + 3, 0xFF79E8FF);
             for (int dot = -2; dot <= 2; dot++) {
@@ -1461,6 +1624,8 @@ final class FlightHud {
             g.fill(cx - 2, fpvY + 2, cx + 3, fpvY + 3, PFD_GREEN);
             g.fill(cx - 3, fpvY - 2, cx - 2, fpvY + 2, PFD_GREEN);
             g.fill(cx + 2, fpvY - 2, cx + 3, fpvY + 2, PFD_GREEN);
+            g.fill(cx - 9, fpvY - 1, cx - 4, fpvY, PFD_GREEN);
+            g.fill(cx + 3, fpvY - 1, cx + 8, fpvY, PFD_GREEN);
         }
 
         // Slip/skid indicator beneath the fixed aircraft symbol.

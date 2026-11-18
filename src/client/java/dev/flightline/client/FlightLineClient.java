@@ -68,6 +68,9 @@ public class FlightLineClient implements ClientModInitializer {
     private static final KeyMapping TOGGLE_PFD = key("key.flightline.pfd", InputConstants.KEY_U);
     private static final KeyMapping TOGGLE_EICAS = key("key.flightline.eicas", InputConstants.KEY_I);
     private static final KeyMapping TOGGLE_ND_RADAR = key("key.flightline.nd", InputConstants.KEY_B);
+    private static final KeyMapping TOGGLE_TELEMETRY = key("key.flightline.telemetry", InputConstants.KEY_Y);
+    private static final KeyMapping OPEN_TUTORIAL = key("key.flightline.tutorial", InputConstants.KEY_L);
+    private static final KeyMapping OPEN_WEATHER_MAP = key("key.flightline.weather_map", InputConstants.KEY_P);
     private static final KeyMapping TOGGLE_KEYBIND_HINTS = key("key.flightline.keybind_hints", InputConstants.KEY_F9);
     private static final KeyMapping OPEN_CONTROLS = key("key.flightline.controls", InputConstants.KEY_F10);
     private static final KeyMapping ACK_ATC = key("key.flightline.atc_ack", InputConstants.KEY_F7);
@@ -78,6 +81,7 @@ public class FlightLineClient implements ClientModInitializer {
             TOGGLE_GEAR, SHUTDOWN_ENGINES, TOGGLE_PUSHBACK, BRAKES,
             FLAPS_INCREASE, FLAPS_DECREASE, TOGGLE_SPOILERS, TOGGLE_AIRBRAKE, TOGGLE_AUTOPILOT,
             OPEN_FLIGHT_RADAR, TOGGLE_PFD, TOGGLE_EICAS, TOGGLE_ND_RADAR,
+            TOGGLE_TELEMETRY, OPEN_TUTORIAL, OPEN_WEATHER_MAP,
             TOGGLE_KEYBIND_HINTS, OPEN_CONTROLS, ACK_ATC, TOGGLE_ANTI_ICE,
             EMERGENCY_CHECKLIST, EXECUTE_EMERGENCY);
     private static volatile boolean flightEnabled;
@@ -149,6 +153,9 @@ public class FlightLineClient implements ClientModInitializer {
     public static KeyMapping togglePfd() { return TOGGLE_PFD; }
     public static KeyMapping toggleEicas() { return TOGGLE_EICAS; }
     public static KeyMapping toggleNdRadar() { return TOGGLE_ND_RADAR; }
+    public static KeyMapping telemetry() { return TOGGLE_TELEMETRY; }
+    public static KeyMapping flightTutorial() { return OPEN_TUTORIAL; }
+    public static KeyMapping weatherMap() { return OPEN_WEATHER_MAP; }
     public static KeyMapping toggleKeybindHints() { return TOGGLE_KEYBIND_HINTS; }
     public static KeyMapping openControls() { return OPEN_CONTROLS; }
     static KeyMapping emergencyChecklist() { return EMERGENCY_CHECKLIST; }
@@ -284,6 +291,7 @@ public class FlightLineClient implements ClientModInitializer {
             clientTicks++;
             updateViewBobbing(client);
             updateEngineSound(client);
+            FlightTutorial.tick();
             var player = client.player;
 
             if (player != null && client.gui.screen() == null) {
@@ -307,7 +315,15 @@ public class FlightLineClient implements ClientModInitializer {
                     if (TOGGLE_PFD.consumeClick()) FlightHud.togglePfd();
                     if (TOGGLE_EICAS.consumeClick()) FlightHud.toggleEicas();
                     if (TOGGLE_ND_RADAR.consumeClick()) FlightHud.toggleRadar();
+                    if (TOGGLE_TELEMETRY.consumeClick()) FlightHud.toggleTelemetry();
                     if (TOGGLE_KEYBIND_HINTS.consumeClick()) FlightHud.toggleKeybinds();
+                    if (OPEN_TUTORIAL.consumeClick()) {
+                        FlightTutorial.setActive(true);
+                        client.gui.setScreen(new FlightTutorialScreen());
+                    }
+                    if (OPEN_WEATHER_MAP.consumeClick() && flightEnabled && client.level != null) {
+                        client.gui.setScreen(new WeatherMapScreen());
+                    }
                     if (OPEN_CONTROLS.consumeClick()) client.gui.setScreen(new FlightControlsScreen());
                     if (EMERGENCY_CHECKLIST.consumeClick() && flightEnabled) {
                         client.gui.setScreen(new EmergencyScreen());
@@ -383,6 +399,7 @@ public class FlightLineClient implements ClientModInitializer {
             enginesActive = false;
             enginesStarting = false;
             enginesRunning = false;
+            FlightTutorial.reset();
             engineStartRequestTicks = 0;
             resetCockpitAudio(client);
             clientTicks = 0;
