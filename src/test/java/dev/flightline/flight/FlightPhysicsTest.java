@@ -10,48 +10,27 @@ class FlightPhysicsTest {
 
     @Test
     void testAircraftAttitudeVector() {
-        // Test pitch = 0, yaw = 0 (facing south / +Z)
-        double pitchRad = Math.toRadians(0.0);
-        double yawRad = Math.toRadians(0.0);
-        double cosPitch = Math.cos(pitchRad);
-        Vec3 attitude = new Vec3(
-                -Math.sin(yawRad) * cosPitch,
-                Math.sin(pitchRad),
-                Math.cos(yawRad) * cosPitch
-        );
+        // Level, facing +Z.
+        Vec3 attitude = FlightMath.aircraftAttitudeVector(0.0, 0.0);
         assertEquals(0.0, attitude.x, 1e-4);
         assertEquals(0.0, attitude.y, 1e-4);
         assertEquals(1.0, attitude.z, 1e-4);
 
-        // Test pitch = 30 deg up, yaw = 90 deg (facing west / -X)
-        pitchRad = Math.toRadians(30.0);
-        yawRad = Math.toRadians(90.0);
-        cosPitch = Math.cos(pitchRad);
-        attitude = new Vec3(
-                -Math.sin(yawRad) * cosPitch,
-                Math.sin(pitchRad),
-                Math.cos(yawRad) * cosPitch
-        );
-        assertEquals(-Math.cos(Math.toRadians(30.0)), attitude.x, 1e-4);
-        assertEquals(Math.sin(Math.toRadians(30.0)), attitude.y, 1e-4);
+        // 30 degrees nose up, facing -X.
+        attitude = FlightMath.aircraftAttitudeVector(30.0, 90.0);
+        assertEquals(-0.8660254, attitude.x, 1e-4);
+        assertEquals(0.5, attitude.y, 1e-4);
         assertEquals(0.0, attitude.z, 1e-4);
         assertEquals(1.0, attitude.length(), 1e-4);
     }
 
     @Test
     void testCoordinatedTurnRate() {
-        // Coordinated turn rate: omega = g * tan(bank) / v
-        double bank = 20.0;
-        double speed = 2.0;
-        double turnRate = FlightTuning.TURN_RATE_FACTOR * FlightTuning.WORLD_SPEED_SCALE
-                * Math.tan(Math.toRadians(bank)) / speed;
-
+        double turnRate = FlightMath.coordinatedTurnRateRadiansPerTick(20.0, 2.0);
         assertTrue(turnRate > 0.0);
-        // Bank left should give negative turn rate
-        double bankLeft = -20.0;
-        double turnRateLeft = FlightTuning.TURN_RATE_FACTOR * FlightTuning.WORLD_SPEED_SCALE
-                * Math.tan(Math.toRadians(bankLeft)) / speed;
-        assertEquals(-turnRate, turnRateLeft, 1e-4);
+        // Bank left should give the opposite turn rate, and a faster aircraft turns more slowly.
+        assertEquals(-turnRate, FlightMath.coordinatedTurnRateRadiansPerTick(-20.0, 2.0), 1e-4);
+        assertTrue(FlightMath.coordinatedTurnRateRadiansPerTick(20.0, 4.0) < turnRate);
     }
 
     @Test
@@ -73,23 +52,27 @@ class FlightPhysicsTest {
 
     @Test
     void testGroundEffectCushioning() {
-        // At 2 blocks above ground (flare height):
-        double radioAltBlocks = 2.0;
-        double groundEffect = radioAltBlocks < 12.0 ? Math.max(0.0, (12.0 - radioAltBlocks) / 12.0) : 0.0;
-        assertTrue(groundEffect > 0.8);
+        // At flare height the cushion is strong but bounded, with the production lift and drag gains.
+        double flareFactor = FlightMath.groundEffectFactor(2.0);
+        assertTrue(flareFactor > 0.8);
+        assertTrue(flareFactor <= 1.0);
+        assertEquals(1.32, FlightMath.groundEffectLiftMultiplier(1.0), 1e-4);
+        assertEquals(0.70, FlightMath.groundEffectDragMultiplier(1.0), 1e-4);
 
         double baseLift = 0.10;
-        double flaredLift = baseLift * (1.0 + groundEffect * 0.22);
-        assertTrue(flaredLift > baseLift);
-
+        assertTrue(baseLift * FlightMath.groundEffectLiftMultiplier(flareFactor) > baseLift);
         double baseDrag = 0.005;
-        double flaredDrag = baseDrag * (1.0 - groundEffect * 0.30);
-        assertTrue(flaredDrag < baseDrag);
+        assertTrue(baseDrag * FlightMath.groundEffectDragMultiplier(flareFactor) < baseDrag);
 
-        // At 50 blocks above ground: ground effect must be 0
-        radioAltBlocks = 50.0;
-        groundEffect = radioAltBlocks < 12.0 ? Math.max(0.0, (12.0 - radioAltBlocks) / 12.0) : 0.0;
-        assertEquals(0.0, groundEffect, 1e-4);
+        // No effect at or above the height limit, and no multiplier change at zero factor.
+        assertEquals(0.0, FlightMath.groundEffectFactor(FlightMath.GROUND_EFFECT_HEIGHT_BLOCKS), 1e-4);
+        assertEquals(0.0, FlightMath.groundEffectFactor(50.0), 1e-4);
+        assertEquals(1.0, FlightMath.groundEffectLiftMultiplier(0.0), 1e-4);
+        assertEquals(1.0, FlightMath.groundEffectDragMultiplier(0.0), 1e-4);
+
+        // Cushioning grows monotonically as the aircraft descends.
+        assertTrue(FlightMath.groundEffectFactor(3.0) > FlightMath.groundEffectFactor(9.0));
+        assertTrue(FlightMath.groundEffectFactor(9.0) > 0.0);
     }
 
     @Test
@@ -470,18 +453,19 @@ class FlightPhysicsTest {
 
     @Test
     void testAngleOfAttackCalculation() {
-        double pitch = 12.0; // nose pitched up 12 deg
-        double flightPathAngle = 4.0; // climbing at 4 deg
-        double aoa = pitch - flightPathAngle;
+        // 12 degrees nose up while climbing along a 4 degree flight path.
+        double horizontalSpeed = 100.0;
+        double verticalSpeed = horizontalSpeed * Math.tan(Math.toRadians(4.0));
+        double aoa = FlightMath.angleOfAttackDegrees(12.0, verticalSpeed, horizontalSpeed);
         assertEquals(8.0, aoa, 1e-4);
-
-        // Critical AoA stall check
         assertTrue(aoa < FlightTuning.CRITICAL_ANGLE_OF_ATTACK_DEGREES);
 
-        double stallPitch = 25.0;
-        double levelFlightPath = 0.0;
-        double stallAoa = stallPitch - levelFlightPath;
+        // Level flight at 25 degrees nose up exceeds the critical angle.
+        double stallAoa = FlightMath.angleOfAttackDegrees(25.0, 0.0, horizontalSpeed);
         assertTrue(stallAoa > FlightTuning.CRITICAL_ANGLE_OF_ATTACK_DEGREES);
+
+        // Tiny horizontal speeds are clamped before the flight-path calculation.
+        assertEquals(10.0, FlightMath.angleOfAttackDegrees(10.0, 0.0, 0.0), 1e-4);
     }
 
     @Test

@@ -277,13 +277,12 @@ public final class MobFlightController {
                         && FlightController.isAirborne(candidate))) {
             Vec3 separation = mob.position().subtract(player.position());
             Vec3 relativeVelocity = aircraft.velocity.subtract(player.getDeltaMovement());
-            double speedSquared = relativeVelocity.lengthSqr();
-            double time = speedSquared < 1.0e-6 ? 0.0 : -separation.dot(relativeVelocity) / speedSquared;
+            double time = TcasGeometry.timeToClosestApproachTicks(separation, relativeVelocity);
             if (time < 0.0 || time > 300.0) continue;
-            Vec3 closest = separation.add(relativeVelocity.scale(time));
+            Vec3 closest = TcasGeometry.closestSeparation(separation, relativeVelocity);
             if (closest.horizontalDistance() >= 24.0 || Math.abs(closest.y) >= 12.0) continue;
             // Coordinated escape with player: if mob is higher than player, mob climbs; otherwise descends
-            double escape = separation.y >= 0.0 ? 0.14 : -0.14;
+            double escape = TcasGeometry.mobVerticalEscape(separation.y);
             if (relativeVelocity.horizontalDistance() > 0.35) {
                 aircraft.heading = wrap(aircraft.heading + 0.35);
             }
@@ -298,20 +297,14 @@ public final class MobFlightController {
             Vec3 separation = mob.position().subtract(other.mob.position());
             if (separation.lengthSqr() > 80.0 * 80.0) continue;
             Vec3 relativeVelocity = aircraft.velocity.subtract(other.velocity);
-            double speedSquared = relativeVelocity.lengthSqr();
-            double time = speedSquared < 1.0e-6 ? 0.0 : -separation.dot(relativeVelocity) / speedSquared;
+            double time = TcasGeometry.timeToClosestApproachTicks(separation, relativeVelocity);
             if (time < 0.0 || time > 300.0) continue;
-            Vec3 closest = separation.add(relativeVelocity.scale(time));
+            Vec3 closest = TcasGeometry.closestSeparation(separation, relativeVelocity);
             if (closest.horizontalDistance() >= 24.0 || Math.abs(closest.y) >= 12.0) continue;
 
             // Deterministic complementary vertical resolution:
-            double escape;
-            if (Math.abs(separation.y) > 0.8) {
-                escape = separation.y > 0.0 ? 0.14 : -0.14;
-            } else {
-                // Same altitude tie-breaker: deterministic opposite commands
-                escape = mob.getUUID().compareTo(other.mob.getUUID()) > 0 ? 0.14 : -0.14;
-            }
+            double escape = TcasGeometry.mobToMobVerticalEscape(
+                    separation.y, mob.getUUID(), other.mob.getUUID());
             if (relativeVelocity.horizontalDistance() > 0.35) {
                 aircraft.heading = wrap(aircraft.heading + 0.35);
             }

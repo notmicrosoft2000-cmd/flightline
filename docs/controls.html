@@ -74,7 +74,7 @@
                 <table class="key-table">
                     <thead><tr><th>Key</th><th>Action</th><th>Notes</th></tr></thead>
                     <tbody>
-                        <tr><td><kbd>H</kbd></td><td>Flight deck / autopilot</td><td>Opens MCP, NAV/ILS, WX and SYS pages.</td></tr>
+                        <tr><td><kbd>H</kbd></td><td>Flight deck / autopilot</td><td>Opens MCP, FPLN, NAV/ILS, WX, SYS and ALERT tabs.</td></tr>
                         <tr><td><kbd>R</kbd></td><td>Flight radar</td><td>Traffic scope with authoritative contacts.</td></tr>
                         <tr><td><kbd>U</kbd></td><td>Primary flight display</td><td>Toggles the PFD.</td></tr>
                         <tr><td><kbd>I</kbd></td><td>EICAS</td><td>Engine and aircraft status.</td></tr>
@@ -199,7 +199,7 @@
         <section class="container section">
             <div class="content-panel pixel-box">
                 <h2>Flight deck and ILS autoland</h2>
-                <p>Press <code>H</code> for the four-page flight deck. The MCP holds heading, altitude, vertical speed and IAS targets, with SYNC and LEVEL shortcuts. The NAV/ILS page configures approaches, WX shows layered storm cells and traffic, and SYS shows the aircraft schematic and system status.</p>
+                <p>Press <code>H</code> for the six-tab flight deck. The MCP groups heading, altitude, vertical speed and IAS into a 2×2 grid with CURRENT/SELECTED markers, step buttons, SYNC/LEVEL shortcuts, sticky drafts and AP master. FPLN files routes, NAV/ILS configures approaches, WX shows layered storm cells and traffic, SYS shows the aircraft schematic and system status, and ALERT keeps the written warning list. The HUD itself stays wordless: non-TCAS warnings use a full-screen edge flash, while TCAS remains advisory-only.</p>
                 <ul class="command-list" style="margin-top:16px">
                     <li><code>/flightline ils set 1-6</code> — set glide slope, default <code>3.0</code></li>
                     <li><code>/flightline ils clear</code> — remove the localizer</li>

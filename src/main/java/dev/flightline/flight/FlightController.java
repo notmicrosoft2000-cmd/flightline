@@ -1571,8 +1571,7 @@ public final class FlightController {
         // The aircraft only crashes when it actually strikes terrain, traffic or an obstacle.
         double speed = Math.max(0.75, session.airspeed);
         // Turn rate: omega = g * tan(phi) / v
-        double turnRate = FlightTuning.TURN_RATE_FACTOR * FlightTuning.WORLD_SPEED_SCALE
-                * Math.tan(Math.toRadians(session.bankDegrees)) / speed;
+        double turnRate = FlightMath.coordinatedTurnRateRadiansPerTick(session.bankDegrees, speed);
         if (session.engine1State >= ENGINE_FAILED && session.engine2State == ENGINE_RUNNING) {
             turnRate += 0.28 * session.throttle;
         } else if (session.engine2State >= ENGINE_FAILED && session.engine1State == ENGINE_RUNNING) {
@@ -1815,14 +1814,7 @@ public final class FlightController {
     private static void simulateAirborne(ServerPlayer player, Session session) {
         boolean powered = runningEngines(session) > 0;
         // Authoritative aircraft 3D attitude vector derived from aircraft pitch and heading
-        double pitchRad = Math.toRadians(session.pitchDegrees);
-        double yawRad = Math.toRadians(session.headingDegrees);
-        double cosPitch = Math.cos(pitchRad);
-        Vec3 aircraftAttitude = new Vec3(
-                -Math.sin(yawRad) * cosPitch,
-                Math.sin(pitchRad),
-                Math.cos(yawRad) * cosPitch
-        );
+        Vec3 aircraftAttitude = FlightMath.aircraftAttitudeVector(session.pitchDegrees, session.headingDegrees);
 
         Vec3 velocity = session.airVelocity;
         Vec3 wind = new Vec3(session.windX, session.windY, session.windZ);
@@ -1850,7 +1842,7 @@ public final class FlightController {
 
         // Ground effect cushions aircraft flare within 12 blocks (~40 ft) of the surface
         double radioAltBlocks = session.radioAltitudeFeet / 3.28084;
-        double groundEffect = radioAltBlocks < 12.0 ? Math.max(0.0, (12.0 - radioAltBlocks) / 12.0) : 0.0;
+        double groundEffect = FlightMath.groundEffectFactor(radioAltBlocks);
         double baseDrag = ((session.gearDown ? 0.0012 : 0.00045) + session.flapPosition * 0.00055
                 + (session.spoilers ? 0.0045 : 0.0)
                 + (session.airbrakes ? FlightTuning.AIRBRAKE_DRAG : 0.0))
@@ -1861,7 +1853,7 @@ public final class FlightController {
         double cosBank = Math.max(0.15, Math.cos(Math.toRadians(session.bankDegrees)));
         double loadFactor = 1.0 / cosBank;
         double turnInducedDrag = (loadFactor * loadFactor - 1.0) * 0.0016 / FlightTuning.WORLD_SPEED_SCALE;
-        double drag = (baseDrag * (1.0 - groundEffect * 0.30)) + turnInducedDrag;
+        double drag = (baseDrag * FlightMath.groundEffectDragMultiplier(groundEffect)) + turnInducedDrag;
         drag *= FlightTuning.engineOutDragFactor(powered);
         velocity = velocity.subtract(relativeAir.scale(drag * Math.max(0.15, airspeed)));
 
@@ -1883,9 +1875,8 @@ public final class FlightController {
         Vec3 airVelocity = velocity.subtract(wind);
         double horizontalSpeed = airVelocity.horizontalDistance();
         double indicatedAirspeed = airVelocity.length();
-        double flightPathAngle = Math.toDegrees(Math.atan2(velocity.y, Math.max(horizontalSpeed, 1.0e-4)));
         double pitchUp = session.pitchDegrees;
-        double angleOfAttack = pitchUp - flightPathAngle;
+        double angleOfAttack = FlightMath.angleOfAttackDegrees(pitchUp, velocity.y, horizontalSpeed);
         double stallSpeed = FlightTuning.engineOutStallSpeed(
                 FlightTuning.icedStallSpeed(session.icingPercent, session.flapPosition), powered);
         boolean stalled = indicatedAirspeed < stallSpeed
@@ -1918,7 +1909,7 @@ public final class FlightController {
                 indicatedAirspeed * indicatedAirspeed * 0.0011 / FlightTuning.WORLD_SPEED_SCALE
                         * effectiveAngle * FlightTuning.icingLiftFactor(session.icingPercent) * loadFactor);
         lift *= Math.cos(Math.toRadians(session.bankDegrees));
-        lift *= (1.0 + groundEffect * 0.32); // Ground effect lift cushioning
+        lift *= FlightMath.groundEffectLiftMultiplier(groundEffect); // Ground effect lift cushioning
         lift *= FlightTuning.spoilerLiftFactor(session.spoilers);
         lift *= session.airbrakes ? FlightTuning.AIRBRAKE_LIFT_FACTOR : 1.0;
         lift *= FlightTuning.overspeedLiftFactor(session.overspeedTicks);
@@ -2238,11 +2229,9 @@ public final class FlightController {
                 Vec3 ownVelocity = session.airborne ? session.airVelocity : player.getDeltaMovement();
                 Vec3 intruderVelocity = intruder.airborne ? intruder.airVelocity : traffic.getDeltaMovement();
                 Vec3 relativeVelocity = intruderVelocity.subtract(ownVelocity);
-                double relativeSpeedSquared = relativeVelocity.lengthSqr();
-                double timeToClosest = relativeSpeedSquared < 1.0e-6 ? 0.0
-                        : -separation.dot(relativeVelocity) / relativeSpeedSquared;
+                double timeToClosest = TcasGeometry.timeToClosestApproachTicks(separation, relativeVelocity);
                 if (timeToClosest < 0.0 || timeToClosest > 400.0) continue;
-                Vec3 closestSeparation = separation.add(relativeVelocity.scale(timeToClosest));
+                Vec3 closestSeparation = TcasGeometry.closestSeparation(separation, relativeVelocity);
                 double horizontal = closestSeparation.horizontalDistance();
                 double vertical = Math.abs(closestSeparation.y);
                 if (shouldWarnTcas(session.airborne, intruder.airborne)
@@ -2256,7 +2245,7 @@ public final class FlightController {
                         && vertical < 12.0 * FlightTuning.WORLD_SPEED_SCALE
                         && combinedDistance < closestResolution) {
                     closestResolution = combinedDistance;
-                    resolutionCommand = separation.y > 0.5 ? FlightWarning.TCAS_DESCEND : FlightWarning.TCAS_CLIMB;
+                    resolutionCommand = TcasGeometry.verticalResolutionCommand(separation.y);
                     if (separation.y * relativeVelocity.y < 0.0) resolutionCommand |= FlightWarning.TCAS_CROSSING;
                 }
             }
@@ -2265,11 +2254,9 @@ public final class FlightController {
                 recordTrafficContact(session, separation, traffic.airborne());
                 closestScopeContact = recordScopeContact(session, separation, closestScopeContact);
                 Vec3 relativeVelocity = traffic.velocity().subtract(session.airVelocity);
-                double relativeSpeedSquared = relativeVelocity.lengthSqr();
-                double timeToClosest = relativeSpeedSquared < 1.0e-6 ? 0.0
-                        : -separation.dot(relativeVelocity) / relativeSpeedSquared;
+                double timeToClosest = TcasGeometry.timeToClosestApproachTicks(separation, relativeVelocity);
                 if (timeToClosest < 0.0 || timeToClosest > 400.0) continue;
-                Vec3 closestSeparation = separation.add(relativeVelocity.scale(timeToClosest));
+                Vec3 closestSeparation = TcasGeometry.closestSeparation(separation, relativeVelocity);
                 double horizontal = closestSeparation.horizontalDistance();
                 double vertical = Math.abs(closestSeparation.y);
                 double combinedDistance = horizontal + vertical * 2.0;
@@ -2283,7 +2270,7 @@ public final class FlightController {
                         && vertical < 12.0 * FlightTuning.WORLD_SPEED_SCALE
                         && combinedDistance < closestResolution) {
                     closestResolution = combinedDistance;
-                    resolutionCommand = separation.y > 0.5 ? FlightWarning.TCAS_DESCEND : FlightWarning.TCAS_CLIMB;
+                    resolutionCommand = TcasGeometry.verticalResolutionCommand(separation.y);
                     if (separation.y * relativeVelocity.y < 0.0) resolutionCommand |= FlightWarning.TCAS_CROSSING;
                 }
             }

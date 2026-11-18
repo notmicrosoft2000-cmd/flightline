@@ -144,7 +144,7 @@ final class FlightTutorial {
                     new Objective("HOLD A STABLE PATH", "Keep a small vertical speed, not a dive.",
                             Math.abs(FlightHud.currentVsFpm()) < 1200, "FLY"));
             case AUTOPILOT -> List.of(
-                    new Objective("OPEN THE FLIGHT DECK", "Press H or use SYNC AP to configure targets.",
+                    new Objective("OPEN THE FLIGHT DECK", "Press H, then set a target on the MCP.",
                             FlightHud.isAutopilotEngaged(), "MCP"),
                     new Objective("SET A TARGET ALTITUDE", "Choose a safe altitude above 1,000 ft.",
                             FlightHud.autopilotGuidance().targetAltitudeFeet() >= 1000, "MCP"),
