@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Camera.class)
 public abstract class FlightCameraMixin {
     private static final float ROLL_TAU_SECONDS = 0.25f;
+    private static final float PITCH_TAU_SECONDS = 0.20f;
 
     @Shadow @Final private Quaternionf rotation;
     @Shadow @Final private Vector3f forwards;
@@ -42,6 +43,10 @@ public abstract class FlightCameraMixin {
     @Unique
     private static float flightline$frameRoll = 0.0f;
     @Unique
+    private static float flightline$interpolatedPitch = 0.0f;
+    @Unique
+    private static float flightline$framePitch = 0.0f;
+    @Unique
     private static double flightline$offsetX = 0.0;
     @Unique
     private static double flightline$offsetY = 0.0;
@@ -51,7 +56,7 @@ public abstract class FlightCameraMixin {
     private static boolean flightline$hasAppliedOffset = false;
 
     /**
-     * One sample and one roll interpolation per rendered frame, before vanilla aligns the camera.
+     * One sample and roll/pitch interpolation per rendered frame, before vanilla aligns the camera.
      * The previous frame's render-only offset is removed first so long flights cannot drift.
      */
     @Inject(method = "update(Lnet/minecraft/client/DeltaTracker;)V", at = @At("HEAD"))
@@ -59,11 +64,12 @@ public abstract class FlightCameraMixin {
         flightline$removeAppliedOffset();
 
         if (!flightline$shouldApplyEffects()) {
-            flightline$clearRoll();
+            flightline$clearAttitude();
             FlightCameraEffects.reset();
             return;
         }
 
+        Minecraft client = Minecraft.getInstance();
         FlightCameraEffects.beginFrame(System.nanoTime());
         float targetRoll = FlightLineClient.isAirborne()
                 ? (float) Math.toRadians(-FlightLineClient.bankDegrees())
@@ -71,6 +77,18 @@ public abstract class FlightCameraMixin {
         float rollAlpha = 1.0f - (float) Math.exp(-FlightCameraEffects.frameDeltaSeconds() / ROLL_TAU_SECONDS);
         flightline$interpolatedRoll += (targetRoll - flightline$interpolatedRoll) * rollAlpha;
         flightline$frameRoll = flightline$interpolatedRoll + FlightCameraEffects.currentSample().rollRadians();
+
+        float targetPitchOffset = 0.0f;
+        if (FlightLineClient.isAirborne() && client.player != null) {
+            float commandedPitch = -client.player.getXRot();
+            float actualPitch = (float) FlightLineClient.pitchDegrees();
+            // Dynamic pitch follow: camera follows the aircraft's aerodynamic pitch attitude
+            float pitchDiff = actualPitch - commandedPitch;
+            targetPitchOffset = (float) Math.toRadians(pitchDiff * 0.35f);
+        }
+        float pitchAlpha = 1.0f - (float) Math.exp(-FlightCameraEffects.frameDeltaSeconds() / PITCH_TAU_SECONDS);
+        flightline$interpolatedPitch += (targetPitchOffset - flightline$interpolatedPitch) * pitchAlpha;
+        flightline$framePitch = flightline$interpolatedPitch;
     }
 
     /** Adds the capped jitter offset after vanilla has positioned the camera, before culling. */
@@ -94,7 +112,7 @@ public abstract class FlightCameraMixin {
     protected void flightline$applyCameraRollAndShake(float yRot, float xRot, CallbackInfo ci) {
         if (!flightline$shouldApplyEffects()) {
             flightline$removeAppliedOffset();
-            flightline$clearRoll();
+            flightline$clearAttitude();
             FlightCameraEffects.reset();
             return;
         }
@@ -102,7 +120,7 @@ public abstract class FlightCameraMixin {
         FlightCameraEffects.Shake shake = FlightCameraEffects.currentSample();
 
         float yAngle = (float) Math.PI - (yRot * 0.017453292f) + shake.yawRadians();
-        float xAngle = -(xRot * 0.017453292f) + shake.pitchRadians();
+        float xAngle = -(xRot * 0.017453292f) + shake.pitchRadians() + flightline$framePitch;
         float zAngle = flightline$frameRoll;
 
         this.rotation.rotationYXZ(yAngle, xAngle, zAngle);
@@ -130,8 +148,10 @@ public abstract class FlightCameraMixin {
         flightline$hasAppliedOffset = false;
     }
 
-    private void flightline$clearRoll() {
+    private void flightline$clearAttitude() {
         flightline$interpolatedRoll = 0.0f;
         flightline$frameRoll = 0.0f;
+        flightline$interpolatedPitch = 0.0f;
+        flightline$framePitch = 0.0f;
     }
 }

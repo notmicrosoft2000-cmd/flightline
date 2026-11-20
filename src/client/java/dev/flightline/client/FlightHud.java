@@ -36,7 +36,7 @@ final class FlightHud {
     private static final int PFD_BASE_HEIGHT = 158;
     private static final int EICAS_WIDTH = 128;
     private static final int EICAS_HEIGHT = 138;
-    private static final float EICAS_SCALE = 0.84f;
+    private static final float EICAS_SCALE = 0.75f;
     private static final int EICAS_DISPLAY_WIDTH = Math.round(EICAS_WIDTH * EICAS_SCALE);
     private static final int EICAS_DISPLAY_HEIGHT = Math.round(EICAS_HEIGHT * EICAS_SCALE);
     private static final int TCAS_WARNINGS = FlightWarning.TCAS_TRAFFIC
@@ -88,7 +88,7 @@ final class FlightHud {
     private static FlightRadarPayload radarPayload = new FlightRadarPayload(0, 0, 0, 0.0f, 0, List.of());
     private static boolean showPfd = true;
     private static boolean showEicas = true;
-    private static boolean showRadar = true;
+    private static boolean showRadar = false;
     private static boolean showKeybinds = true;
     private static boolean showTelemetry = false;
     private static boolean radarDataReceived;
@@ -586,14 +586,14 @@ final class FlightHud {
         double clock = nowNanos / 1_000_000_000.0;
         updateAlarmOnset(nowNanos);
 
-        float pfdScale = 1.0f;
+        float pfdScale = 0.70f;
         int pfdDisplayWidth = 0;
         int pfdDisplayHeight = 0;
         if (showPfd) {
-            pfdScale = Math.min(0.72f, Math.min(
-                    (screenWidth * 0.34f) / PFD_BASE_WIDTH,
-                    (screenHeight * 0.46f) / PFD_BASE_HEIGHT));
-            pfdScale = Math.max(0.44f, pfdScale);
+            float availW = screenWidth * 0.35f;
+            float availH = screenHeight * 0.50f;
+            float fit = Math.min(availW / PFD_BASE_WIDTH, availH / PFD_BASE_HEIGHT);
+            pfdScale = Math.min(0.70f, Math.max(0.50f, fit));
             pfdDisplayWidth = Math.round(PFD_BASE_WIDTH * pfdScale);
             pfdDisplayHeight = Math.round(PFD_BASE_HEIGHT * pfdScale);
         }
@@ -611,14 +611,12 @@ final class FlightHud {
         int ndY = 6;
         boolean ndVisible = showRadar;
         if (ndVisible) {
-            int availableLeft = showPfd ? pfdRight + 6 : 6;
-            int availableRight = eicasVisible ? eicasX - 6 : screenWidth - 6;
-            if (availableRight - availableLeft >= ndWidth) {
-                ndX = (availableLeft + availableRight - ndWidth) / 2;
-            } else {
-                ndX = availableLeft;
+            ndX = showPfd ? pfdRight + 6 : 6;
+            ndY = 6;
+            if (ndX + ndWidth > (eicasVisible ? eicasX - 6 : screenWidth - 6)) {
+                ndX = 6;
                 ndY = pfdBottom + 4;
-                if (ndX + ndWidth > screenWidth - 6 || ndY + ndHeight > screenHeight - 4) {
+                if (ndY + ndHeight > screenHeight - 4) {
                     ndVisible = false;
                 }
             }
@@ -1483,25 +1481,21 @@ final class FlightHud {
 
     private static void drawKeybindList(GuiGraphicsExtractor graphics, Minecraft mc,
                                         int screenWidth, int screenHeight) {
-        final int maxRows = 13;
+        final int maxRows = 12;
         boolean airborne = FlightLineClient.isAirborne();
         boolean emergencyAction = emergencyStatus.recommendation().present();
         boolean atcControlled = isAtcControlled();
         boolean atcMessage = hasAtcMessage();
 
-        // Priority rows survive phase changes and alphabetical sorting would otherwise hide them.
         List<String> rows = new ArrayList<>(maxRows);
-        addUniqueHint(rows, pairBinding(FlightLineClient.throttleUp(), FlightLineClient.throttleDown(),
-                "THROTTLE"));
-        addUniqueHint(rows, pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(),
-                "RUDDER"));
+        addUniqueHint(rows, pairBinding(FlightLineClient.throttleUp(), FlightLineClient.throttleDown(), "THROTTLE"));
+        addUniqueHint(rows, pairBinding(FlightLineClient.rudderLeft(), FlightLineClient.rudderRight(), "RUDDER"));
         addUniqueHint(rows, binding(FlightLineClient.brakes(), "BRAKES"));
         addUniqueHint(rows, binding(FlightLineClient.toggleGear(), "LANDING GEAR"));
         if (airborne) {
-            addUniqueHint(rows, pairBinding(FlightLineClient.flapsIncrease(),
-                    FlightLineClient.flapsDecrease(), "FLAPS (+ / -)"));
+            addUniqueHint(rows, pairBinding(FlightLineClient.flapsIncrease(), FlightLineClient.flapsDecrease(), "FLAPS (+ / -)"));
         }
-        addUniqueHint(rows, binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT PANEL"));
+        addUniqueHint(rows, binding(FlightLineClient.toggleAutopilot(), "AUTOPILOT / FLIGHT DECK"));
         addUniqueHint(rows, binding(FlightLineClient.emergencyChecklist(), "EMERGENCY CHECKLIST"));
         if (emergencyAction) {
             addUniqueHint(rows, binding(FlightLineClient.executeEmergency(), "EXECUTE NEXT ACTION"));
@@ -1511,16 +1505,14 @@ final class FlightHud {
             addUniqueHint(rows, binding(FlightLineClient.weatherMap(), "WEATHER MAP"));
         }
         if (atcControlled || atcMessage) {
-            addUniqueHint(rows, binding(FlightLineClient.ackAtc(),
-                    atcControlled ? "RELEASE ATC" : "ACK ATC"));
+            addUniqueHint(rows, binding(FlightLineClient.ackAtc(), atcControlled ? "RELEASE ATC" : "ACK ATC"));
         }
         addUniqueHint(rows, binding(FlightLineClient.openControls(), "ALL CONTROLS"));
-        addUniqueHint(rows, binding(FlightLineClient.toggleKeybindHints(), "HIDE PROMPTS"));
+        addUniqueHint(rows, binding(FlightLineClient.toggleKeybindHints(), "TOGGLE HINTS"));
 
-        // Everything else fills the remaining rows in a stable, readable order.
         List<String> remaining = new ArrayList<>();
-        remaining.add(binding(FlightLineClient.telemetry(), "FLIGHT DATA PANEL"));
-        remaining.add(binding(FlightLineClient.flightTutorial(), "FLIGHT TUTORIAL"));
+        remaining.add(binding(FlightLineClient.telemetry(), "FLIGHT DATA"));
+        remaining.add(binding(FlightLineClient.flightTutorial(), "TUTORIAL"));
         if (airborne) {
             remaining.addAll(List.of(
                     binding(FlightLineClient.spoilersToggle(), "SPOILERS"),
@@ -1530,8 +1522,6 @@ final class FlightHud {
             remaining.add(binding(FlightLineClient.pushback(), "PUSHBACK"));
             if (FlightLineClient.areEnginesActive()) {
                 remaining.add(binding(FlightLineClient.shutdownEngines(), "SHUT DOWN ENGINES"));
-            } else if (isCrashed()) {
-                remaining.add(binding(FlightLineClient.inventory(), "RECONFIGURE AIRCRAFT"));
             } else {
                 remaining.add(binding(FlightLineClient.inventory(), "START ENGINES"));
             }
@@ -1542,22 +1532,29 @@ final class FlightHud {
             addUniqueHint(rows, hint);
         }
 
-        int contentWidth = Math.min(160, Math.max(70, screenWidth - 12));
-        int contentHeight = rows.size() * 9;
-        float availableHeight = Math.max(0.0f, screenHeight - 18.0f);
-        float scale = Math.min(0.56f, Math.min(availableHeight / contentHeight,
-                (screenWidth - 12.0f) / contentWidth));
-        if (scale < 0.30f) return;
-        int x = screenWidth - 6 - Math.round(contentWidth * scale);
-        int y = screenHeight - 6 - Math.round(contentHeight * scale);
-        int slide = Math.round((1.0f - keybindPanelProgress) * 8.0f);
+        int contentWidth = 135;
+        int rowHeight = 9;
+        int contentHeight = rows.size() * rowHeight;
+        float scale = 0.80f;
+        int displayW = Math.round(contentWidth * scale);
+        int displayH = Math.round(contentHeight * scale);
+
+        int x = screenWidth - displayW - 6;
+        int y = screenHeight - displayH - 8;
+        int slide = Math.round((1.0f - keybindPanelProgress) * 12.0f);
+        if (keybindPanelProgress <= 0.01f) return;
+
         var pose = graphics.pose();
         pose.pushMatrix();
         pose.translate(x + slide, y);
         pose.scale(scale, scale);
+
+        graphics.fill(0, 0, contentWidth, contentHeight, 0x88121110);
+        graphics.outline(0, 0, contentWidth, contentHeight, 0x443D3938);
+
         for (int i = 0; i < rows.size(); i++) {
-            String text = fitText(mc.font, rows.get(i), contentWidth);
-            graphics.text(mc.font, text, contentWidth - mc.font.width(text), i * 9,
+            String text = fitText(mc.font, rows.get(i), contentWidth - 4);
+            graphics.text(mc.font, text, 4, i * rowHeight,
                     withAlpha(FlightLineTheme.PAPER, keybindPanelProgress), true);
         }
         pose.popMatrix();

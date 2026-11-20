@@ -29,7 +29,7 @@ public final class MobBankTracker {
             int id = mob.getId();
             BankState state = STATES.get(id);
             if (state == null) {
-                state = new BankState(mob.getYRot(), 0.0f);
+                state = new BankState(mob.getYRot(), 0.0f, 0.0f);
             }
             double delta = wrapDegrees(mob.getYRot() - state.lastYaw);
             state.lastYaw = mob.getYRot();
@@ -37,6 +37,10 @@ public final class MobBankTracker {
             float target = mob.onGround() ? 0.0f : (float) Math.max(-35.0, Math.min(35.0, delta * 16.0));
             float response = Math.abs(target) > 0.5f ? 0.25f : 0.12f;
             state.bank += (target - state.bank) * response;
+
+            float pitchTarget = mob.onGround() ? 0.0f : (float) Math.max(-45.0, Math.min(45.0, -mob.getXRot()));
+            state.pitch += (pitchTarget - state.pitch) * 0.20f;
+
             if (!mob.onGround()) {
                 state.wobble = (float) (Math.sin(time * 9.0 + id * 1.7) * 2.2);
             } else {
@@ -53,6 +57,11 @@ public final class MobBankTracker {
         return state == null ? 0.0f : (state.bank + state.wobble);
     }
 
+    public static float pitchFor(int entityId) {
+        BankState state = STATES.get(entityId);
+        return state == null ? 0.0f : state.pitch;
+    }
+
     public static void clear() {
         STATES.clear();
     }
@@ -67,11 +76,13 @@ public final class MobBankTracker {
     private static final class BankState {
         private double lastYaw;
         private float bank;
+        private float pitch;
         private float wobble;
 
-        private BankState(double lastYaw, float bank) {
+        private BankState(double lastYaw, float bank, float pitch) {
             this.lastYaw = lastYaw;
             this.bank = bank;
+            this.pitch = pitch;
             this.wobble = 0.0f;
         }
     }

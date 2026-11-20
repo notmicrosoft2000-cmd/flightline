@@ -308,7 +308,7 @@ public class FlightLineClient implements ClientModInitializer {
                             FlightHud.currentAltitudeFeet(),
                             FlightHud.currentVsFpm(),
                             FlightHud.currentSpeedKnots(),
-                            1
+                            0
                     ));
                 }
                 if (client.gui.screen() == null) {
@@ -959,6 +959,7 @@ public class FlightLineClient implements ClientModInitializer {
     }
 
     public static float bankDegrees() { return bankDegrees; }
+    public static float pitchDegrees() { return targetPitchDegrees; }
     public static boolean isAirborne() { return airborne; }
     public static boolean areEnginesActive() { return enginesActive; }
 

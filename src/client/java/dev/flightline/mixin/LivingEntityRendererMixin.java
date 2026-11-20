@@ -24,14 +24,22 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         if (entity instanceof Mob mob) {
             float bank = MobBankTracker.bankFor(mob.getId());
             ((BankRenderState) state).flightline$setBank(bank);
+            float pitch = MobBankTracker.pitchFor(mob.getId());
+            ((BankRenderState) state).flightline$setPitch(pitch);
         } else if (entity instanceof Avatar avatar && avatar == Minecraft.getInstance().player && FlightLineClient.isAirborne()) {
             float bank = FlightLineClient.bankDegrees();
             ((BankRenderState) state).flightline$setBank(bank);
+            float pitch = (float) FlightLineClient.pitchDegrees();
+            ((BankRenderState) state).flightline$setPitch(pitch);
         }
     }
 
     @Inject(method = "setupRotations", at = @At("TAIL"))
-    private void flightline$applyBank(S state, PoseStack poseStack, float bodyYRot, float scale, CallbackInfo ci) {
+    private void flightline$applyAttitude(S state, PoseStack poseStack, float bodyYRot, float scale, CallbackInfo ci) {
+        float pitch = ((BankRenderState) state).flightline$getPitch();
+        if (Math.abs(pitch) > 0.1f) {
+            poseStack.rotateDegrees(Axis.XP, -pitch);
+        }
         float bank = ((BankRenderState) state).flightline$getBank();
         if (Math.abs(bank) > 0.1f) {
             poseStack.rotateDegrees(Axis.ZP, bank);

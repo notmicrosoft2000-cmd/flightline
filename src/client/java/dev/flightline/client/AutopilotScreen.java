@@ -44,7 +44,7 @@ public class AutopilotScreen extends Screen {
     private static final int TCAS_RA = FlightLineTheme.TCAS_RA;
     private static final int TCAS_TA = FlightLineTheme.TCAS_TA;
 
-    private static final int PAGE_ALERTS = 5;
+    private static final int PAGE_ALERTS = 2;
 
     private static final int MCP_GROUP_W = 264;
     private static final int MCP_GROUP_H = 104;
@@ -172,9 +172,12 @@ public class AutopilotScreen extends Screen {
 
     public AutopilotScreen(boolean currentlyEngaged, int currentHeading, int currentAltitudeFeet,
                            int currentVsFpm, int currentSpeedKnots, int initialPage) {
-        super(Component.literal("Mode Control Panel"));
+        super(Component.literal("Flight Controls"));
         this.engaged = currentlyEngaged;
-        this.activePage = Math.max(0, Math.min(PAGE_ALERTS, initialPage));
+        int page = initialPage;
+        if (page == 2) page = 1; // runway/autoland
+        else if (page >= 3) page = PAGE_ALERTS; // alerts
+        this.activePage = Math.max(0, Math.min(PAGE_ALERTS, page));
         cachedGlideSlope = FlightHud.ilsReferenceGlideSlope();
         if (currentHeading >= 0) cachedHeading = Math.floorMod(currentHeading, 360);
         if (currentAltitudeFeet > 0) cachedAltitude = clamp(currentAltitudeFeet, 100, 35000);
@@ -223,77 +226,55 @@ public class AutopilotScreen extends Screen {
         panelLeft = 8;
         panelTop = 8;
 
-        addRenderableWidget(tabButton("MCP", 0, 12, 96));
-        addRenderableWidget(tabButton("FPLN", 1, 114, 78));
-        addRenderableWidget(tabButton("NAV / ILS", 2, 198, 112));
-        addRenderableWidget(tabButton("WX", 3, 316, 70));
-        addRenderableWidget(tabButton("SYS", 4, 392, 84));
-        addRenderableWidget(tabButton("ALERT", PAGE_ALERTS, 482, 100));
+        addRenderableWidget(tabButton("AUTOPILOT", 0, 12, 140));
+        addRenderableWidget(tabButton("RUNWAY / AUTOLAND", 1, 158, 170));
+        addRenderableWidget(tabButton("ALERTS", PAGE_ALERTS, 334, 110));
 
         if (activePage == 0) {
             initMcpPage();
         } else if (activePage == 1) {
-            initFlightPlanPage();
-        } else if (activePage == 2) {
             initNavPage();
-        } else if (activePage == 3) {
-            initWeatherPage();
-        } else if (activePage == PAGE_ALERTS) {
-            initAlertsPage();
         } else {
-            initSystemsPage();
+            initAlertsPage();
         }
 
-        addRenderableWidget(FlightLineTheme.button("APPLY", x(494), y(370), w(94), h(20),
+        addRenderableWidget(FlightLineTheme.button("APPLY & CLOSE", x(460), y(370), w(128), h(20),
                 this::onClose));
     }
 
     private void initMcpPage() {
-        int hdgX = mcpGroupX(0);
-        int hdgY = mcpGroupY(0);
-        headingBox = numberInput(hdgX + MCP_FIELD_X, hdgY + MCP_FIELD_Y, MCP_FIELD_W,
-                "HDG", mcpHeadingText, 3);
-        addRenderableWidget(stepButton("-10", hdgX + MCP_STEP_X, hdgY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustHeading(-10)));
-        addRenderableWidget(stepButton("+10", hdgX + MCP_STEP_2_X, hdgY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustHeading(10)));
-        addRenderableWidget(compactActionButton("SYNC", hdgX + MCP_ACTION_X, hdgY + MCP_ACTION_Y,
-                MCP_ACTION_W, this::syncHeading));
+        // Authentic Airliner Glareshield MCP (Horizontal 5-Column Bay)
+        // Col 0: Speed (x=18, w=104)
+        int iasX = 18;
+        speedBox = numberInput(iasX + 4, 142, 44, "IAS", mcpSpeedText, 3);
+        addRenderableWidget(stepButton("-10", iasX + 52, 142, 22, () -> adjustSpeed(-10)));
+        addRenderableWidget(stepButton("+10", iasX + 76, 142, 22, () -> adjustSpeed(10)));
+        addRenderableWidget(compactActionButton("SYNC SPD", iasX + 4, 166, 94, this::syncSpeed));
 
-        int altX = mcpGroupX(1);
-        int altY = mcpGroupY(1);
-        altitudeBox = numberInput(altX + MCP_FIELD_X, altY + MCP_FIELD_Y, MCP_FIELD_W,
-                "ALT", mcpAltitudeText, 5);
-        addRenderableWidget(stepButton("-500", altX + MCP_STEP_X, altY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustAltitude(-500)));
-        addRenderableWidget(stepButton("+500", altX + MCP_STEP_2_X, altY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustAltitude(500)));
-        addRenderableWidget(compactActionButton("SYNC", altX + MCP_ACTION_X, altY + MCP_ACTION_Y,
-                MCP_ACTION_W, this::syncAltitude));
+        // Col 1: Heading (x=130, w=104)
+        int hdgX = 130;
+        headingBox = numberInput(hdgX + 4, 142, 44, "HDG", mcpHeadingText, 3);
+        addRenderableWidget(stepButton("-10", hdgX + 52, 142, 22, () -> adjustHeading(-10)));
+        addRenderableWidget(stepButton("+10", hdgX + 76, 142, 22, () -> adjustHeading(10)));
+        addRenderableWidget(compactActionButton("SYNC HDG", hdgX + 4, 166, 94, this::syncHeading));
 
-        int vsX = mcpGroupX(2);
-        int vsY = mcpGroupY(2);
-        vsBox = numberInput(vsX + MCP_FIELD_X, vsY + MCP_FIELD_Y, MCP_FIELD_W,
-                "V/S", mcpVsText, 5);
-        addRenderableWidget(stepButton("-500", vsX + MCP_STEP_X, vsY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustVs(-500)));
-        addRenderableWidget(stepButton("+500", vsX + MCP_STEP_2_X, vsY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustVs(500)));
-        addRenderableWidget(compactActionButton("LEVEL", vsX + MCP_ACTION_X, vsY + MCP_ACTION_Y,
-                MCP_ACTION_W, this::setVsZero));
+        // Col 2: Altitude (x=242, w=108)
+        int altX = 242;
+        altitudeBox = numberInput(altX + 4, 142, 48, "ALT", mcpAltitudeText, 5);
+        addRenderableWidget(stepButton("-500", altX + 56, 142, 22, () -> adjustAltitude(-500)));
+        addRenderableWidget(stepButton("+500", altX + 80, 142, 22, () -> adjustAltitude(500)));
+        addRenderableWidget(compactActionButton("SYNC ALT", altX + 4, 166, 98, this::syncAltitude));
 
-        int iasX = mcpGroupX(3);
-        int iasY = mcpGroupY(3);
-        speedBox = numberInput(iasX + MCP_FIELD_X, iasY + MCP_FIELD_Y, MCP_FIELD_W,
-                "IAS", mcpSpeedText, 3);
-        addRenderableWidget(stepButton("-10", iasX + MCP_STEP_X, iasY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustSpeed(-10)));
-        addRenderableWidget(stepButton("+10", iasX + MCP_STEP_2_X, iasY + MCP_FIELD_Y,
-                MCP_STEP_W, () -> adjustSpeed(10)));
-        addRenderableWidget(compactActionButton("SYNC", iasX + MCP_ACTION_X, iasY + MCP_ACTION_Y,
-                MCP_ACTION_W, this::syncSpeed));
+        // Col 3: Vertical Speed (x=358, w=108)
+        int vsX = 358;
+        vsBox = numberInput(vsX + 4, 142, 48, "V/S", mcpVsText, 5);
+        addRenderableWidget(stepButton("-500", vsX + 56, 142, 22, () -> adjustVs(-500)));
+        addRenderableWidget(stepButton("+500", vsX + 80, 142, 22, () -> adjustVs(500)));
+        addRenderableWidget(compactActionButton("LEVEL OFF", vsX + 4, 166, 98, this::setVsZero));
 
-        apMasterBtn = FlightLineTheme.button(apButtonText(), x(428), y(104), w(148), h(18),
+        // Col 4: A/P CMD Master (x=474, w=108)
+        int apX = 474;
+        apMasterBtn = FlightLineTheme.button(apButtonText(), x(apX + 4), y(142), w(100), h(42),
                 this::toggleAp);
         addRenderableWidget(apMasterBtn);
     }
@@ -412,7 +393,7 @@ public class AutopilotScreen extends Screen {
 
     private void commitPage(int page) {
         if (page == 0) saveAutopilotValues();
-        else if (page == 2) commitIlsValues();
+        else if (page == 1) commitIlsValues();
     }
 
     private void saveAutopilotValues() {
@@ -814,7 +795,7 @@ public class AutopilotScreen extends Screen {
     }
 
     private Component apButtonText() {
-        return Component.literal(engaged ? "A/P ENGAGED" : "A/P STANDBY");
+        return Component.literal(engaged ? "AUTOPILOT: ENGAGED" : "AUTOPILOT: STANDBY");
     }
 
     private void toggleAp() {
@@ -895,7 +876,7 @@ public class AutopilotScreen extends Screen {
         scaler.scrim(graphics);
         FlightLineTheme.panel(graphics, panelLeft, panelTop, panelWidth, panelHeight, PANEL_FILL, BORDER);
         FlightLineTheme.header(graphics, font, panelLeft + 4, panelTop + 4, panelWidth - 8, h(24),
-                "01", "AUTOPILOT / FLIGHT DIRECTOR", GREEN);
+                "AP", "FLIGHT DECK / AUTOPILOT", GREEN);
         drawHeaderStatus(graphics);
 
         drawFma(graphics);
@@ -903,11 +884,8 @@ public class AutopilotScreen extends Screen {
 
         switch (activePage) {
             case 0 -> drawMcpPage(graphics);
-            case 1 -> drawFlightPlanPage(graphics);
-            case 2 -> drawNavPage(graphics);
-            case 3 -> drawWeatherPage(graphics);
-            case PAGE_ALERTS -> drawAlertsPage(graphics);
-            default -> drawSystemsPage(graphics);
+            case 1 -> drawNavPage(graphics);
+            default -> drawAlertsPage(graphics);
         }
 
         fittedCenteredText(graphics, activePageName(), panelLeft + x(294), panelTop + y(376), MUTED, w(320));
@@ -1011,80 +989,114 @@ public class AutopilotScreen extends Screen {
         int targetSpeed = parseSpeed();
         int targetVs = parseVs();
 
-        drawMcpStatus(graphics);
+        boolean ap = FlightHud.isAutopilotEngaged() || engaged;
 
-        panel(graphics, mcpGroupX(0), mcpGroupY(0), MCP_GROUP_W, MCP_GROUP_H,
-                "LATERAL / HDG", CYAN);
-        drawMcpReadout(graphics, 0,
+        // 1. Draw top FMA (Flight Mode Annunciator)
+        drawFma(graphics);
+
+        // 2. Authentic Glareshield MCP Housing (Boeing/Airbus Style)
+        int mcpX = panelLeft + 14;
+        int mcpY = panelTop + 86;
+        int mcpW = 572;
+        int mcpH = 106;
+
+        // Dark aviation metal casing with bevel
+        graphics.fill(mcpX, mcpY, mcpX + mcpW, mcpY + mcpH, 0xFF192026);
+        graphics.outline(mcpX, mcpY, mcpW, mcpH, 0xFF354452);
+        graphics.fill(mcpX + 1, mcpY + 1, mcpX + mcpW - 1, mcpY + 3, 0xFF0D1217);
+
+        // Section dividing vertical grooves
+        int[] dividers = {124, 236, 352, 468};
+        for (int div : dividers) {
+            graphics.fill(panelLeft + div, mcpY + 2, panelLeft + div + 1, mcpY + mcpH - 2, 0xFF0D1217);
+            graphics.fill(panelLeft + div + 1, mcpY + 2, panelLeft + div + 2, mcpY + mcpH - 2, 0xFF354452);
+        }
+
+        // Section 0: SPEED / A/T
+        drawMcpSectionHeader(graphics, panelLeft + 18, mcpY + 5, 104, "A/T · SPEED", ap);
+        drawMcpDigitalDisplay(graphics, panelLeft + 22, mcpY + 22, 94, 26,
+                String.format(Locale.ROOT, "%03d KT", targetSpeed), AMBER);
+
+        // Section 1: HEADING
+        drawMcpSectionHeader(graphics, panelLeft + 130, mcpY + 5, 104, "HDG SEL", ap);
+        drawMcpDigitalDisplay(graphics, panelLeft + 134, mcpY + 22, 94, 26,
+                String.format(Locale.ROOT, "%03d°", targetHeading), AMBER);
+
+        // Section 2: ALTITUDE
+        drawMcpSectionHeader(graphics, panelLeft + 242, mcpY + 5, 108, "ALT HOLD", ap);
+        drawMcpDigitalDisplay(graphics, panelLeft + 246, mcpY + 22, 98, 26,
+                String.format(Locale.ROOT, "%,d FT", targetAltitude), AMBER);
+
+        // Section 3: VERTICAL SPEED
+        drawMcpSectionHeader(graphics, panelLeft + 358, mcpY + 5, 108, "VERT SPEED", ap && targetVs != 0);
+        drawMcpDigitalDisplay(graphics, panelLeft + 362, mcpY + 22, 98, 26,
+                String.format(Locale.ROOT, "%+d FPM", targetVs), AMBER);
+
+        // Section 4: A/P CMD MASTER
+        drawMcpSectionHeader(graphics, panelLeft + 474, mcpY + 5, 104, "A/P CMD", ap);
+        drawMcpDigitalDisplay(graphics, panelLeft + 478, mcpY + 22, 98, 26,
+                ap ? "ENGAGED" : "STANDBY", ap ? GREEN : MUTED);
+
+        // 3. Lower Flight Guidance & Deviation Section
+        int guideY = panelTop + 198;
+        int guideH = 160;
+        FlightLineTheme.panel(graphics, mcpX, guideY, mcpW, guideH, CARD_FILL, BORDER);
+        graphics.fill(mcpX + 1, guideY + 1, mcpX + mcpW - 1, guideY + 15, FlightLineTheme.HEADER);
+        graphics.fill(mcpX + 1, guideY + 15, mcpX + mcpW - 1, guideY + 16, CYAN);
+        graphics.text(font, "FLIGHT GUIDANCE & DEVIATION MONITORS", mcpX + 8, guideY + 4, CYAN, true);
+
+        // 4 live comparison tapes:
+        int tapeY = guideY + 22;
+        drawGuidanceTape(graphics, panelLeft + 22, tapeY, 120, "AIRSPEED",
+                currentSpeed + " KT", targetSpeed + " KT",
+                (currentSpeed - 60.0f) / 260.0f, (targetSpeed - 60.0f) / 260.0f);
+
+        drawGuidanceTape(graphics, panelLeft + 158, tapeY, 120, "HEADING",
                 String.format(Locale.ROOT, "%03d°", currentHeading),
                 String.format(Locale.ROOT, "%03d°", targetHeading),
                 currentHeading / 359.0f, targetHeading / 359.0f);
 
-        panel(graphics, mcpGroupX(1), mcpGroupY(1), MCP_GROUP_W, MCP_GROUP_H,
-                "VERTICAL / ALT", CYAN);
-        drawMcpReadout(graphics, 1,
+        drawGuidanceTape(graphics, panelLeft + 294, tapeY, 120, "ALTITUDE",
                 String.format(Locale.ROOT, "%,d FT", currentAltitude),
                 String.format(Locale.ROOT, "%,d FT", targetAltitude),
                 currentAltitude / 35000.0f, targetAltitude / 35000.0f);
 
-        panel(graphics, mcpGroupX(2), mcpGroupY(2), MCP_GROUP_W, MCP_GROUP_H,
-                "VERTICAL / V/S", CYAN);
-        drawMcpReadout(graphics, 2,
+        drawGuidanceTape(graphics, panelLeft + 430, tapeY, 120, "CLIMB / DESCENT",
                 String.format(Locale.ROOT, "%+d FPM", currentVs),
                 String.format(Locale.ROOT, "%+d FPM", targetVs),
                 (currentVs + 4000.0f) / 8000.0f, (targetVs + 4000.0f) / 8000.0f);
 
-        panel(graphics, mcpGroupX(3), mcpGroupY(3), MCP_GROUP_W, MCP_GROUP_H,
-                "SPEED / IAS", CYAN);
-        drawMcpReadout(graphics, 3,
-                currentSpeed + " KT", targetSpeed + " KT",
-                (currentSpeed - 60.0f) / 260.0f, (targetSpeed - 60.0f) / 260.0f);
-
+        // Lower telemetry bar
         var guidance = FlightHud.autopilotGuidance();
-        String config = String.format(Locale.ROOT, "A/T %s  ·  THRUST ±%.0f KT  ·  N1 %d%%",
-                FlightHud.isAutopilotEngaged() ? "AUTO" : "STBY",
-                guidance.autoThrottleDeadbandKnots(), FlightHud.engineN1());
-        fittedCenteredText(graphics, config, panelLeft + x(294), panelTop + y(360), MUTED, w(500));
+        String telemetry = String.format(Locale.ROOT,
+                "A/T %s  ·  SPEED MARGIN ±%.0f KT  ·  ENGINE N1 %d%%  ·  NAV: %s",
+                ap ? "ACTIVE" : "STANDBY",
+                guidance.autoThrottleDeadbandKnots(),
+                FlightHud.engineN1(),
+                FlightHud.navMode() == NavMode.LNAV ? "LNAV" : "HDG SEL");
+        graphics.fill(mcpX + 8, guideY + guideH - 24, mcpX + mcpW - 8, guideY + guideH - 23, BORDER);
+        fittedCenteredText(graphics, telemetry, mcpX + mcpW / 2, guideY + guideH - 16, MUTED, mcpW - 20);
     }
 
-    /** Engagement strip inside the card; the full mode annunciator row sits above it. */
-    private void drawMcpStatus(GuiGraphicsExtractor graphics) {
-        var guidance = FlightHud.autopilotGuidance();
-        boolean ap = FlightHud.isAutopilotEngaged() || engaged;
-        String mode = guidance.atcControlled() ? "ATC CONTROL"
-                : guidance.autolandArmed() ? "AUTOLAND"
-                : ap && FlightHud.navMode() == NavMode.LNAV ? "LNAV"
-                : ap ? "HDG" : "MANUAL";
-        int stateColor = ap ? GREEN : MUTED;
-
-        graphics.fill(panelLeft + x(24), panelTop + y(100),
-                panelLeft + x(28), panelTop + y(123), stateColor);
-        fittedText(graphics, "FLIGHT DIRECTOR", panelLeft + x(36), panelTop + y(100),
-                MUTED, w(112), true);
-        fittedText(graphics, ap ? "ARMED" : "STANDBY", panelLeft + x(36), panelTop + y(111),
-                stateColor, w(112), true);
-        fittedText(graphics, "ACTIVE MODE", panelLeft + x(208), panelTop + y(100),
-                MUTED, w(96), true);
-        fittedText(graphics, mode, panelLeft + x(208), panelTop + y(111),
-                ap ? TEXT : MUTED, w(196), true);
-        graphics.fill(panelLeft + x(24), panelTop + y(127),
-                panelLeft + x(576), panelTop + y(128), BORDER);
+    private void drawMcpSectionHeader(GuiGraphicsExtractor graphics, int x, int y, int width, String label, boolean active) {
+        int ledColor = active ? GREEN : FlightLineTheme.COAL;
+        graphics.fill(x + width / 2 - 16, y + 10, x + width / 2 + 16, y + 13, ledColor);
+        graphics.outline(x + width / 2 - 16, y + 10, 32, 3, active ? GREEN : FlightLineTheme.STONE);
+        fittedCenteredText(graphics, label, x + width / 2, y, active ? TEXT : MUTED, width - 4);
     }
 
-    private void drawMcpReadout(GuiGraphicsExtractor graphics, int index,
-                                String current, String selected,
-                                float currentFraction, float selectedFraction) {
-        int x = mcpGroupX(index);
-        int y = mcpGroupY(index);
-        fittedText(graphics, "CURRENT", panelLeft + x(x + 14), panelTop + y(y + 23),
-                MUTED, w(56), true);
-        fittedText(graphics, current, panelLeft + x(x + 14), panelTop + y(y + 34),
-                CYAN, w(112), true);
-        fittedText(graphics, "SELECTED", panelLeft + x(x + 148), panelTop + y(y + 23),
-                MUTED, w(60), true);
-        fittedText(graphics, selected, panelLeft + x(x + 148), panelTop + y(y + 34),
-                AMBER, w(102), true);
-        drawMcpScale(graphics, x + 14, y + 46, 236, currentFraction, selectedFraction);
+    private void drawMcpDigitalDisplay(GuiGraphicsExtractor graphics, int x, int y, int width, int height, String text, int color) {
+        graphics.fill(x, y, x + width, y + height, 0xFF050A0E);
+        graphics.outline(x, y, width, height, 0xFF2C3946);
+        fittedCenteredText(graphics, text, x + width / 2, y + (height - 8) / 2, color, width - 6);
+    }
+
+    private void drawGuidanceTape(GuiGraphicsExtractor graphics, int x, int y, int width, String title,
+                                  String cur, String sel, float curFrac, float selFrac) {
+        fittedText(graphics, title, x, y, CYAN, width, true);
+        fittedText(graphics, "CUR: " + cur, x, y + 12, TEXT, width, true);
+        fittedText(graphics, "SEL: " + sel, x, y + 24, AMBER, width, true);
+        drawMcpScale(graphics, x, y + 40, width, curFrac, selFrac);
     }
 
     private void drawMcpScale(GuiGraphicsExtractor graphics, int x, int y, int width,
@@ -1814,12 +1826,9 @@ public class AutopilotScreen extends Screen {
 
     private String activePageName() {
         return switch (activePage) {
-            case 0 -> "MCP";
-            case 1 -> "FLIGHT PLAN";
-            case 2 -> "NAV / ILS";
-            case 3 -> "WX";
-            case PAGE_ALERTS -> "ALERTS";
-            default -> "SYS";
+            case 0 -> "AUTOPILOT CONTROLS";
+            case 1 -> "RUNWAY & AUTOLAND";
+            default -> "AIRCRAFT ALERTS";
         };
     }
 

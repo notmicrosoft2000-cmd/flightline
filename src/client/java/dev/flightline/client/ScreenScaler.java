@@ -61,7 +61,11 @@ final class ScreenScaler {
         float readabilityCap = guiScale <= 1.0f ? 1.5f : 1.0f;
         float fit = Math.min((float) availableWidth / logicalWidth,
                 (float) availableHeight / logicalHeight);
-        scale = Math.max(0.25f, Math.min(readabilityCap, fit));
+        if (fit >= 0.88f && guiScale > 1.0f) {
+            scale = 1.0f;
+        } else {
+            scale = Math.max(0.68f, Math.min(readabilityCap, fit));
+        }
         offsetX = (availableWidth - logicalWidth * scale) / 2.0f;
         offsetY = (availableHeight - logicalHeight * scale) / 2.0f;
     }

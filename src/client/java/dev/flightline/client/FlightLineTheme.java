@@ -62,20 +62,18 @@ final class FlightLineTheme {
      * non-TCAS warnings. No text is drawn here.
      */
     static void alarmFlash(GuiGraphicsExtractor g, int x, int y, int w, int h, float intensity) {
-        int alpha = (int) (0.55f * Math.max(0f, Math.min(1f, intensity)) * 255f);
+        int alpha = (int) (0.32f * Math.max(0f, Math.min(1f, intensity)) * 255f);
         if (alpha <= 0) return;
-        // Website red, not the flight-critical warning red: the alarm is an ambient frame and
-        // must not be mistaken for a TCAS/RA symbol or a specific warning label.
         int edge = (alpha << 24) | (RED & 0xFFFFFF);
-        int band = Math.max(4, Math.min(14, Math.round(Math.min(w, h) * 0.025f)));
+        int band = 2;
         g.fill(x, y, x + w, y + band, edge);
         g.fill(x, y + h - band, x + w, y + h, edge);
         g.fill(x, y + band, x + band, y + h - band, edge);
         g.fill(x + w - band, y + band, x + w, y + h - band, edge);
 
-        int corner = Math.max(18, band * 3);
-        int spine = Math.max(3, band / 2);
-        int solidAlpha = Math.min(255, alpha + 90);
+        int corner = 12;
+        int spine = 2;
+        int solidAlpha = Math.min(220, alpha + 60);
         int solid = (solidAlpha << 24) | (RED & 0xFFFFFF);
         g.fill(x, y, x + corner, y + spine, solid);
         g.fill(x, y, x + spine, y + corner, solid);

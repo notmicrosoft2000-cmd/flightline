@@ -9,6 +9,8 @@ import org.spongepowered.asm.mixin.Unique;
 public abstract class LivingEntityRenderStateMixin implements BankRenderState {
     @Unique
     private float flightline$bank;
+    @Unique
+    private float flightline$pitch;
 
     @Override
     public float flightline$getBank() {
@@ -18,5 +20,15 @@ public abstract class LivingEntityRenderStateMixin implements BankRenderState {
     @Override
     public void flightline$setBank(float bank) {
         this.flightline$bank = bank;
+    }
+
+    @Override
+    public float flightline$getPitch() {
+        return flightline$pitch;
+    }
+
+    @Override
+    public void flightline$setPitch(float pitch) {
+        this.flightline$pitch = pitch;
     }
 }
